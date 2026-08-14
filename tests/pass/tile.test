@@ -1,13 +1,145 @@
 ; tile.test — kernscope-tile: arch-derived loop tiling (todo 41, Wave 7).
 ;
-; Skeleton stage: the pass is registered (textual name kernscope-tile)
-; and runs cleanly on a kernel with no loops, changing nothing.
-; The full golden fixtures (tile_nest.ll, remainder.ll, decline_small.ll,
-; dependence.ll, pipeline.ll) land with the analysis + rewrite increment.
+; The pass tiles innermost GPU loops by arch-derived tile sizes (libs/arch
+; smem + register budgets) into a tile loop + full-tile loop + remainder
+; loop, exposing constant-trip-count unit-stride {s,+,1} windows for
+; kernscope-promote (todo 40). SCEV-driven bound handling; the dependence
+; gate (LAI) is the MUST-NOT soundness guard.
 ;
-; Design: tools/pass/passes/tile/include/kernscope/pass/tile.h.
+; Fixtures (tests/pass/Inputs/tile/):
+;   * tile_nest.ll    — N=64, tile 32 (pinned): 2 full tiles, NO remainder.
+;                       GOLDEN (tiled nest FileCheck-EXACT).
+;   * remainder.ll    — N=100, tile 32: 3 full tiles + 4-iteration
+;                       remainder loop (constant start 96, constant trip) —
+;                       the {s,+,1} window kernscope-promote consumes.
+;                       GOLDEN (nest + remainder FileCheck-EXACT).
+;   * derived.ll      — no pinned tile size: arch-derived from sm_86
+;                       (99 KiB smem / 4 B, 255 regs) -> tile 128.
+;   * decline_small.ll— trip count 3 < tile 32 -> decline, IR unchanged.
+;   * dependence.ll   — a[i] = a[i-1]: loop-carried dependence -> the
+;                       pass MUST NOT tile; decline, IR unchanged.
+;   * pipeline.ll     — tile -> promote -> vectorize end-to-end sequence
+;                       gate (promote consumes the remainder window).
+;   * trivial.ll      — no loops -> unchanged.
+;
+; The rewrite-count report hook (todo 42): opt -kernscope-tile-report
+; prints "kernscope-tile: <fn>: tiled loop <hdr> (N -> T tiles of TS + R)"
+; to stderr (asserted below).
 ;
 ; REQUIRES: no-gpu
 
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,verify' -S %S/Inputs/tile/tile_nest.ll -o %t.nest
+; RUN: FileCheck %s --check-prefix=TILE --input-file %t.nest
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,verify' -S %S/Inputs/tile/remainder.ll -o %t.rem
+; RUN: FileCheck %s --check-prefix=REM --input-file %t.rem
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,verify' -S %S/Inputs/tile/derived.ll -o %t.der
+; RUN: FileCheck %s --check-prefix=DER --input-file %t.der
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-tile -S %S/Inputs/tile/decline_small.ll -o %t.small 2>&1 | FileCheck %s --check-prefix=SMALL
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/tile/decline_small.ll %t.small
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-tile -S %S/Inputs/tile/dependence.ll -o %t.dep 2>&1 | FileCheck %s --check-prefix=DEP
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/tile/dependence.ll %t.dep
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,kernscope-promote,kernscope-vectorize,verify' -S %S/Inputs/tile/pipeline.ll -o %t.pip
+; RUN: FileCheck %s --check-prefix=PIPELINE --input-file %t.pip
+
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,verify' -S %S/Inputs/tile/trivial.ll -o %t.triv
 ; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/tile/trivial.ll %t.triv
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-tile -kernscope-tile-report -S %S/Inputs/tile/tile_nest.ll -o %t.rep 2>&1 | FileCheck %s --check-prefix=REPORT
+
+; GOLDEN tiled nest (N=64 -> 2 full tiles, no remainder): the function
+; entry branches to tile.pre, which enters the outer tile.check loop; the
+; inner loop's IV starts at %i.start = %i.t * 32 and its latch test bounds
+; against %i.end; the accumulator is carried across tiles through %acc.t
+; and %acc.lcssa; the exit phi arrives from tile.check with %acc.t.
+; TILE: br label %tile.pre
+; TILE: tile.pre:
+; TILE: br label %tile.check
+; TILE: tile.check:
+; TILE: %[[T:.*]] = phi i64 [ 0, %tile.pre ], [ %{{.*}}, %tile.latch ]
+; TILE: %[[ACC:.*]] = phi float [ 0.000000e+00, %tile.pre ], [ %{{.*}}, %tile.latch ]
+; TILE: %[[TC:.*]] = icmp ult i64 %[[T]], 2
+; TILE: br i1 %[[TC]], label %tile.inner.pre, label %exit
+; TILE: tile.inner.pre:
+; TILE: %[[S:.*]] = mul i64 %[[T]], 32
+; TILE: %[[E:.*]] = add i64 %[[S]], 32
+; TILE: br label %loop
+; TILE: loop:
+; TILE: %[[I:.*]] = phi i64 [ %[[S]], %tile.inner.pre ], [ %{{.*}}, %loop ]
+; TILE: %[[A:.*]] = phi float [ %[[ACC]], %tile.inner.pre ], [ %{{.*}}, %loop ]
+; TILE: %[[C:.*]] = icmp ult i64 %{{.*}}, %[[E]]
+; TILE: br i1 %[[C]], label %loop, label %tile.latch
+; TILE: tile.latch:
+; TILE: %[[L:.*]] = phi float [ %{{.*}}, %loop ]
+; TILE: br label %tile.check
+; TILE: exit:
+; TILE: %[[R:.*]] = phi float [ %[[ACC]], %tile.check ]
+; TILE-NOT: rem.
+
+; GOLDEN nest + remainder (N=100 -> 3 full tiles + 4-iteration remainder
+; loop): the remainder loop has constant start 96 (%i.idx = add 96, %i.r)
+; and constant bound 4 — the {s,+,1} window kernscope-promote consumes —
+; and continues the carried accumulator (%acc.rem) into the exit phi.
+; REM: tile.check:
+; REM: %[[T:.*]] = phi i64 [ 0, %tile.pre ], [ %{{.*}}, %tile.latch ]
+; REM: %[[TC:.*]] = icmp ult i64 %[[T]], 3
+; REM: br i1 %[[TC]], label %tile.inner.pre, label %rem.pre
+; REM: tile.inner.pre:
+; REM: %[[S:.*]] = mul i64 %[[T]], 32
+; REM: br label %loop
+; REM: rem.pre:
+; REM: br label %rem.check
+; REM: rem.check:
+; REM: %[[R:.*]] = phi i64 [ 0, %rem.pre ], [ %{{.*}}, %rem.latch ]
+; REM: %[[AR:.*]] = phi float [ {{[^,]*}}, %rem.pre ], [ %{{.*}}, %rem.latch ]
+; REM: %[[RC:.*]] = icmp ult i64 %[[R]], 4
+; REM: br i1 %[[RC]], label %rem.body, label %exit
+; REM: rem.body:
+; REM: %[[IDX:.*]] = add i64 96, %[[R]]
+; REM: %[[P:.*]] = getelementptr float, ptr addrspace(1) %g, i64 %[[IDX]]
+; REM: %[[V:.*]] = load float, ptr addrspace(1) %[[P]], align 4
+; REM: %[[SUM:.*]] = fadd float %[[AR]], %[[V]]
+; REM: br label %rem.latch
+; REM: rem.latch:
+; REM: br label %rem.check
+; REM: exit:
+; REM: %[[R2:.*]] = phi float [ %[[AR]], %rem.check ]
+
+; Arch-derived tile size (no pinned kernscope.tile.size): sm_86 -> 99 KiB
+; smem budget / 4 B, 255 regs -> largest power-of-two <= 255 -> tile 128.
+; N=300 -> 2 full tiles of 128 + remainder 44.
+; DER: %[[T:.*]] = phi i64 [ 0, %tile.pre ], [ %{{.*}}, %tile.latch ]
+; DER: %[[TC:.*]] = icmp ult i64 %[[T]], 2
+; DER: %[[S:.*]] = mul i64 %[[T]], 128
+; DER: %[[IDX:.*]] = add i64 256, %{{.*}}
+
+; Trip count 3 with tile 32 -> decline annotation (trip < tile), IR
+; byte-identical (llvm-diff above).
+; SMALL: kernscope-tile: declining tiling of loop @loop in @small_kernel: trip count < tile size; tiling pointless (3 < 32)
+
+; Cross-iteration dependence (a[i] = a[i-1]) -> the MUST-NOT gate fires,
+; IR byte-identical (llvm-diff above).
+; DEP: kernscope-tile: declining tiling of loop @loop in @dep_kernel: cross-iteration memory dependence (LAI)
+
+; End-to-end sequence gate: tile -> promote -> vectorize on one module.
+; The tiled nest + remainder survive; kernscope-promote consumes the
+; remainder window (constant-start {96,+,1}, trip 4) into a cooperative
+; block load into an addrspace(3) tile + barrier0; vectorize runs clean
+; after (its v1 scope is global loads; the promoted reads are smem).
+; PIPELINE: %kernscope.tile = alloca [101 x float], align 4, addrspace(3)
+; PIPELINE: call void @llvm.nvvm.barrier0()
+; PIPELINE: br label %tile.pre
+; PIPELINE: tile.check:
+; PIPELINE: %[[TC:.*]] = icmp ult i64 %{{.*}}, 3
+; PIPELINE: rem.check:
+; PIPELINE: %[[RC:.*]] = icmp ult i64 %{{.*}}, 4
+; PIPELINE: rem.body:
+; PIPELINE: %[[SPTR:.*]] = getelementptr inbounds [101 x float], ptr addrspace(3) %kernscope.tile, i64 0, i64 %{{.*}}
+; PIPELINE: %[[L:.*]] = load float, ptr addrspace(3) %[[SPTR]], align 4
+; PIPELINE: %[[SUM:.*]] = fadd float %{{.*}}, %[[L]]
+
+; REPORT: kernscope-tile: tile_kernel: tiled loop @loop (64 -> 2 tiles of 32 + 0)
