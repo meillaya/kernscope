@@ -5,3 +5,5 @@ build/
 caches
 .devenv*
 .codegraph
+__pycache__/
+*.pyc

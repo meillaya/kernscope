@@ -1,0 +1,48 @@
+TASK 23 EVIDENCE (NEGATIVE PATH) — wrong-output injection discipline
+====================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Commit: feat(golden): NumPy bf16 correctness harness for all six kernel families
+
+SCENARIO: inject a bit-flipped device output bin -> verdict pass:false with
+cosine < 0.999, all three metrics reported (polykernel
+--inject-failed-correctness discipline). The corruption flips the sign bit
+of every other bf16 element of the reference output (256-element matmul
+[16,16,16]).
+
+$ cd tests/golden
+$ python3 -m kernscope_golden check --kernel matmul --bin /tmp/matmul_wrong.bin \
+      --shape 16,16,16 --inputs /tmp/ref_inputs.npz
+{
+  "pass": false,
+  "cosine": -0.060739774256944656,      <- asserted < 0.999 (VIOLATED)
+  "max_rel_err": 1.9999994039535522,    <- > 1e-2 (VIOLATED)
+  "pcc": -0.05946040898561478,          <- < 0.99 (VIOLATED)
+  "kernel": "matmul",
+  "shape": [16, 16, 16],
+  "dtype": "bf16",
+  "thresholds": {"cosine": 0.999, "max_rel_err": 0.01, "pcc": 0.99},
+  "bin": "/tmp/matmul_wrong.bin",
+  "ref_inputs": "/tmp/ref_inputs.npz",
+  "seed": null
+}
+exit 1
+
+ASSERTIONS (test_golden.py, parametrized over ALL SIX families)
+----------------------------------------------------------------
+test_wrong_output_bin_fails_with_metrics: rc == 1, pass is False,
+cosine < 0.999, and every metric key (cosine/max_rel_err/pcc) present in
+the JSON verdict. PASS for matmul, bias_gelu, softmax, layernorm,
+reduction, attention.
+
+$ devenv shell -- pytest tests/golden -q
+29 passed in 0.13s   (includes all six wrong-output injection cases)
+
+SECONDARY NEGATIVE PATH (CLI robustness)
+-----------------------------------------
+Wrong-size output bin (8 bytes vs 256 expected):
+$ python3 -m kernscope_golden check --kernel matmul --bin /tmp/short.bin \
+      --shape 16,16,16
+kernscope_golden: error: /tmp/short.bin: 8 bytes / 4 elements (itemsize 2)
+  does not match --shape (16, 16, 16) -> 256 elements
+exit 2  (clear diagnostic, no crash)

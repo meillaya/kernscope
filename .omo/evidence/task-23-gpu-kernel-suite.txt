@@ -1,0 +1,90 @@
+TASK 23 EVIDENCE (HAPPY PATH) — NumPy bf16 correctness harness
+================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Commit: feat(golden): NumPy bf16 correctness harness for all six kernel families
+
+ENVIRONMENT (devenv shell)
+--------------------------
+numpy 2.5.1 / ml_dtypes 0.5.4 / pytest 9.1.1 (devenv python3.14.7)
+ruff 0.15.20
+
+FILES CREATED
+-------------
+tests/golden/kernscope_golden/__init__.py   package exports + CLI doc
+tests/golden/kernscope_golden/metrics.py     cosine / max_rel_err / pcc / verdict
+tests/golden/kernscope_golden/refs.py        six family references (bf16 RNE in,
+                                             fp32 accumulate, bf16 out)
+tests/golden/kernscope_golden/inputs.py      seeded deterministic generation,
+                                             shape schemas, npz persistence
+tests/golden/kernscope_golden/__main__.py    CLI: check | gen (JSON verdict,
+                                             exit 0/1/2)
+tests/golden/test_golden.py                  pytest suite (29 tests)
+
+CONVENTION (from plan todo 23 / polykernel README.md:116-120)
+-------------------------------------------------------------
+bf16 round-to-nearest-even inputs (ml_dtypes), fp32 accumulate, bf16 output;
+thresholds cosine >= 0.999, max_rel_err <= 1e-2 (eps 1e-6), pcc >= 0.99.
+FlashAttention-lite reference: O = softmax(QK^T / sqrt(d)) V — plain
+mathematical attention (online-softmax-free), standard 1/sqrt(d) scaling of
+the FlashAttention algorithm (Dao et al. 2022; matches todo 27's 4N^2d
+FLOPs convention). Documented decision: scaling factor included; cosine/PCC
+are scale-invariant but max_rel_err is not, so a kernel implementing the
+paper convention (scaled) matches the reference.
+
+ACCEPTANCE 1: pytest tests/golden -q
+------------------------------------
+$ devenv shell -- pytest tests/golden -q
+.............................                                     [100%]
+29 passed in 0.13s
+exit 0
+
+ACCEPTANCE 2: CLI check on a correct-output bin (happy path)
+------------------------------------------------------------
+$ cd tests/golden
+$ python3 -m kernscope_golden check --kernel matmul --bin /tmp/matmul_correct.bin \
+      --shape 16,16,16 --inputs /tmp/ref_inputs.npz
+{
+  "pass": true,
+  "cosine": 1.0,
+  "max_rel_err": 0.0,
+  "pcc": 0.9999999403953552,
+  "kernel": "matmul",
+  "shape": [16, 16, 16],
+  "dtype": "bf16",
+  "thresholds": {"cosine": 0.999, "max_rel_err": 0.01, "pcc": 0.99},
+  ...
+}
+exit 0
+
+ACCEPTANCE 3: bash scripts/ci.sh
+--------------------------------
+$ devenv shell -- bash scripts/ci.sh
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"
+[PASS] ctest count guard: 479 tests >= baseline 479 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)
+[PASS] pytest tests/golden -q          <- stage (d) flipped [SKIP] -> [PASS]
+[SKIP] generated-code compile checks (todo 24 hook placeholder)
+[PASS] fixture size: 1MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard
+[PASS] NVIDIA-content guard
+[PASS] kernscope CI gate green (9 pass, 1 skip, 0 fail)
+exit 0
+
+BASELINE NOTE: scripts/ci-baseline.txt stays 479. pytest is a separate
+gate from ctest (stage d vs b/b2); this todo adds NO ctest tests, so the
+ctest floor is unchanged and must NOT be raised. Documented per guard
+convention.
+
+ADDITIONAL CHECKS
+-----------------
+- ruff check tests/golden -> "All checks passed!"
+- gen subcommand (softmax 16,32 / attention 8,8,16) writes npz with
+  inputs + 'expected'; load restores bf16 from the npz raw |V2 layout
+- seeded check (no --inputs, --seed 0) reproduces identical verdict
+  (determinism for todos 28/48 consumers)
+- threshold boundary documented in metrics.py: inclusive >= / <=
+  comparisons; tested via monkeypatched exactly-at-threshold metrics
+  (pass True) vs just-below (pass False)
