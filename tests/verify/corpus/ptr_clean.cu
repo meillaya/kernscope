@@ -27,7 +27,10 @@ __device__ int g_buf[16384];
 
 __global__ void ptr_clean_kernel()
 {
-    __shared__ int s[256];
+    // volatile: at -O1 the smem round-trip is otherwise DCE'd away (the
+    // documented ingestion gotcha — checks/oob/README.md); the kernel must
+    // keep a real read-after-write for check class 7.
+    volatile __shared__ int s[256];
     const int i = threadIdx.x + blockIdx.x * blockDim.x;
     g_buf[i] = i;        // i in [0, 8224) < 16384 elements -> SAFE (class 5)
     s[threadIdx.x] = i;  // write before read -> SAFE (class 7)

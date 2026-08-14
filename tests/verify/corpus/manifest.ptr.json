@@ -1,0 +1,26 @@
+[
+  {
+    "file": "ptr_clean.cu",
+    "kernel": "ptr_clean_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_oob_escape_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_oob_range_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_sub_unrelated_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  }
+]

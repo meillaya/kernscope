@@ -8,6 +8,7 @@
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Support/raw_ostream.h>
 
 #include <unordered_set>
@@ -19,8 +20,12 @@ namespace ptr {
 namespace {
 
 using llvm::GetElementPtrInst;
+using llvm::GEPOperator;
 
-// Strips pointer-to-pointer casts (bitcast/addrspacecast/ptrtoint chains).
+// Strips pointer-to-pointer casts (bitcast/addrspacecast/ptrtoint chains),
+// including CONSTANT EXPRESSION casts (clang 21 folds casts into
+// ConstantExpr operands, e.g. `addrspacecast (ptr addrspace(1) @g_buf to
+// ptr)` inside a GEP's pointer operand or an inline GEP expression).
 const llvm::Value* stripCasts(const llvm::Value* v) {
   while (true) {
     if (const auto* bc = llvm::dyn_cast<llvm::BitCastInst>(v)) {
@@ -29,6 +34,16 @@ const llvm::Value* stripCasts(const llvm::Value* v) {
       v = ac->getOperand(0);
     } else if (const auto* pt = llvm::dyn_cast<llvm::PtrToIntInst>(v)) {
       v = pt->getOperand(0);
+    } else if (const auto* ce = llvm::dyn_cast<const llvm::ConstantExpr>(v)) {
+      switch (ce->getOpcode()) {
+        case llvm::Instruction::BitCast:
+        case llvm::Instruction::AddrSpaceCast:
+        case llvm::Instruction::PtrToInt:
+          v = ce->getOperand(0);
+          break;
+        default:
+          return v;
+      }
     } else {
       return v;
     }
@@ -37,10 +52,10 @@ const llvm::Value* stripCasts(const llvm::Value* v) {
 
 }  // namespace
 
-AllocationInfo resolveAllocation(llvm::Value* ptr, const llvm::Module& m) {
+AllocationInfo resolveAllocation(const llvm::Value* ptr, const llvm::Module& m) {
   AllocationInfo info;
   const llvm::Value* v = stripCasts(ptr);
-  if (const auto* gep = llvm::dyn_cast<GetElementPtrInst>(v)) {
+  if (const auto* gep = llvm::dyn_cast<GEPOperator>(v)) {
     v = stripCasts(gep->getPointerOperand());
   }
   const llvm::DataLayout& dl = m.getDataLayout();
@@ -98,19 +113,20 @@ std::optional<llvm::ConstantRange> gepByteSpan(llvm::Value* ptr,
   out_index_range.clear();
   out_innermost_stride = 0;
   const llvm::Value* base = stripCasts(ptr);
-  const auto* gep = llvm::dyn_cast<GetElementPtrInst>(base);
+  const auto* gep = llvm::dyn_cast<GEPOperator>(base);
   if (gep == nullptr) {
     return std::nullopt;
   }
   const llvm::Module& m = ctx.module;
   const llvm::DataLayout& dl = m.getDataLayout();
 
-  // Collect the GEP chain innermost-first.
-  llvm::SmallVector<const GetElementPtrInst*, 4> chain;
-  for (const GetElementPtrInst* g = gep; g != nullptr;) {
+  // Collect the GEP chain innermost-first (GEPOperator: both instructions
+  // and ConstantExpr GEPs, which clang 21 folds into operands).
+  llvm::SmallVector<const GEPOperator*, 4> chain;
+  for (const GEPOperator* g = gep; g != nullptr;) {
     chain.push_back(g);
     const llvm::Value* p = stripCasts(g->getPointerOperand());
-    g = llvm::dyn_cast<GetElementPtrInst>(p);
+    g = llvm::dyn_cast<GEPOperator>(p);
   }
 
   // Byte span [lo, hi): iterate levels outermost-first, accumulating
@@ -126,7 +142,7 @@ std::optional<llvm::ConstantRange> gepByteSpan(llvm::Value* ptr,
   // Determine strides per level using gep_type_iterator semantics: level k
   // strides the type indexed at that level.
   for (size_t ci = chain.size(); ci-- > 0;) {
-    const GetElementPtrInst* g = chain[ci];
+    const GEPOperator* g = chain[ci];
     llvm::SmallVector<unsigned, 4> var_idxs;
     llvm::SmallVector<uint64_t, 4> strides;
     llvm::Type* cur = g->getSourceElementType();

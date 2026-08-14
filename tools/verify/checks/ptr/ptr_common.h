@@ -88,7 +88,7 @@ struct AllocationInfo {
 /// addrspacecast chains and GEP pointer operands to the base). Mirror of the
 /// oob module's resolveAllocation — kept module-local per the isolation
 /// contract.
-AllocationInfo resolveAllocation(llvm::Value* ptr, const llvm::Module& m);
+AllocationInfo resolveAllocation(const llvm::Value* ptr, const llvm::Module& m);
 
 /// True when `v` (after stripping bitcast/addrspacecast) is a GEP chain.
 bool isGepChain(llvm::Value* v);
