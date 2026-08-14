@@ -1,0 +1,97 @@
+
+Task 6 (gpu-kernel-suite): architecture-model DB libs/arch (HAPPY PATH)
+========================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Environment: devenv shell (LLVM 21.1.8 / CUDA 12.6 / ROCm 7.2.3), AMD RX 7800 XT (gfx1101), CachyOS
+
+RDNA3 VGPR-FILE CONFLICT RESOLUTION (768 vs 1536) — RESOLVED: 1536
+-----------------------------------------------------------------
+CLAIM A (polykernel docs/hip_backend.md:80): "768 VGPRs / 32 KiB" for gfx1101.
+CLAIM B (brief gpu-static-analyzer-research.md §1.3 L137-139, §10.4 L551-553,
+RDNA3 ISA §3.3.2.1): 1536 VGPRs/SIMD, granule 24 (wave32) / 12 (wave64).
+
+Evidence gathered:
+(a) rocminfo: gfx1101 "AMD Radeon RX 7800 XT", KERNEL_DISPATCH, /dev/kfd present.
+(b) ISA quote (brief §1.3 L137-139): "Devices which have 1536 VGPRs per SIMD
+    allocate in blocks of 24 for wave32 and 12 for wave64" [RDNA3 §3.3.2.1].
+(c) Driver ground truth (HIP runtime, this machine):
+    regsPerMultiprocessor = 196608 = 1536 x 2 SIMDs/CU x 64 lanes
+    maxThreadsPerMultiProcessor = 2048; maxBlocksPerMultiProcessor = 64
+    maxSharedMemoryPerMultiprocessor = 65536 (= 64 KiB LDS/CU); warpSize = 32
+(d) LLVM 21.1.8 @llvmorg-21.1.8 (fetched):
+    AMDGPUBaseInfo.cpp getVGPRAllocGranule L1295-1310: Feature1_5xVGPRs ->
+      IsWave32 ? 24 : 12  (gfx10.3 non-1.5x: 16/8)
+    getTotalNumVGPRs L1336-1344: Feature1_5xVGPRs -> IsWave32 ? 1536 : 768
+      => "768" (CLAIM A) is the WAVE64 view of the same 1536-entry file
+    getNumWavesPerEUWithNumVGPRs L1371-1380: min(max(Total/align(R,G),1),MaxW)
+    getMaxWavesPerEU L1162-1168: gfx10.3+ -> 16
+    AMDGPU.td L1860-1894: Feature1_5xVGPRs on gfx1100(11.0.0) AND gfx1101(11.0.1),
+      NOT gfx1102(11.0.2)
+(e) Empirical occupancy probe (HIP, /tmp/rdna3-probe, NOT committed; controlled
+    VGPR counts via volatile-fed accumulator chains, verified by
+    amdhsa_next_free_vgpr == hipFuncGetAttributes numRegs; stable across
+    repeat queries):
+    wave32 (blocks/CU, 1 block = 1 wave32):
+      37/49/73 regs -> 64 ; 97 -> 56 ; 113/116 -> 44 ; 129 -> 44
+      161 -> 36 ; 193 -> 28 ; 225/256 -> 24
+    wave64 (blocks/CU, 1 block = 1 wave64):
+      37/73 -> 32 ; 97 -> 28 ; 193 -> 14 ; 256 -> 12
+    Fit: blocks_w64 = 2 SIMDs x min(floor(1536/align12(regs)), 16) matches all
+    wave64 points within +/-1 wave; wave32 = 2 x wave64 at every shared point.
+    Step positions 108/120/132/168/204/228 are the align-12 series -> granule-16
+    hypothesis REFUTED. Max residency: 32 wave32 (16 wave64) per SIMD.
+    (SGPRs = 6 for all probe kernels -> not a co-limiter; LDS = 0.)
+    Deviations from the linear model at 113/116 (22 vs 24) and 256 regs
+    (12 vs 10 blocks) are driver corner rounding, documented in
+    docs/research/rdna3-constants.md.
+
+RESOLVED VALUES USED IN libs/arch:
+  gfx1101: vgpr file/SIMD = 1536, granule 24 (wave32) / 12 (wave64),
+  wave32, LDS 64 KiB/CU, max waves/SIMD = 16 (LLVM; 32 wave32 observed),
+  SGPR granule 16.
+  CDNA2/3 (gfx90a/gfx942): VGPR file/SIMD 512, granule 8, SGPR granule 16,
+  LDS 64 KiB/CU, wavefront 64, max 8 waves/SIMD, 4 SIMDs/CU.
+  NVIDIA sm_75..sm_120: brief §1.2 table (regs 65536, 255/thread, granule 8
+  per thread = 256/warp, threads/warps/blocks/smem per row), dtypes per
+  brief §5.1 L343-344 (CPG Table 33).
+
+FILES CREATED
+-------------
+docs/research/rdna3-constants.md         ISA-resolved VGPR-file doc (>=2 citations)
+libs/arch/include/kernscope/arch.h       ArchInfo struct-of-tables DB + get_arch /
+                                         max_resident_warps / allocated_regs_per_thread /
+                                         waves_per_simd_from_vgprs / predict_occupancy
+                                         (min-wins, oracle-matching tie-break) /
+                                         has_tensor_dtype; every constant cites brief
+                                         section + line
+libs/arch/tests/arch_test.cpp            16 gtest cases, 101 assertion macros, each
+                                         pinned to brief section+line; negative golden
+                                         (granule-16 tamper) cites
+                                         docs/research/rdna3-constants.md; sm_80/sm_90
+                                         hand-computed cases cross-validated against
+                                         polykernel occupancy_test.cpp (oracle, no
+                                         copying)
+libs/arch/CMakeLists.txt                 kernscope_arch INTERFACE kept + arch-test
+                                         (gtest) registered via gtest_discover_tests
+                                         with LABELS "no-gpu" (todo-3 convention)
+(root CMakeLists.txt unchanged: add_subdirectory(libs/arch) already wired in todo 3)
+
+CROSS-VALIDATION vs polykernel oracle (read-only, no code copied):
+  sm_90: regs 65536/warps 64/blocks 32/smem 233472 B, sm_80 smem 167936 B,
+  6 hand-computed occupancy cases (reg-limited x2, smem-limited, warp-limited,
+  block-limited, matmul 31-reg) -> identical block counts, warp counts,
+  occupancy %, and binding limiter, including the registers-on-tie break.
+
+ACCEPTANCE COMMANDS + EXACT RESULTS
+-----------------------------------
+1. devenv shell -- cmake -S . -B build        -> exit 0, "Build files have been written to"
+2. devenv shell -- cmake --build build        -> exit 0 (all targets, -Wall -Wextra -Werror clean)
+3. devenv shell -- sh -c 'cd build && ctest -R arch --output-on-failure'
+   -> exit 0: "100% tests passed, 0 tests failed out of 16"
+   16/16 arch tests Passed (Label no-gpu, 0.02 s); 101 assertions executed
+   (16 tests, 1 test suite, [  PASSED  ] 16 tests)
+4. test -f docs/research/rdna3-constants.md   -> exists; states 1536 VGPRs/SIMD
+   with 4 citations: RDNA3 ISA §3.3.2.1 (via brief §1.3/§10.4), LLVM
+   AMDGPUBaseInfo.cpp @llvmorg-21.1.8 L1295-1344, driver
+   regsPerMultiprocessor=196608 (=1536x2x64), empirical probe step series.

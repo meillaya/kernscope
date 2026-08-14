@@ -1,0 +1,33 @@
+
+Task 6 (gpu-kernel-suite): NEGATIVE PATH — RDNA3 granule tampered to 16
+=======================================================================
+Date: 2026-08-14
+Procedure: sed-changed arch.h `.reg_granule = 24` -> `.reg_granule = 16`
+(TAMPERED marker), rebuilt, ran ctest -R "arch.Rdna3" --output-on-failure,
+then restored the pristine header from backup and re-verified green.
+
+TAMPERED RUN (ctest -R arch.Rdna3, exact output excerpts):
+  [  FAILED  ] arch.Rdna3Constants
+  arch_test.cpp:158: Failure
+    Expected equality of these values: a.reg_granule, Which is: 16, 24
+    gfx1101 VGPR granule must be 24 (wave32) / 12 (wave64), never 16:
+    docs/research/rdna3-constants.md (RDNA3 ISA §3.3.2.1; granule-16 refuted
+    empirically on RX 7800 XT: occupancy steps observed at align-12 positions
+    108/120/132/168/204/228)
+  [  FAILED  ] arch.Rdna3Granule16TamperDiverges
+    arch_test.cpp:181: Expected: (pinned_occ.blocks_per_cu) !=
+    (tampered_occ.blocks_per_cu), actual: 26 vs 26 — tampering gfx1101 VGPR
+    granule to 16 must change occupancy: docs/research/rdna3-constants.md
+    pins 24 (wave32)/12 (wave64) from RDNA3 ISA §3.3.2.1 (brief §10.4
+    L551-553: "don't hardcode 16")
+    arch_test.cpp:188: Expected equality of these values: pinned_occ.
+    blocks_per_cu, Which is: 26, 24 — gfx1101 97 VGPRs x 32 threads -> 24
+    blocks/CU with pinned granule 24 ... see docs/research/rdna3-constants.md
+  [  FAILED  ] arch.Rdna3WavesPerSimd  (waves_per_simd_from_vgprs(a,97):
+    13 vs 12; 160: 10 vs 9; 200: 8 vs 7; 256: 6 vs 5)
+  => 3/3 RDNA3 golden tests FAIL, all messages cite
+     docs/research/rdna3-constants.md (and brief §10.4 "don't hardcode 16").
+
+REVERT: restored arch.h from backup (grep confirms .reg_granule = 24 back).
+REBUILD + ctest -R arch -> exit 0, "100% tests passed, 0 tests failed out of
+16" (16/16 Passed). Working tree matches the happy-path state.
