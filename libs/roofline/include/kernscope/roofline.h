@@ -38,11 +38,12 @@
 // GB/s 80GB SXM), RTX 4090/sm_89 (FP32 82.6 TF, 1008 GB/s GDDR6X), MI250X/
 // gfx90a (FP16/BF16 matrix 383 TF, 3.28 TB/s HBM2e — 3.2-3.28 range caveat in
 // brief §9), MI300X/gfx942 (BF16 matrix 1307.4 TF dense, FP32 vector 163.4 TF,
-// 5.3 TB/s HBM3). gfx1101 is a "pending-measurement" PLACEHOLDER that todo 22
-// (libs/bench) fills with measured values + provenance. Querying gfx1101
-// returns projected == true with ZERO peaks — NEVER a fabricated datasheet
-// number (plan todo 12 MUST NOT; Metis M-6). Peaks for archs outside this
-// table (e.g. sm_90) are an explicit error, not silent zeros.
+// 5.3 TB/s HBM3). gfx1101 (RX 7800 XT) is filled with MEASURED values +
+// provenance by todo 22 (libs/bench / kernscope-bench on this machine,
+// 2026-08-14): fp32 16.32 TF, DRAM 591 GB/s, LDS 9.7 TB/s — querying gfx1101
+// returns projected == false with the measured peaks, never a fabricated
+// datasheet number (plan todo 12 MUST NOT; Metis M-6). Peaks for archs outside
+// this table (e.g. sm_90) are an explicit error, not silent zeros.
 //
 // Bound classification (documented thresholds below; unit-tested for all three
 // classes):
@@ -140,20 +141,23 @@ double arithmetic_intensity(KernelFamily family, const Shape &shape) noexcept;
 enum class ErrorCode : std::uint8_t {
   kNone = 0,
   kUnknownArch,     // unknown arch name (message contains "unknown arch")
-  kProjectedPeaks,  // arch peaks are pending-measurement placeholders (todo 22)
+  kProjectedPeaks,  // arch peaks are pending-measurement placeholders (gfx1101
+                    // was filled with measured peaks by todo 22)
   kNoPeaksTabulated,// known GPU with no row in the todo-12 peaks table
   kNoPeakForDtype,  // no tabulated compute peak for the requested PeakKind
   kInvalidInput,    // non-positive dims / bytes_moved / flops
 };
 
 // ---------------------------------------------------------------------------
-// Machine peaks (brief §7 L127-130 + gfx1101 pending-measurement placeholder).
+// Machine peaks (brief §7 L127-130 + measured gfx1101 row from todo 22).
 // ---------------------------------------------------------------------------
 
 // One row of the machine-peaks table. All peak values are VERIFIED from the
 // brief's vendor-doc citations (see `provenance`); nothing is guessed.
-// projected == true means the row is a todo-22 pending-measurement PLACEHOLDER
-// (gfx1101): peaks are 0 and MUST NOT be treated as real numbers.
+// projected == true means the row is a pending-measurement PLACEHOLDER
+// (peaks are 0 and MUST NOT be treated as real numbers). gfx1101's row was
+// filled with MEASURED values + provenance by todo 22 and is projected ==
+// false (see kPeaks in roofline.cpp).
 struct MachinePeak {
   std::string_view arch;               // arch DB key (sm_80, gfx90a, ...)
   std::string_view gpu;                // commercial GPU name
@@ -161,13 +165,13 @@ struct MachinePeak {
   double matrix_peak_flops = 0.0;      // FP16/BF16 tensor/matrix peak, FLOP/s; 0 = none tabulated
   double fp32_peak_flops = 0.0;        // FP32 vector peak, FLOP/s; 0 = none tabulated
   double bandwidth_bytes_per_s = 0.0;  // peak DRAM bandwidth, bytes/s
-  bool projected = false;              // true = pending-measurement placeholder (todo 22)
-  std::string_view provenance;         // citation (brief §7 L...) or pending-measurement note
+  bool projected = false;              // true = pending-measurement placeholder
+  std::string_view provenance;         // citation (brief §7 L...) or measurement record
 };
 
 // Query the machine-peaks table. Returns ErrorCode::kNone and fills `out` on
-// success — including for gfx1101, where the row is returned with
-// projected == true and ZERO peaks (never a fabricated number). Errors:
+// success — gfx1101 now returns its MEASURED peaks (projected == false).
+// Errors:
 //   kUnknownArch      arch name is not in the libs/arch DB (message contains
 //                     "unknown arch");
 //   kNoPeaksTabulated arch is a known GPU but has no peaks row in the
@@ -218,9 +222,9 @@ struct RooflinePosition {
 //   kInvalidInput      bytes_moved <= 0 || flops <= 0
 //   kUnknownArch       arch not in the libs/arch DB ("unknown arch" in message)
 //   kNoPeaksTabulated  known GPU with no row in the todo-12 peaks table
-//   kProjectedPeaks    gfx1101: peaks are todo-22 placeholders — position
-//                      cannot be computed without measured peaks (guarded,
-//                      never fabricated)
+//   kProjectedPeaks    arch peaks are pending-measurement placeholders —
+//                      position cannot be computed without measured peaks
+//                      (guarded, never fabricated; gfx1101 is now measured)
 //   kNoPeakForDtype    the requested PeakKind has no tabulated peak for `arch`
 //                      (e.g. PeakKind::kFp32 on gfx90a, which the brief
 //                      tabulates only for matrix ops)

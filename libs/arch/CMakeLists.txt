@@ -22,3 +22,13 @@ add_executable(arch-test tests/arch_test.cpp)
 target_link_libraries(arch-test PRIVATE kernscope::arch GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(arch-test PROPERTIES LABELS "no-gpu")
+
+# --- todo-22: gfx1101 measured-peaks validator -------------------------------
+# python3 tests/arch/check_peaks.py asserts the COMMITTED gfx1101 peak entries
+# (libs/arch + libs/roofline + reports/peaks/gfx1101-bench.jsonl provenance)
+# pass the todo-22 sanity floors (bw > 300 GB/s, fp32 > 10 TFLOPS) with
+# non-empty provenance fields. Pure file validation -> no-gpu.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME arch-check-peaks
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/arch/check_peaks.py)
+set_tests_properties(arch-check-peaks PROPERTIES LABELS "no-gpu")

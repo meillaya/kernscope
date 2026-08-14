@@ -54,7 +54,12 @@ add_subdirectory(libs/occupancy)
 # capture/profile tracks; registers the no-gpu mock/compile-only suites and
 # the gpu-amd live HIP suite.
 add_subdirectory(libs/gpuruntime)
+# bench: nvbench/Triton-style benchmarking harness + gfx1101 roofline peak
+# microbenches (todo 22), consumed by tools/bench and the tune track.
+add_subdirectory(libs/bench)
 add_subdirectory(tools/analyze)
+# kernscope-bench: the gfx1101 roofline peak measurement CLI (todo 22).
+add_subdirectory(tools/bench)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
 # come after tools/ so the kernscope-analyze target it DEPENDS on exists.

@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 namespace {
 
 using kernscope::OccupancyPrediction;
@@ -163,6 +165,21 @@ TEST(arch, Rdna3Constants) {
   EXPECT_EQ(a.vgpr_granule_wave64, 12)
       << "gfx1101 wave64 granule is 12: docs/research/rdna3-constants.md";
   EXPECT_EQ(a.sgpr_granule, 16) << " (brief §1.3 L117-121)";
+}
+
+TEST(arch, Gfx1101MeasuredPeaksFilledByTodo22) {
+  // todo 22 (libs/bench / kernscope-bench) measured the gfx1101 roofline
+  // peaks on THIS machine (RX 7800 XT, 2026-08-14) and filled the placeholders
+  // with provenance (reports/peaks/gfx1101-bench.jsonl). The floors match the
+  // todo-22 acceptance (bw > 300 GB/s, fp32 > 10 TFLOPS) and the source tag
+  // carries the measured-<date>-<arch> provenance form.
+  const auto &a = get_arch("gfx1101");
+  EXPECT_TRUE(a.measured);
+  EXPECT_GT(a.peak_bw_gbps, 300.0);
+  EXPECT_GT(a.peak_fp32_tflops, 10.0);
+  EXPECT_GT(a.peak_lds_gbps, 1000.0);
+  EXPECT_NE(std::string(a.peak_source).find("measured-2026-08-14-gfx1101"),
+            std::string::npos);
 }
 
 // Negative golden: tampering the RDNA3 granule to 16 must NOT reproduce the

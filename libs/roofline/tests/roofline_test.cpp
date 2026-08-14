@@ -168,18 +168,20 @@ TEST(roofline, MachinePeaksBriefTablePins) {
   EXPECT_DOUBLE_EQ(peak.bandwidth_bytes_per_s, 5.3e12);
 }
 
-// The placeholder guard (plan todo 12 MUST NOT / Metis M-6): querying gfx1101
-// pre-todo-22 returns a row with projected == true and ZERO peaks — the engine
-// never fabricates a datasheet number.
-TEST(roofline, Gfx1101QueryIsProjectedPlaceholder) {
+// gfx1101 (RX 7800 XT) is filled with MEASURED peaks + provenance by todo 22
+// (libs/bench / kernscope-bench on this machine, 2026-08-14): the row is
+// projected == false with the measured fp32 + DRAM values — never a fabricated
+// datasheet number (plan todo 12 MUST NOT / Metis M-6).
+TEST(roofline, Gfx1101QueryReturnsMeasuredPeaks) {
   MachinePeak peak;
   std::string error;
   ASSERT_EQ(machine_peak("gfx1101", &peak, &error), ErrorCode::kNone);
-  EXPECT_TRUE(peak.projected);
+  EXPECT_FALSE(peak.projected);
+  EXPECT_DOUBLE_EQ(peak.fp32_peak_flops, 16.32e12);
+  EXPECT_DOUBLE_EQ(peak.bandwidth_bytes_per_s, 591.0e9);
   EXPECT_DOUBLE_EQ(peak.matrix_peak_flops, 0.0);
-  EXPECT_DOUBLE_EQ(peak.fp32_peak_flops, 0.0);
-  EXPECT_DOUBLE_EQ(peak.bandwidth_bytes_per_s, 0.0);
-  EXPECT_NE(peak.provenance.find("todo 22"), peak.provenance.npos);
+  EXPECT_NE(peak.provenance.find("measured"), peak.provenance.npos);
+  EXPECT_NE(peak.provenance.find("kernscope-bench"), peak.provenance.npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -249,28 +251,37 @@ TEST(roofline, ClassificationLatencyBoundTinyKernel) {
 // Placeholder + negative-path guards.
 // ---------------------------------------------------------------------------
 
-// roofline_position on a projected arch must refuse with kProjectedPeaks and
-// leave the output struct untouched (never zeros pretending to be a position).
-TEST(roofline, Gfx1101RooflinePositionRejectedProjected) {
+// roofline_position on gfx1101 now COMPUTES a position from the todo-22
+// MEASURED peaks (projected == false): the GEMM 2048³ fp32 case is
+// compute-bound (AI 682.67 >= ridge 16.32e12/591e9 ≈ 27.6).
+TEST(roofline, Gfx1101MeasuredPositionComputed) {
   const Shape s{.m = 2048, .n = 2048, .k = 2048, .dtype_bytes = 2};
   RooflinePosition pos;
-  pos.arithmetic_intensity = -1.0;
-  pos.ridge_point = -1.0;
-  pos.compute_bound_ceiling = -1.0;
-  pos.memory_bound_ceiling = -1.0;
-  pos.attained_flops = -1.0;
+  std::string error;
+  EXPECT_EQ(roofline_position(KernelFamily::kGemm, s, 25165824LL,
+                              17179869184LL, "gfx1101", &pos, &error,
+                              PeakKind::kFp32),
+            ErrorCode::kNone);
+  EXPECT_NEAR(pos.arithmetic_intensity, 2048.0 / 3.0, 1e-9);
+  EXPECT_NEAR(pos.ridge_point, 16.32e12 / 591.0e9, 1e-6);
+  EXPECT_DOUBLE_EQ(pos.compute_bound_ceiling, 16.32e12);
+  EXPECT_DOUBLE_EQ(pos.memory_bound_ceiling, (2048.0 / 3.0) * 591.0e9);
+  EXPECT_EQ(pos.bound_class, BoundClass::kCompute);
+  EXPECT_DOUBLE_EQ(pos.attained_flops, 16.32e12);  // min(compute, memory)
+}
+
+// gfx1101 has no matrix peak tabulated (todo-22 measured the FP32 vector +
+// DRAM peaks only): PeakKind::kMatrix must fail with kNoPeakForDtype, not
+// report a fabricated matrix number.
+TEST(roofline, Gfx1101NoMatrixPeakIsTypedError) {
+  const Shape s{.m = 2048, .n = 2048, .k = 2048, .dtype_bytes = 2};
+  RooflinePosition pos;
   std::string error;
   EXPECT_EQ(roofline_position(KernelFamily::kGemm, s, 25165824LL,
                               17179869184LL, "gfx1101", &pos, &error,
                               PeakKind::kMatrix),
-            ErrorCode::kProjectedPeaks);
-  EXPECT_NE(error.find("todo 22"), std::string::npos);
-  EXPECT_NE(error.find("projected"), std::string::npos);
-  EXPECT_DOUBLE_EQ(pos.arithmetic_intensity, -1.0);  // untouched
-  EXPECT_DOUBLE_EQ(pos.ridge_point, -1.0);
-  EXPECT_DOUBLE_EQ(pos.compute_bound_ceiling, -1.0);
-  EXPECT_DOUBLE_EQ(pos.memory_bound_ceiling, -1.0);
-  EXPECT_DOUBLE_EQ(pos.attained_flops, -1.0);
+            ErrorCode::kNoPeakForDtype);
+  EXPECT_NE(error.find("matrix"), std::string::npos);
 }
 
 // Unknown arch -> kUnknownArch + a message containing "unknown arch" (asserted

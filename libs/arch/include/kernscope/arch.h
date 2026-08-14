@@ -60,6 +60,19 @@ struct ArchInfo {
   // 12.x: tf32/bf16/f16/fp8/fp6/fp4/int8.)
   std::array<std::string_view, 10> tensor_dtypes{};
   std::uint8_t tensor_dtype_count = 0;
+
+  // --- measured roofline peaks (todo 22) ---
+  // Filled by libs/bench (kernscope-bench, wave-4 todo 22) on THIS machine
+  // from the local RX 7800 XT run; `peak_source` carries the provenance tag
+  // "measured-<date>-<arch>" and `measured` distinguishes measured rows from
+  // zero-filled never-measured ones. NEVER a fabricated datasheet number
+  // (plan todo 12 MUST NOT; Metis M-6). libs/roofline consumes these to
+  // un-gate its projected flag.
+  double peak_fp32_tflops = 0.0;  // measured fp32 vector peak, TFLOPS
+  double peak_bw_gbps = 0.0;      // measured DRAM bandwidth peak, GB/s
+  double peak_lds_gbps = 0.0;     // measured LDS bandwidth peak, GB/s
+  bool measured = false;          // true iff todo 22 measured values landed
+  std::string_view peak_source;   // "measured-<date>-<arch>"
 };
 
 // The DB itself. NVIDIA rows: brief §1.2 table L74-84 + §1.1 L70-72.
@@ -74,6 +87,8 @@ constexpr ArchInfo kSm75{
     .sgpr_granule = 0,
     .tensor_dtypes = {"f16", "s8", "s4"},
     .tensor_dtype_count = 3,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm80{
     .name = "sm_80", .vendor = Vendor::kNvidia,
@@ -84,6 +99,8 @@ constexpr ArchInfo kSm80{
     .sgpr_granule = 0,
     .tensor_dtypes = {"f16", "s8", "s4", "f64", "tf32", "bf16"},
     .tensor_dtype_count = 6,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm86{
     .name = "sm_86", .vendor = Vendor::kNvidia,
@@ -94,6 +111,8 @@ constexpr ArchInfo kSm86{
     .sgpr_granule = 0,
     .tensor_dtypes = {"f16", "s8", "s4", "f64", "tf32", "bf16"},
     .tensor_dtype_count = 6,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm89{
     .name = "sm_89", .vendor = Vendor::kNvidia,
@@ -104,6 +123,8 @@ constexpr ArchInfo kSm89{
     .sgpr_granule = 0,
     .tensor_dtypes = {"f16", "s8", "s4", "f64", "tf32", "bf16", "fp8"},
     .tensor_dtype_count = 7,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm90{
     .name = "sm_90", .vendor = Vendor::kNvidia,
@@ -114,6 +135,8 @@ constexpr ArchInfo kSm90{
     .sgpr_granule = 0,
     .tensor_dtypes = {"f16", "s8", "s4", "f64", "tf32", "bf16", "fp8"},
     .tensor_dtype_count = 7,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm100{
     .name = "sm_100", .vendor = Vendor::kNvidia,
@@ -125,6 +148,8 @@ constexpr ArchInfo kSm100{
     .tensor_dtypes = {"f16", "s8", "s4", "f64", "tf32", "bf16", "fp8", "fp6",
                       "fp4"},
     .tensor_dtype_count = 9,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kSm120{
     .name = "sm_120", .vendor = Vendor::kNvidia,
@@ -135,6 +160,8 @@ constexpr ArchInfo kSm120{
     .sgpr_granule = 0,
     .tensor_dtypes = {"tf32", "bf16", "f16", "fp8", "fp6", "fp4", "int8"},
     .tensor_dtype_count = 7,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kGfx90a{
     .name = "gfx90a", .vendor = Vendor::kAmd,
@@ -145,6 +172,8 @@ constexpr ArchInfo kGfx90a{
     .sgpr_granule = 16,
     .tensor_dtypes = {},
     .tensor_dtype_count = 0,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kGfx942{
     .name = "gfx942", .vendor = Vendor::kAmd,
@@ -155,6 +184,8 @@ constexpr ArchInfo kGfx942{
     .sgpr_granule = 16,
     .tensor_dtypes = {},
     .tensor_dtype_count = 0,
+    .peak_fp32_tflops = 0.0, .peak_bw_gbps = 0.0, .peak_lds_gbps = 0.0,
+    .measured = false, .peak_source = {},
 };
 constexpr ArchInfo kGfx1101{
     .name = "gfx1101", .vendor = Vendor::kAmd,
@@ -165,6 +196,16 @@ constexpr ArchInfo kGfx1101{
     .sgpr_granule = 16,
     .tensor_dtypes = {},
     .tensor_dtype_count = 0,
+    // --- todo 22: MEASURED on this machine (RX 7800 XT) ---
+    // kernscope-bench (libs/bench) 2026-08-14; provenance in
+    // reports/peaks/gfx1101-bench.jsonl (device name, gcnArchName, rocm-smi
+    // sclk/mclk as-measured, tool version, measured=true). Clocks were NEVER
+    // locked (no root). Values verified live by the gpu-amd bench suite.
+    .peak_fp32_tflops = 16.32,   // FFMA loop, register-resident
+    .peak_bw_gbps = 591.0,       // DRAM read peak (512 MiB read-only rep)
+    .peak_lds_gbps = 9689.9,     // LDS read+write microbench
+    .measured = true,
+    .peak_source = "measured-2026-08-14-gfx1101",
 };
 }  // namespace arch_table
 

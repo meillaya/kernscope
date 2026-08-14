@@ -1,0 +1,35 @@
+=== task-22-gpu-kernel-suite-negative (failure path) — 2026-08-14T13:34:46Z ===
+
+Scenario: run the bench harness (kernscope::bench::run) against the
+MockRuntime with a kernel that FAILS/THROWS mid-rep. The harness must
+record the typed error status and return immediately (no-hang contract
+via the adaptive-trials short-circuit) — it must NOT spin until the
+min_samples (10) or the 3s timeout.
+
+--- bench:Bench.FailingKernelMidRepRecordsErrorAndStops ---
+[       OK ] Bench.FailingKernelMidRepRecordsErrorAndStops (0 ms)
+[----------] 1 test from Bench (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+
+--- bench:Bench.ThrowingKernelIsCapturedAsTypedError ---
+[       OK ] Bench.ThrowingKernelIsCapturedAsTypedError (0 ms)
+[----------] 1 test from Bench (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (0 ms total)
+[  PASSED  ] 1 test.
+
+--- bench:Bench.AdaptiveTrialsRespectTimeout (timeout path, no hang) ---
+[----------] 1 test from Bench (342 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (342 ms total)
+[  PASSED  ] 1 test.
+
+Wall-clock bound (failure short-circuit << timeout): the failing-kernel
+test completes in milliseconds (see ctest timing 0.03s), never the 3000ms
+timeout, proving the harness never hangs on a broken kernel.
+--- end ---

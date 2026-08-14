@@ -1,0 +1,117 @@
+=== task-22-gpu-kernel-suite (happy path) — 2026-08-14T13:34:06Z ===
+
+--- 1. cmake --build build ---
+BUILD EXIT 0
+
+--- 2. ctest -L 'no-gpu|gpu-amd' --output-on-failure ---
+
+Label Time Summary:
+gpu-amd    =   1.12 sec*proc (7 tests)
+no-gpu     =   3.00 sec*proc (501 tests)
+
+Total Test time (real) =   4.24 sec
+
+--- 3. kernscope-bench peak-bw (full sweep) ---
+kernscope-bench peak-bw on AMD Radeon RX 7800 XT (gfx1101, sclk 36 MHz, mclk 1218 MHz)
+  D2D copy 1 MiB            208.9 (median 0.0100 ms, p20 0.0098, p80 0.0102)
+  read-only 1 MiB           113.0 (median 0.0093 ms, p20 0.0090, p80 0.0094)
+  D2D copy 4 MiB            342.7 (median 0.0245 ms, p20 0.0241, p80 0.0250)
+  read-only 4 MiB           198.6 (median 0.0211 ms, p20 0.0208, p80 0.0216)
+  D2D copy 16 MiB           934.1 (median 0.0359 ms, p20 0.0354, p80 0.0366)
+  read-only 16 MiB          691.0 (median 0.0243 ms, p20 0.0235, p80 0.0254) [timeout]
+  D2D copy 64 MiB           463.7 (median 0.2894 ms, p20 0.2873, p80 0.2918)
+  read-only 64 MiB          528.2 (median 0.1270 ms, p20 0.1239, p80 0.1284)
+  D2D copy 256 MiB          475.2 (median 1.1298 ms, p20 1.1253, p80 1.1329)
+  read-only 256 MiB         583.0 (median 0.4604 ms, p20 0.4595, p80 0.4614)
+  D2D copy 512 MiB          472.6 (median 2.2720 ms, p20 2.2691, p80 2.2757)
+  read-only 512 MiB         591.9 (median 0.9071 ms, p20 0.9056, p80 0.9087)
+peak_bw      591.9 GB/s
+peak_flops     0.00 TFLOPS fp32
+peak_lds       0.0 GB/s
+floors: PASS
+db: reports/peaks/gfx1101-bench.jsonl
+EXIT=0
+
+--- 4. kernscope-bench peak-flops ---
+kernscope-bench peak-flops on AMD Radeon RX 7800 XT (gfx1101, sclk 42 MHz, mclk 1218 MHz)
+  fp32 FFMA                  16.3 (median 13.5347 ms, p20 13.4697, p80 13.8010)
+peak_bw        0.0 GB/s
+peak_flops    16.34 TFLOPS fp32
+peak_lds       0.0 GB/s
+floors: PASS
+db: reports/peaks/gfx1101-bench.jsonl
+EXIT=0
+
+--- 5. kernscope-bench peak-lds ---
+kernscope-bench peak-lds on AMD Radeon RX 7800 XT (gfx1101, sclk 42 MHz, mclk 1218 MHz)
+  LDS read+write           9523.9 (median 10.3219 ms, p20 10.1904, p80 10.4574)
+peak_bw        0.0 GB/s
+peak_flops     0.00 TFLOPS fp32
+peak_lds    9523.9 GB/s
+floors: PASS
+db: reports/peaks/gfx1101-bench.jsonl
+EXIT=0
+
+--- 6. python3 tests/arch/check_peaks.py ---
+[PASS] arch.h contains the kGfx1101 row
+[PASS] arch.h gfx1101 measured == true (got true)
+[PASS] arch.h gfx1101 peak_bw_gbps 591.0 > 300 GB/s
+[PASS] arch.h gfx1101 peak_fp32_tflops 16.32 > 10 TFLOPS
+[PASS] arch.h gfx1101 peak_source is measured-<date>-gfx1101 (got measured-2026-08-14-gfx1101)
+[PASS] roofline.cpp contains the gfx1101 MachinePeak row
+[PASS] roofline.cpp gfx1101 row projected == false
+[PASS] roofline.cpp gfx1101 fp32_peak_flops == 16.32e12
+[PASS] roofline.cpp gfx1101 bandwidth_bytes_per_s == 591.0e9
+[PASS] roofline.cpp gfx1101 provenance marks the values as measured
+[PASS] reports/peaks/gfx1101-bench.jsonl exists (/home/mei/projects/llvm.h/reports/peaks/gfx1101-bench.jsonl)
+[PASS] at least one measured record committed
+[PASS] a DRAM-resident (>= 128 MiB) peak_bw_read record exists
+[PASS] a peak_flops record exists
+[PASS] peak-bw record arch == gfx1101
+[PASS] peak-bw record provenance field 'device_name' non-empty
+[PASS] peak-bw record provenance field 'gcn_arch_full' non-empty
+[PASS] peak-bw record provenance field 'date' non-empty
+[PASS] peak-bw record provenance field 'clocks' non-empty
+[PASS] peak-bw record measured == true
+[PASS] peak-bw record provenance.mode == measured
+[PASS] peak-flops record arch == gfx1101
+[PASS] peak-flops record provenance field 'device_name' non-empty
+[PASS] peak-flops record provenance field 'gcn_arch_full' non-empty
+[PASS] peak-flops record provenance field 'date' non-empty
+[PASS] peak-flops record provenance field 'clocks' non-empty
+[PASS] peak-flops record measured == true
+[PASS] peak-flops record provenance.mode == measured
+[PASS] committed DRAM read bandwidth 591.9 GB/s > 300 GB/s
+
+check_peaks: PASS — gfx1101 peaks measured, committed, provenance intact
+EXIT=0
+
+--- 7. roofline un-gate: gfx1101 measured position (gtest) ---
+Test project /home/mei/projects/llvm.h/build
+No tests were found!!!
+
+--- 8. bash scripts/ci.sh ---
+== kernscope CI gate ==
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"
+[PASS] ctest count guard: 508 tests >= baseline 508 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)
+[PASS] pytest tests/golden -q
+[PASS] fixture size: 1MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard (no vendored CUDA/CUPTI/NVTX .h files tracked)
+[PASS] NVIDIA-content guard (no vendor NVIDIA copyright markers outside documented exceptions)
+[PASS] kernscope CI gate green (9 pass, 1 skip, 0 fail)
+--- end ---
+--- 7 (fixed). roofline un-gate: gfx1101 measured query + position ---
+2/3 Test #41: roofline:roofline.Gfx1101MeasuredPositionComputed ....   Passed    0.00 sec
+    Start 42: roofline:roofline.Gfx1101NoMatrixPeakIsTypedError
+3/3 Test #42: roofline:roofline.Gfx1101NoMatrixPeakIsTypedError ....   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+no-gpu    =   0.01 sec*proc (3 tests)
+
+Total Test time (real) =   0.01 sec
+EXIT=0

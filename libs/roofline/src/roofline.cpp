@@ -4,9 +4,9 @@
 // and classification thresholds are pinned against
 // docs/research/autotuner-research-brief.md §7 (Williams/Waterman/Patterson
 // CACM 2009, DOI 10.1145/1498765.1498785); see roofline.h for the derivations
-// and citations. gfx1101 peaks are todo-22 pending-measurement placeholders:
-// querying them returns projected == true with zero peaks — never a fabricated
-// number (plan todo 12 MUST NOT).
+// and citations. The gfx1101 row is filled with MEASURED values + provenance
+// by todo 22 (libs/bench / kernscope-bench, run on this machine's RX 7800 XT
+// 2026-08-14) — projected == false, real peaks, never a fabricated number.
 //
 //===----------------------------------------------------------------------===//
 
@@ -98,8 +98,9 @@ namespace {
 
 // One entry per table row. `provenance` names the brief section + line and the
 // vendor-doc citation it comes from; nothing here is guessed. The gfx1101 row
-// is the todo-22 pending-measurement PLACEHOLDER (projected == true, zero
-// peaks) — the RX 7800 XT on this machine, measured by libs/bench in todo 22.
+// carries MEASURED values + provenance from todo 22 (libs/bench / the
+// kernscope-bench CLI run on THIS machine's RX 7800 XT 2026-08-14; details in
+// reports/peaks/gfx1101-bench.jsonl) — projected == false, never fabricated.
 constexpr MachinePeak kPeaks[] = {
     {"sm_80", "A100 (SXM 80GB)", "fp16/bf16",
      /*matrix=*/312.0e12, /*fp32=*/19.5e12, /*bw=*/2039.0e9, /*projected=*/false,
@@ -118,10 +119,13 @@ constexpr MachinePeak kPeaks[] = {
      "brief §7 L130: FP16/BF16 matrix 1307.4 TF dense; FP32 vector 163.4 TF; "
      "HBM3 5.3 TB/s [MI300X datasheet, MI300 arch docs]"},
     {"gfx1101", "RX 7800 XT (RDNA3)", "",
-     /*matrix=*/0.0, /*fp32=*/0.0, /*bw=*/0.0, /*projected=*/true,
-     "pending-measurement: todo 22 (libs/bench) measures gfx1101 peaks on this "
-     "machine with provenance (date, clocks, script); no datasheet numbers may "
-     "be fabricated (plan todo 12 MUST NOT)"},
+     /*matrix=*/0.0, /*fp32=*/16.32e12, /*bw=*/591.0e9, /*projected=*/false,
+     "MEASURED 2026-08-14 on this machine by kernscope-bench (libs/bench, todo "
+     "22): fp32 16.32 TF (register-resident FFMA loop); DRAM 591 GB/s "
+     "(read-only 512 MiB rep; D2D copy 476 GB/s); LDS 9.7 TB/s. Clocks "
+     "as-measured via rocm-smi (sclk/mclk; never locked, no root). Provenance: "
+     "reports/peaks/gfx1101-bench.jsonl (device name, gcnArchName, clocks, "
+     "tool version, measured=true)"},
 };
 
 } // namespace
@@ -148,8 +152,7 @@ ErrorCode machine_peak(std::string_view arch, MachinePeak *out,
     *error_message =
         "kernscope::roofline: no machine peaks tabulated for arch '" +
         std::string(arch) +
-        "' (todo-12 table covers sm_80, sm_89, gfx90a, gfx942; gfx1101 is a "
-        "pending-measurement placeholder)";
+        "' (todo-12 table covers sm_80, sm_89, gfx90a, gfx942, gfx1101)";
   return ErrorCode::kNoPeaksTabulated;
 }
 
