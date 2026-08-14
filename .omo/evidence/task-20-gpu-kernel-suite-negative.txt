@@ -1,0 +1,42 @@
+task-20-gpu-kernel-suite — NEGATIVE evidence: kernscope-analyze failure paths
+=============================================================================
+Date: 2026-08-14 | Commit: feat(analyze): kernscope-analyze CLI + docs + e2e lit suite
+
+All failure paths asserted (exact CLI stderr + exit codes, inside `devenv shell`):
+
+1. unknown arch:
+   $ kernscope-analyze --arch sm_77 tests/fixtures/fused_attention.ptx
+   -> kernscope-analyze: unknown arch 'sm_77' (known arches: sm_75 sm_80 sm_86 sm_89 sm_90 sm_100 sm_120 gfx90a gfx942 gfx1101)
+   -> exit 2  (error; fail-fast before any I/O, deterministic diagnostic)
+
+2. unreadable file:
+   $ kernscope-analyze /nonexistent.ptx
+   -> kernscope-analyze: cannot read '/nonexistent.ptx'
+   -> exit 2
+
+3. malformed PTX (names line:col):
+   $ kernscope-analyze /tmp/opencode/malformed.ptx   (.version 8.5/.target sm_86/entry with bad token)
+   -> kernscope-analyze: ptx parse error at line 4 col 1: expected .param declaration in parameter list
+   -> exit 2
+
+4. missing --arch for AMDGPU input (usage error):
+   $ kernscope-analyze tests/amdparse/corpus/layernorm_gfx1101.s
+   -> kernscope-analyze: --arch <gfxXXXX> is required for AMDGPU input ('tests/amdparse/corpus/layernorm_gfx1101.s'): ISA text carries no architecture without it
+   -> exit 3
+
+5. --block not a positive integer (usage error):
+   $ kernscope-analyze tests/analyze/corpus/coalesced.ptx --block abc
+   -> kernscope-analyze: --block must be a positive integer (got 'abc')
+   -> exit 3
+
+6. conflicting output formats (usage error):
+   $ kernscope-analyze tests/analyze/corpus/coalesced.ptx --json --text
+   -> kernscope-analyze: conflicting output formats (--json/--text/--html are mutually exclusive)
+   -> exit 3
+
+Lit-side negative coverage: golden.test USAGE RUN asserts the missing-arch
+diagnostic via `not` + FileCheck (exit 3 + text). The corpus.test
+PAD-NOT/COALESCED-NOT/UNIFORM-NOT/NOSPILL-NOT lines assert the ABSENCE of
+warning classes on clean fixtures (bank_padded: no bank_conflict id;
+coalesced: no coalescing id; uniform_control: no divergent_inner_loop;
+spill_negative: no spill id) — a wrong analyzer verdict fails the lit test.

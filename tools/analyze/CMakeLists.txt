@@ -35,12 +35,20 @@ target_link_libraries(kernscope_analyze PUBLIC
   kernscope::report
 )
 
-# --- the CLI tool (todo-3 stub, kept building; todo 20 wires the CLI) -------
-# The stub proves the target graph and the ctest LABELS convention under
-# -Wall -Wextra -Werror. It links the analysis library so the tool target
-# stays the single entry point once todo 20 lands.
+# --- the CLI tool (todo 20: full kernscope-analyze) -------------------------
+# The CLI auto-detects the input language (PTX vs AMDGPU asm), runs the
+# appropriate analysis path (analyze_ptx_module on PTX; the five AmdModule
+# analysis overloads + documented not-applicable findings on AMDGPU text),
+# discovers the launch manifest (manifest.json next to the input) for the
+# exact-register golden path, and renders through libs/report
+# (--text/--json/--html). libs/db is linked for the manifest loader; the
+# per-module analysis library carries ptxparse/amdparse/arch/occupancy/report
+# transitively.
 add_executable(kernscope-analyze main.cpp)
-target_link_libraries(kernscope-analyze PRIVATE kernscope::analyze)
+target_link_libraries(kernscope-analyze PRIVATE
+  kernscope::analyze
+  kernscope::db
+)
 
 # Land the binary in <build>/bin/ (tt-flow convention) so lit's
 # KERNSCOPE_TOOLS_DIR (${CMAKE_BINARY_DIR}/bin) finds it directly.
@@ -156,3 +164,20 @@ target_compile_definitions(analyze-fixture-main PRIVATE
 )
 add_test(NAME analyze-fixture-reports COMMAND analyze-fixture-main)
 set_tests_properties(analyze-fixture-reports PROPERTIES LABELS "no-gpu")
+
+# --- TODO 20: ten-analysis completeness check -------------------------------
+# python3 tools/analyze/tests/check_ten_analyses.py runs the real CLI
+# (kernscope-analyze --json) on the fused_attention golden and asserts ALL
+# TEN analyses are present with one asserted field each (register pressure,
+# occupancy limits, coalescing, bank conflicts, divergence, barrier usage,
+# instruction mix, tensor-core/MFMA/WMMA usage, spill detection, latency
+# bottlenecks). The CLI binary is passed as argv[1] so the script is
+# build-dir independent. Exit 0 on pass. The CLI exits 1 when warnings are
+# present (the golden has three) — a successful analysis, so the script
+# accepts return codes 0 and 1 and fails only on 2/3.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME analyze-ten-analyses
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_ten_analyses.py
+          $<TARGET_FILE:kernscope-analyze>)
+set_tests_properties(analyze-ten-analyses PROPERTIES LABELS "no-gpu")

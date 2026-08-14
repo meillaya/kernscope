@@ -1,0 +1,37 @@
+;===- amd.test - kernscope-analyze over the AMDGPU ISA corpus --------------===//
+;
+; Wave-3 todo 20 e2e lit suite. Runs the REAL CLI (--json) on the committed
+; AMDGPU ISA fixtures (tests/amdparse/corpus): the hipcc-generated
+; layernorm_gfx1101.s and the hand-authored CDNA2 MFMA fixture. Asserts the
+; AMD path contract: the five AmdModule analyses run (instruction mix,
+; tensor-core/MFMA/WMMA counts, spills, divergence), the PTX-specific
+; analyses (occupancy + suggestion engine) emit their documented
+; "not applicable to this input" info findings, and the limiter is the
+; documented "not-modeled". Numeric JSON assertions only.
+;
+; The CLI exits 1 when warnings are present (layernorm carries a
+; possibly_divergent_branch warning; lit 18 defaults pipefail on), so each
+; RUN captures the report into its own %t.json and tolerates the exit code;
+; FileCheck is the verdict.
+;
+; REQUIRES: no-gpu
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/amdparse/corpus/layernorm_gfx1101.s --arch gfx1101 --json > %t.layernorm.json || true
+; RUN: FileCheck %s < %t.layernorm.json --check-prefix=LAYERNORM
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/amdparse/corpus/mfma_fixture.s --arch gfx90a --json > %t.mfma.json || true
+; RUN: FileCheck %s < %t.mfma.json --check-prefix=MFMA
+
+; LAYERNORM: "name": "layernorm_gfx1101"
+; LAYERNORM: "spill_bytes": 0
+; LAYERNORM: "tensor_ops": 0
+; LAYERNORM: "limiter": "not-modeled"
+; LAYERNORM: "id": "possibly_divergent_branch"
+; LAYERNORM: "id": "occupancy_not_applicable"
+; LAYERNORM: "id": "suggestions_not_applicable"
+
+; MFMA: "name": "mfma_fixture"
+; MFMA: "mix_count_TENSOR": 4
+; MFMA: "tensor_macs": 24576
+; MFMA: "tensor_ops": 4
+; MFMA: "limiter": "not-modeled"
+; MFMA: "id": "occupancy_not_applicable"
+; MFMA: "id": "suggestions_not_applicable"

@@ -1,0 +1,71 @@
+task-20-gpu-kernel-suite — HAPPY evidence: kernscope-analyze CLI + docs + e2e lit suite
+========================================================================================
+Date: 2026-08-14 | Commit: feat(analyze): kernscope-analyze CLI + docs + e2e lit suite
+
+Files created/changed:
+  tools/analyze/main.cpp                     (full CLI, replaces todo-3 stub)
+  tools/analyze/CMakeLists.txt               (CLI links kernscope::db; analyze-ten-analyses ctest)
+  tools/analyze/tests/check_ten_analyses.py  (ten-analysis completeness checker)
+  test/analyze/golden.test                   (lit e2e: fused_attention golden + --version + usage)
+  test/analyze/corpus.test                   (lit e2e: 9 analyzer-corpus fixtures, numeric JSON)
+  test/analyze/amd.test                      (lit e2e: layernorm_gfx1101.s + mfma_fixture.s)
+  test/lit.cfg.py                            (%{kernscope_source_dir} + %kernscope-analyze substitutions)
+  docs/analyzer.md                           (ten analyses w/ formulas + citations, CLI ref, exit codes, golden)
+  scripts/ci-baseline.txt                    478 -> 479 (count guard for the added ctest)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`):
+1. cmake --build build                                        -> exit 0
+2. ./build/bin/kernscope-analyze tests/fixtures/fused_attention.ptx \
+     --arch sm_86 --block 64 --json \
+     | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['kernel']['name'], d['metrics']['occupancy'], d['limiter'], len(d['warnings']), len(d['suggestions']))"
+   -> fused_attention 0.375 registers 3 3
+3. ./build/bin/kernscope-analyze tests/fixtures/fused_attention.ptx --arch sm_86 --block 64 --text
+   -> Kernel: fused_attention / Occupancy: 37.5% / Main limiter: registers /
+      Warnings: coalescing, bank_conflict, divergent_inner_loop /
+      Suggested: tile_k_32, split_accumulator, hoist_predicate  (owner Section A format)
+4. python3 tools/analyze/tests/check_ten_analyses.py -> exit 0, all ten asserted:
+   PASS: register pressure  registers_per_thread = 102
+   PASS: occupancy limits   occupancy = 0.375
+   PASS: coalescing         global_coalescing_efficiency = 0.5
+   PASS: bank conflicts     shared_bank_way = 4
+   PASS: warp divergence    warning id 'divergent_inner_loop' present
+   PASS: barrier usage      bar_sync_count = 2
+   PASS: instruction mix    fma_rn_f32 = 1024
+   PASS: tensor-core/MFMA/WMMA tensor_ops = 0
+   PASS: spill detection    spill_bytes = 0
+   PASS: latency bottlenecks latency_classification = 1
+   PASS: all ten analyses asserted (10/10) on fused_attention.ptx
+5. cmake --build build --target check-kernscope -> exit 0, 5/5 lit tests pass:
+   PASS: kernscope :: Other/echo.test (1 of 5)     (existing, unmodified)
+   PASS: kernscope :: Other/hello.ll (2 of 5)      (existing, unmodified)
+   PASS: kernscope :: analyze/amd.test (3 of 5)
+   PASS: kernscope :: analyze/golden.test (4 of 5)
+   PASS: kernscope :: analyze/corpus.test (5 of 5)
+6. bash scripts/ci.sh -> exit 0 "kernscope CI gate green (8 pass, 2 skip, 0 fail)":
+   [PASS] configure+build, ctest -L "no-gpu|gpu-amd" (479/479),
+   [PASS] ctest count guard: 479 tests >= baseline 479,
+   [PASS] check-kernscope (lit suite), [PASS] fixture size, header guards
+
+QA happy scenarios:
+- golden text + JSON + check_ten_analyses PASS (above).
+- --html: self-contained single file; embedded JSON payload parsed back:
+  "html embedded JSON ok: fused_attention 0.375".
+- AMDGPU path: layernorm_gfx1101.s --arch gfx1101 -> tensor_ops 0, warning
+  possibly_divergent_branch, info findings occupancy_not_applicable +
+  suggestions_not_applicable, limiter "not-modeled" (exit 1);
+  mfma_fixture.s --arch gfx90a -> tensor_ops 4, tensor_macs 24576,
+  mix_count_TENSOR 4 (exit 0, clean).
+- --version -> "kernscope-analyze 0.1.0" exit 0; --help exit 0.
+- ctest -R analyze-ten-analyses -> Passed (LABELS no-gpu).
+
+Design notes:
+- Launch-config discovery: manifest.json next to the input seeds arch /
+  block_size / ptxas_v_report (the golden's 102-register figure drives the
+  pinned occupancy 0.375); CLI flags override the manifest.
+- AMDGPU path runs the five AmdModule analysis overloads; occupancy +
+  suggestion engine (PTX-specific) emit documented not-applicable info
+  findings instead of crashing (limiter "not-modeled").
+- lit 18 defaults pipefail on and tool substitutions are word-boundary
+  regexes; tests capture reports into %t.json and FileCheck the file, so
+  the CLI's exit-1-with-warnings (a successful analysis) does not fail the
+  pipeline while exit-2/3 errors still fail via FileCheck on empty output.

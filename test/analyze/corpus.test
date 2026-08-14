@@ -1,0 +1,68 @@
+;===- corpus.test - kernscope-analyze over the analyzer corpus -------------===//
+;
+; Wave-3 todo 20 e2e lit suite. Runs the REAL CLI (--json) over the committed
+; analyzer corpus fixtures (tests/analyze/corpus) and asserts their
+; machine-readable fields: bank-conflict way, coalescing efficiency, spill
+; bytes, divergence warning ids, barrier counts. Numeric JSON assertions
+; only. Each corpus RUN carries its own FileCheck prefix; CHECK-NOT lines
+; assert the absence of a warning class on the clean fixtures.
+;
+; The CLI exits 1 when warnings are present (a successful analysis; lit 18
+; defaults pipefail on), so each RUN captures the report into its own %t.json
+; and tolerates the exit code; FileCheck is the verdict.
+;
+; REQUIRES: no-gpu
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/bank_conflict.ptx --arch sm_86 --block 128 --json > %t.bank.json || true
+; RUN: FileCheck %s < %t.bank.json --check-prefix=BANK
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/bank_padded.ptx --arch sm_86 --json > %t.pad.json || true
+; RUN: FileCheck %s < %t.pad.json --check-prefix=PAD
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/strided_global.ptx --arch sm_86 --json > %t.strided.json || true
+; RUN: FileCheck %s < %t.strided.json --check-prefix=STRIDED
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/coalesced.ptx --arch sm_86 --json > %t.coalesced.json || true
+; RUN: FileCheck %s < %t.coalesced.json --check-prefix=COALESCED
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/divergent_inner_loop.ptx --arch sm_86 --json > %t.div.json || true
+; RUN: FileCheck %s < %t.div.json --check-prefix=DIVERGENT
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/uniform_control.ptx --arch sm_86 --json > %t.uniform.json || true
+; RUN: FileCheck %s < %t.uniform.json --check-prefix=UNIFORM
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/spill_positive.ptx --arch sm_86 --block 128 --json > %t.spill.json || true
+; RUN: FileCheck %s < %t.spill.json --check-prefix=SPILL
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/spill_negative.ptx --arch sm_86 --json > %t.nospill.json || true
+; RUN: FileCheck %s < %t.nospill.json --check-prefix=NOSPILL
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/analyze/corpus/barrier_in_branch.ptx --arch sm_86 --json > %t.barrier.json || true
+; RUN: FileCheck %s < %t.barrier.json --check-prefix=BARRIER
+
+; BANK: "name": "bank_conflict"
+; BANK: "occupancy": 0.4166666667
+; BANK: "shared_bank_way": 4
+; BANK: "limiter": "shared"
+; BANK: "id": "bank_conflict"
+
+; PAD: "name": "bank_padded"
+; PAD: "shared_bank_way": 1
+; PAD-NOT: "id": "bank_conflict"
+
+; STRIDED: "name": "strided_global"
+; STRIDED: "global_coalescing_efficiency": 0.125
+; STRIDED: "id": "coalescing"
+
+; COALESCED: "name": "coalesced"
+; COALESCED: "global_coalescing_efficiency": 1
+; COALESCED-NOT: "id": "coalescing"
+
+; DIVERGENT: "name": "divergent_inner_loop"
+; DIVERGENT: "id": "divergent_inner_loop"
+
+; UNIFORM: "name": "uniform_control"
+; UNIFORM-NOT: "divergent_inner_loop"
+
+; SPILL: "name": "spill_positive"
+; SPILL: "spill_bytes": 512
+; SPILL: "id": "spill"
+
+; NOSPILL: "name": "spill_negative"
+; NOSPILL: "spill_bytes": 0
+; NOSPILL-NOT: "id": "spill"
+
+; BARRIER: "name": "barrier_in_branch"
+; BARRIER: "bar_sync_count": 1
+; BARRIER: "id": "divergent_barrier"

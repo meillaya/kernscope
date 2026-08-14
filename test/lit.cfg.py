@@ -36,6 +36,25 @@ llvm_config.use_default_substitutions()
 # opt/FileCheck/count/not live.
 config.substitutions.append(("%llvm_tools_dir", config.llvm_tools_dir))
 
+# Repo root, so tests can reference committed fixtures (tests/fixtures/,
+# tests/analyze/corpus/, tests/amdparse/corpus/) by source path instead of
+# fragile %S-relative paths. test_source_root = <root>/test, so one dirname
+# up is the repo root. Used by test/analyze/*.test (todo 20 CLI e2e suite).
+config.substitutions.append(
+    ("%{kernscope_source_dir}", os.path.dirname(config.test_source_root))
+)
+
+# Exact literal substitution for our own tool. llvm_config's
+# add_tool_substitutions keys are word-boundary regexes (\bkernscope-analyze\b)
+# that also match INSIDE "%kernscope-analyze" and would leave a stray '%'
+# behind; a plain literal key (as %{kernscope_source_dir} above) replaces the
+# token exactly. kernscope_tools_dir is NOT on PATH (only llvm_tools_dir is),
+# so tests must reference the binary through this substitution.
+config.substitutions.append(
+    ("%kernscope-analyze",
+     os.path.join(config.kernscope_tools_dir, "kernscope-analyze"))
+)
+
 # excludes: A list of directories to exclude from the testsuite. The 'Inputs'
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.

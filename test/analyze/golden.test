@@ -1,0 +1,43 @@
+;===- golden.test - kernscope-analyze e2e on the fused_attention golden ---===//
+;
+; Wave-3 todo 20 e2e lit suite. Runs the REAL CLI (--json) on the committed
+; fused_attention golden and asserts its machine-readable fields (numeric
+; JSON only; no prose assertions). The launch-config discovery reads
+; tests/fixtures/manifest.json next to the input, so the exact ptxas -v
+; register figure (102) drives the pinned occupancy (0.375) exactly as the
+; todo-19 golden tests do.
+;
+; The CLI exits 1 when warnings are present - a SUCCESSFUL analysis run (the
+; golden carries three warnings by design), so the RUN line captures the
+; report into %t.json and tolerates the exit code; FileCheck is the verdict.
+; lit 18 defaults pipefail on, so a bare `| FileCheck` would fail on the
+; warning-exit. Also covers --version (exit 0) and the missing-arch usage
+; error (exit 3, asserted via `not`).
+;
+; REQUIRES: no-gpu
+; RUN: %kernscope-analyze %{kernscope_source_dir}/tests/fixtures/fused_attention.ptx --arch sm_86 --block 64 --json > %t.json || true
+; RUN: FileCheck %s < %t.json --check-prefix=GOLDEN
+; RUN: %kernscope-analyze --version | FileCheck %s --check-prefix=VERSION
+; RUN: not %kernscope-analyze %{kernscope_source_dir}/tests/amdparse/corpus/layernorm_gfx1101.s --json 2>&1 | FileCheck %s --check-prefix=USAGE
+
+; GOLDEN: "name": "fused_attention"
+; GOLDEN: "bar_sync_count": 2
+; GOLDEN: "fma_rn_f32": 1024
+; GOLDEN: "global_coalescing_efficiency": 0.5
+; GOLDEN: "latency_classification": 1
+; GOLDEN: "occupancy": 0.375
+; GOLDEN: "registers_per_thread": 102
+; GOLDEN: "shared_bank_way": 4
+; GOLDEN: "spill_bytes": 0
+; GOLDEN: "tensor_ops": 0
+; GOLDEN: "limiter": "registers"
+; GOLDEN: "id": "coalescing"
+; GOLDEN: "id": "bank_conflict"
+; GOLDEN: "id": "divergent_inner_loop"
+; GOLDEN: "id": "tile_k_32"
+; GOLDEN: "id": "split_accumulator"
+; GOLDEN: "id": "hoist_predicate"
+
+; VERSION: kernscope-analyze 0.1.0
+
+; USAGE: --arch <gfxXXXX> is required for AMDGPU input
