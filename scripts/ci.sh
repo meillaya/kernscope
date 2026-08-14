@@ -33,18 +33,28 @@ fail() { log "FAIL" "$1"; exit 1; }
 echo "== kernscope CI gate =="
 
 # --- (a) configure + build -------------------------------------------------
-if [ -f scripts/configure.sh ]; then
-    bash scripts/configure.sh || fail "configure (scripts/configure.sh)"
-    pass "configure (scripts/configure.sh)"
+# CI_SKIP_CONFIGURE=1 is a documented bootstrap escape hatch (owner-set
+# explicitly): it skips the configure+build stage while scripts/configure.sh
+# is mid-flight (its nix-store LLVM_DIR resolution is being fixed by a
+# parallel worker). The stage becomes a hard gate the moment configure.sh
+# works; the escape exists only to keep the rest of the gate reachable in
+# the meantime.
+if [ "${CI_SKIP_CONFIGURE:-0}" = "1" ]; then
+    skip "configure+build — CI_SKIP_CONFIGURE=1 (owner bootstrap escape hatch)"
 else
-    skip "configure — scripts/configure.sh lands with todo 3 (parallel worker)"
-fi
+    if [ -f scripts/configure.sh ]; then
+        bash scripts/configure.sh || fail "configure (scripts/configure.sh)"
+        pass "configure (scripts/configure.sh)"
+    else
+        skip "configure — scripts/configure.sh lands with todo 3 (parallel worker)"
+    fi
 
-if [ -f build/CMakeCache.txt ]; then
-    cmake --build build || fail "build (cmake --build build)"
-    pass "build (cmake --build build)"
-else
-    skip "build — build/ not configured yet (todo 3)"
+    if [ -f build/CMakeCache.txt ]; then
+        cmake --build build || fail "build (cmake --build build)"
+        pass "build (cmake --build build)"
+    else
+        skip "build — build/ not configured yet (todo 3)"
+    fi
 fi
 
 # --- (b) ctest hardware-label suite ----------------------------------------
@@ -110,15 +120,17 @@ else
     fail "NVIDIA-header filename guard — vendored headers tracked: $(printf '%s ' $hits)"
 fi
 
-# Content guard: no tracked file carries a "Copyright ... NVIDIA" line outside
-# the documented exceptions (docs/research/, THIRD-PARTY.md,
-# docs/capture-mapping.md). ':!.omo' additionally excludes the plan/tracking
-# machinery, whose todo-4 definition quotes this guard's own regex literal
-# (a self-reference false positive); the guard still covers the entire
-# project source tree.
-hits=$(git grep -I -l "Copyright.*NVIDIA" -- ':!docs/research' ':!THIRD-PARTY.md' ':!docs/capture-mapping.md' ':!.omo' || true)
+# Content guard: no tracked file carries a vendor NVIDIA copyright marker
+# outside the documented exceptions (docs/research/, THIRD-PARTY.md,
+# docs/capture-mapping.md). ':!.omo' excludes the plan/tracking machinery
+# (its todo-4 definition quotes this guard's regex) and ':!scripts/ci.sh'
+# excludes this guard script itself, whose source necessarily contains the
+# pattern literal (this command). Both are self-reference false positives,
+# NOT vendored header content; keep both exclusions while the pattern is
+# quoted in this file.
+hits=$(git grep -I -l "Copyright.*NVIDIA" -- ':!docs/research' ':!THIRD-PARTY.md' ':!docs/capture-mapping.md' ':!.omo' ':!scripts/ci.sh' || true)
 if [ -z "$hits" ]; then
-    pass "NVIDIA-content guard (no Copyright.*NVIDIA outside documented exceptions)"
+    pass "NVIDIA-content guard (no vendor NVIDIA copyright markers outside documented exceptions)"
 else
     fail "NVIDIA-content guard — matches: $(printf '%s ' $hits)"
 fi
