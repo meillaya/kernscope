@@ -40,6 +40,7 @@ enable_testing()
 add_subdirectory(libs/arch)
 add_subdirectory(libs/db)
 add_subdirectory(libs/report)
+add_subdirectory(libs/roofline)
 add_subdirectory(tools/analyze)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
