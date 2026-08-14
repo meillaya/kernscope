@@ -1,0 +1,58 @@
+// pad.test — kernscope-pad lit/FileCheck goldens (todo 38).
+//
+// kernscope-pad transforms addrspace(3) allocations with provably
+// conflict-prone static strides into padded layouts (+1 column pad), with
+// every smem GEP rewritten consistently. The bank model is the analyzer's
+// todo-16 formula (tools/analyze/src/analyze_banks.cpp compute_banks):
+// 32 banks x 4-byte words, way = max lane multiplicity per bank over the
+// warp; the smem budget guard reuses libs/arch (kernscope/arch.h) — the
+// fixtures pin the arch via the "kernscope.pad.arch" function attribute.
+//
+// AMD LDS variant note: the model is wave32 (32 lanes over the 32-bank
+// DWORD LDS) — NVIDIA warps AND RDNA3 (gfx1101) native wave32 both match;
+// CDNA (gfx90a/gfx942) is wave64 and the pass declines rather than
+// mis-model it (research brief §2.2).
+//
+// Fixtures:
+//   Inputs/pad_conflict.ll    16x32 float tile, row = tid: 32-word row
+//                             stride -> 32-way conflict; padded to 16x33.
+//   Inputs/pad_global.ll      same tile as an internal addrspace(3) global
+//                             with the clang addrspacecast + two-GEP shape.
+//   Inputs/pad_conflict_free.ll  16x31 tile, row = tid: stride 31 words,
+//                             gcd(31,32)=1 -> conflict-free -> decline,
+//                             IR unchanged (llvm-diff negative in QA).
+//   Inputs/pad_budget.ll      [257 x 98 x float], row = tid: 2-way conflict
+//                             provable, but padded 257x99 floats = 101,772 B
+//                             > sm_86's 99 KiB budget -> decline annotated,
+//                             IR unchanged.
+//
+// REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict.ll | FileCheck %s --check-prefix=HAPPY
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_global.ll | FileCheck %s --check-prefix=GLOBAL
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict_free.ll | FileCheck %s --check-prefix=NOPAD
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict_free.ll 2>&1 >/dev/null | FileCheck %s --check-prefix=NOPAD-NOTE
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_budget.ll | FileCheck %s --check-prefix=BUDGET
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_budget.ll 2>&1 >/dev/null | FileCheck %s --check-prefix=BUDGET-NOTE
+
+; HAPPY: alloca [16 x [33 x float]], align 4, addrspace(3)
+; HAPPY-NOT: alloca [16 x [32 x float]]
+; HAPPY: getelementptr inbounds [16 x [33 x float]]
+; HAPPY: getelementptr inbounds [33 x float]
+; HAPPY: @transpose_kernel
+
+; GLOBAL: @_ZZ9transposePfE1t = internal addrspace(3) global [16 x [33 x float]] zeroinitializer
+; GLOBAL-NOT: global [16 x [32 x float]]
+; GLOBAL: getelementptr inbounds nuw [16 x [33 x float]]
+; GLOBAL: getelementptr inbounds [33 x float]
+
+; NOPAD: alloca [16 x [31 x float]]
+; NOPAD-NOT: alloca [16 x [32 x float]]
+; NOPAD-NOTE: kernscope-pad: declining pad of
+; NOPAD-NOTE: no provable bank conflict
+
+; BUDGET: alloca [257 x [98 x float]]
+; BUDGET-NOT: alloca [257 x [99 x float]]
+; BUDGET-NOTE: kernscope-pad: declining pad of
+; BUDGET-NOTE: exceeds smem budget
+; BUDGET-NOTE: 101772 bytes
