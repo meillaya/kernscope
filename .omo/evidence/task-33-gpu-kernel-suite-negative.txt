@@ -1,0 +1,43 @@
+todo 33 (gpu-kernel-suite) NEGATIVE case: data-dependent index race
+candidate -> verdict UNKNOWN_RACE (soundness naming: NOT SAFE, NOT
+MAY_RACE).  Fixture: tests/verify/corpus/race_dataindex.cu
+(race_data_kernel: s[j] write + s[j] read, j = idx[t] loaded from global
+memory, same barrier phase, no barrier between the sites).
+Date: 2026-08-14
+
+== command ==
+build/tools/verify/checks/race/verify-race-test --gtest_filter="RaceCheck.DataDependentIndexIsUnknownRace"
+
+== output (exact) ==
+Running main() from /build/source/googletest/src/gtest_main.cc
+Note: Google Test filter = RaceCheck.DataDependentIndexIsUnknownRace
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RaceCheck
+[ RUN      ] RaceCheck.DataDependentIndexIsUnknownRace
+=== QA negative: race_data_kernel(int const*) -> UNKNOWN_RACE
+  {"file":"race_dataindex.cu","diagnostic":{"check":4,"kernel":"race_data_kernel(int const*)","verdict":"UNKNOWN_RACE","tier":"Exact","accesses":2,"pairs":[{"verdict":"UNKNOWN_RACE","op1":"store","l1":28,"op2":"load","l2":29,"base":"_ZZ16race_data_kernelPKiE1s","span1":"unbounded","span2":"unbounded","idx1":"data-dependent","idx2":"data-dependent","phase":0,"why":"index expression is data-dependent (data-dependent): the analysis cannot determine which addresses different threads touch"}]}},
+  {"file":"race_dataindex.cu","diagnostic":{"check":4,"kernel":"race_data_kernel(int const*)","verdict":"UNKNOWN_RACE","pair":{"op1":"store","l1":28,"op2":"load","l2":29,"base":"_ZZ16race_data_kernelPKiE1s"}}}
+[       OK ] RaceCheck.DataDependentIndexIsUnknownRace (997 ms)
+[----------] 1 test from RaceCheck (997 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (997 ms total)
+[  PASSED  ] 1 test.
+
+== assertions exercised ==
+  verdict == "UNKNOWN_RACE"            (NEVER SAFE, NEVER MAY_RACE)
+  both sites in the diagnostic JSON:   l1=28 (store), l2=29 (load)
+  idx1/idx2 == "data-dependent"        (addresses unknowable)
+  spans "unbounded"                    (queryRange cannot bound the
+                                        loaded index — adversarial read,
+                                        GPUVerify-style)
+
+== why this verdict name ==
+  The write s[j] and read s[j] are a genuine race candidate (same phase,
+  no barrier, >= 1 write) but their address depends on a GLOBAL-MEMORY
+  LOAD — the analysis cannot determine which addresses different threads
+  touch.  Claiming MAY_RACE would assert an address overlap the analysis
+  cannot see; claiming SAFE would assert race-freedom it cannot prove.
+  UNKNOWN_RACE is the soundness-named middle verdict (documented in
+  docs/verify-soundness.md under false-negative classes).

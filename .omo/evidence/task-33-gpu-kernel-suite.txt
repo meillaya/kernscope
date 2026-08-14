@@ -1,0 +1,75 @@
+todo 33 (gpu-kernel-suite): race-prone shared-memory write analysis
+(check class 4, MAY_RACE / UNKNOWN_RACE / SAFE) — kernscope-verify check
+module.  Soundness scope: docs/verify-soundness.md.
+Date: 2026-08-14
+Commit base: 7102e2b (core) + cdd8d2c (-O2 SCEV) + d2c4025 (oob) +
+aa26371 (barrier)
+
+== files created ==
+  tools/verify/checks/race/race_check.cpp   (plugin, class 4; phase
+                                             partition + SCEV may-alias)
+  tools/verify/checks/race/CMakeLists.txt   (lib + verify-race-test ctest)
+  tools/verify/checks/race/race_test.cpp    (manifest-driven acceptance +
+                                             QA negatives)
+  tests/verify/corpus/race_writewrite.cu    (same-index write-write)
+  tests/verify/corpus/race_writeread.cu     (write-read, no barrier)
+  tests/verify/corpus/race_clean.cu         (reduction w/ barrier, SCEV-
+                                             disjoint, uniform-branch)
+  tests/verify/corpus/race_dataindex.cu     (QA negative: data-dependent
+                                             index -> UNKNOWN_RACE)
+  tests/verify/corpus/manifest.race.json    (verdict manifest)
+  docs/verify-soundness.md                  (soundness scope, FP/FN
+                                             classes, HGRD/Faial upgrade
+                                             note)
+
+== acceptance 1: cmake --build build (Werror clean) ==
+ninja: no work to do.
+build exit: 0
+
+== acceptance 2: ctest -R verify_race (exit 0) ==
+1/1 Test #564: verify_race ......................   Passed   14.55 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+no-gpu    =  14.55 sec*proc (1 test)
+
+Total Test time (real) =  14.56 sec
+ctest exit: 0
+
+== acceptance 3: full gtest detail (6/6) ==
+[ RUN      ] RaceCheck.ManifestVerdictsMatch
+[       OK ] RaceCheck.ManifestVerdictsMatch (10375 ms)
+[ RUN      ] RaceCheck.MayRacePairsCarryBothSites
+[       OK ] RaceCheck.MayRacePairsCarryBothSites (2083 ms)
+[ RUN      ] RaceCheck.CleanFixturesStaySafe
+[       OK ] RaceCheck.CleanFixturesStaySafe (1070 ms)
+[ RUN      ] RaceCheck.DataDependentIndexIsUnknownRace
+[       OK ] RaceCheck.DataDependentIndexIsUnknownRace (1049 ms)
+[ RUN      ] RaceCheck.PerPairWarningsListBothSitesAndMissingBarrier
+[       OK ] RaceCheck.PerPairWarningsListBothSitesAndMissingBarrier (1072 ms)
+[ RUN      ] RaceCheck.PluginRegisteredWithClass4
+[       OK ] RaceCheck.PluginRegisteredWithClass4 (0 ms)
+[==========] 6 tests from 1 test suite ran. (15651 ms total)
+[  PASSED  ] 6 tests.
+
+== corpus verdict JSON (evidence; printed by the test) ==
+[
+  {"file":"race_writewrite.cu","diagnostic":{"check":4,"kernel":"race_writewrite_kernel()","verdict":"MAY_RACE","tier":"Exact","accesses":2,"pairs":[{"verdict":"MAY_RACE","op1":"store","l1":30,"op2":"store","l2":31,"base":"_ZZ22race_writewrite_kernelvE1s","span1":"[0,1024)","span2":"[0,1024)","idx1":"thread-dependent","idx2":"thread-dependent","phase":0,"why":"byte spans overlap (or are unbounded): different threads may access the same address in the same barrier phase"}]}},
+  {"file":"race_writewrite.cu","diagnostic":{"check":4,"kernel":"race_writewrite_kernel()","verdict":"MAY_RACE","pair":{"op1":"store","l1":30,"op2":"store","l2":31,"base":"_ZZ22race_writewrite_kernelvE1s"}}},
+  {"file":"race_writeread.cu","diagnostic":{"check":4,"kernel":"race_writeread_kernel()","verdict":"MAY_RACE","tier":"Exact","accesses":2,"pairs":[{"verdict":"MAY_RACE","op1":"store","l1":20,"op2":"load","l2":21,"base":"_ZZ21race_writeread_kernelvE1s","span1":"[0,1024)","span2":"[0,1024)","idx1":"thread-dependent","idx2":"thread-dependent","phase":0,"why":"byte spans overlap (or are unbounded): different threads may access the same address in the same barrier phase"}]}},
+  {"file":"race_writeread.cu","diagnostic":{"check":4,"kernel":"race_writeread_kernel()","verdict":"MAY_RACE","pair":{"op1":"store","l1":20,"op2":"load","l2":21,"base":"_ZZ21race_writeread_kernelvE1s"}}},
+  {"file":"race_clean.cu","diagnostic":{"check":4,"kernel":"race_clean_kernel(int*)","verdict":"SAFE","tier":"Exact","accesses":2,"pairs":[]}},
+  {"file":"race_clean.cu","diagnostic":{"check":4,"kernel":"race_clean_disjoint_kernel()","verdict":"SAFE","tier":"Exact","accesses":2,"pairs":[]}},
+  {"file":"race_clean.cu","diagnostic":{"check":4,"kernel":"race_clean_uniform_kernel()","verdict":"SAFE","tier":"Exact","accesses":2,"pairs":[]}},
+  {"file":"race_dataindex.cu","diagnostic":{"check":4,"kernel":"race_data_kernel(int const*)","verdict":"UNKNOWN_RACE","tier":"Exact","accesses":2,"pairs":[{"verdict":"UNKNOWN_RACE","op1":"store","l1":28,"op2":"load","l2":29,"base":"_ZZ16race_data_kernelPKiE1s","span1":"unbounded","span2":"unbounded","idx1":"data-dependent","idx2":"data-dependent","phase":0,"why":"index expression is data-dependent (data-dependent): the analysis cannot determine which addresses different threads touch"}]}},
+  {"file":"race_dataindex.cu","diagnostic":{"check":4,"kernel":"race_data_kernel(int const*)","verdict":"UNKNOWN_RACE","pair":{"op1":"store","l1":28,"op2":"load","l2":29,"base":"_ZZ16race_data_kernelPKiE1s"}}}
+]
+
+== manifest verdicts (all matched) ==
+  race_writewrite_kernel   -> MAY_RACE   (both sites l1=30 l2=31)
+  race_writeread_kernel    -> MAY_RACE   (both sites l1=20 l2=21)
+  race_clean_kernel        -> SAFE       (barrier separates phases)
+  race_clean_disjoint_kernel -> SAFE     (SCEV-disjoint spans)
+  race_clean_uniform_kernel -> SAFE      (uniform-branch exclusivity)
+  race_data_kernel         -> UNKNOWN_RACE (data-dependent index)

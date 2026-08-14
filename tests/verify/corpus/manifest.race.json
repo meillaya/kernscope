@@ -1,0 +1,38 @@
+[
+  {
+    "file": "race_writewrite.cu",
+    "kernel": "race_writewrite_kernel",
+    "check": 4,
+    "expected_verdict": "MAY_RACE"
+  },
+  {
+    "file": "race_writeread.cu",
+    "kernel": "race_writeread_kernel",
+    "check": 4,
+    "expected_verdict": "MAY_RACE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_disjoint_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_uniform_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_dataindex.cu",
+    "kernel": "race_data_kernel",
+    "check": 4,
+    "expected_verdict": "UNKNOWN_RACE"
+  }
+]
