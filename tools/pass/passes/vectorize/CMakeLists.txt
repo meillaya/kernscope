@@ -14,6 +14,8 @@
 #   * misaligned.ll           — alignment not provable -> untouched
 #   * addrspace3.ll           — shared memory -> untouched (v1 scope)
 target_sources(kernscope-pass PRIVATE src/vectorize.cpp)
+target_include_directories(kernscope-pass PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # --- unit tests (gtest) ----------------------------------------------------
 # ctest hardware-gating convention (todo 3): exactly one of no-gpu |
