@@ -64,5 +64,29 @@
     "kernel": "uninit_phase_clean_kernel",
     "check": 7,
     "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_escape_smem.cu",
+    "kernel": "smem_escape_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_escape_smem.cu",
+    "kernel": "smem_sub_same_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_param_safe.cu",
+    "kernel": "param_guarded_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_param_safe.cu",
+    "kernel": "param_guarded_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
   }
 ]

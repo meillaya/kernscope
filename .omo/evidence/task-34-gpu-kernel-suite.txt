@@ -1,0 +1,86 @@
+TASK-34 EVIDENCE (happy path): pointer arithmetic + address-space cast + uninitialized read checks
+====================================================================================================
+Plan todo 34 — kernscope-verify checks/ptr module (classes 5 PTR_OOB / 7 MAY_UNINIT_READ / 8 INVALID_ADDRSPACE_CAST).
+Repo root /home/mei/projects/llvm.h; commands run in the project toolchain environment.
+
+COMMIT LIST (this task):
+  81cedfe feat(verify): ptr checks skeleton
+  ce767f6 feat(verify): pointer-arithmetic discipline check (class 5, PTR_OOB)
+  b6dcf03 feat(verify): address-space cast legality check (class 8, INVALID_ADDRSPACE_CAST)
+  78288ea feat(verify): uninitialized-read check (class 7, MAY_UNINIT_READ)
+  (final)   feat(verify): pointer arithmetic + addrspace cast + uninitialized read checks
+
+ACCEPTANCE 1: cmake --build build  (Werror clean; exit 0)
+ninja: no work to do.
+cmake --build build exit: 0
+(0 error/FAILED lines in the full build log)
+
+ACCEPTANCE 2: ctest -R verify_ptr  (exit 0)
+1/1 Test #565: verify_ptr .......................   Passed   28.06 sec
+100% tests passed, 0 tests failed out of 1
+ctest exit: 0
+
+ACCEPTANCE 3: verify-ptr-test full suite (exit 0; 9/9 tests)
+[       OK ] VerifyPtr.ManifestVerdictsMatch (20817 ms)
+[       OK ] VerifyPtr.PtrOobEscapeHasSpanAndBound (985 ms)
+[       OK ] VerifyPtr.PtrSubUnrelatedFlagged (1000 ms)
+[       OK ] VerifyPtr.BadCastErrorCitesTable (981 ms)
+[       OK ] VerifyPtr.LegalGenericMediatedChainNotFlagged (982 ms)
+[       OK ] VerifyPtr.UninitReadHasEvidencePath (996 ms)
+[       OK ] VerifyPtr.PhaseCleanKernelStaysSafe (977 ms)
+[       OK ] VerifyPtr.AllocaReadBeforeWriteFlagged (994 ms)
+[       OK ] VerifyPtr.PluginRegisteredWithClasses578 (0 ms)
+[  PASSED  ] 9 tests.
+
+MANIFEST (tests/verify/corpus/manifest.ptr.json, 15 pairs / 6 fixtures):
+  ptr_clean.cu ptr_clean_kernel check 5 -> SAFE
+  ptr_oob.cu ptr_oob_escape_kernel check 5 -> PTR_OOB
+  ptr_oob.cu ptr_oob_range_kernel check 5 -> PTR_OOB
+  ptr_oob.cu ptr_sub_unrelated_kernel check 5 -> PTR_OOB
+  ptr_clean.cu ptr_clean_kernel check 8 -> SAFE
+  ptr_cast_bad.cu cast_bad_kernel check 8 -> INVALID_ADDRSPACE_CAST
+  ptr_cast_bad.cu cast_legal_kernel check 8 -> SAFE
+  ptr_clean.cu ptr_clean_kernel check 7 -> SAFE
+  ptr_uninit.cu uninit_read_kernel check 7 -> MAY_UNINIT_READ
+  ptr_uninit.cu uninit_alloca_kernel check 7 -> MAY_UNINIT_READ
+  ptr_uninit.cu uninit_phase_clean_kernel check 7 -> SAFE
+  ptr_escape_smem.cu smem_escape_kernel check 5 -> PTR_OOB
+  ptr_escape_smem.cu smem_sub_same_kernel check 5 -> SAFE
+  ptr_param_safe.cu param_guarded_kernel check 5 -> SAFE
+  ptr_param_safe.cu param_guarded_kernel check 7 -> SAFE
+
+EMITTED VERDICT JSON (corpus verdict evidence from verify-ptr-test):
+=== corpus verdict JSON (evidence) ===
+[
+  {"file":"ptr_clean.cu","diagnostic":{"check":5,"kernel":"ptr_clean_kernel()","verdict":"SAFE","pointers":2,"bad":0,"findings":[{"op":"ptr_arith","line":35,"alloc":"g_buf","bound":65536,"range":"[0,8192)","span":"[0,32772)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"},{"op":"ptr_arith","line":36,"alloc":"_ZZ16ptr_clean_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ16ptr_clean_kernelvE1s (1024 bytes)"}]}},
+  {"file":"ptr_clean.cu","diagnostic":{"check":8,"kernel":"ptr_clean_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_clean.cu","diagnostic":{"check":7,"kernel":"ptr_clean_kernel()","verdict":"SAFE","accesses":4,"bad":0,"findings":[]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":5,"kernel":"ptr_oob_escape_kernel()","verdict":"PTR_OOB","pointers":1,"bad":1,"findings":[{"op":"ptr_arith","line":37,"alloc":"g_buf","bound":65536,"range":"","span":"[80000,80001)","kind":"ESCAPED","note":"pointer arithmetic escapes allocation g_buf (65536 bytes): max offset 80000 > size"}]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":7,"kernel":"ptr_oob_escape_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":5,"kernel":"ptr_oob_range_kernel()","verdict":"PTR_OOB","pointers":1,"bad":1,"findings":[{"op":"ptr_arith","line":44,"alloc":"g_buf","bound":65536,"range":"[0,25501)","span":"[0,102008)","kind":"ESCAPED","note":"pointer arithmetic escapes allocation g_buf (65536 bytes): max offset 102004 > size"}]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":8,"kernel":"ptr_oob_range_kernel()","verdict":"SAFE","casts":1,"bad":0,"findings":[]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":7,"kernel":"ptr_oob_range_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":5,"kernel":"ptr_sub_unrelated_kernel()","verdict":"PTR_OOB","pointers":3,"bad":1,"findings":[{"op":"ptr_arith","line":54,"alloc":"g_buf","bound":65536,"range":"[0,256)","span":"[0,1024)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"},{"op":"ptr_arith","line":55,"alloc":"g_other","bound":4096,"range":"[0,1)","span":"[0,4)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_other (4096 bytes)"},{"op":"ptr_arith","line":56,"alloc":"g_buf","bound":65536,"range":"","span":"","kind":"UNRELATED_SUB","note":"subtraction of pointers rooted in unrelated allocations (g_buf vs g_other) — undefined behavior"}]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":8,"kernel":"ptr_sub_unrelated_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_oob.cu","diagnostic":{"check":7,"kernel":"ptr_sub_unrelated_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_cast_bad.cu","diagnostic":{"check":5,"kernel":"cast_bad_kernel()","verdict":"SAFE","pointers":1,"bad":0,"findings":[{"op":"ptr_arith","line":48,"alloc":"s","bound":256,"range":"[0,64)","span":"[0,256)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation s (256 bytes)"}]}},
+  {"file":"ptr_cast_bad.cu","diagnostic":{"check":8,"kernel":"cast_bad_kernel()","verdict":"INVALID_ADDRSPACE_CAST","casts":1,"bad":1,"findings":[{"op":"addrspacecast","line":48,"src_as":3,"dst_as":1,"src":"shared","dst":"global"}]}},
+  {"file":"ptr_cast_bad.cu","diagnostic":{"check":7,"kernel":"cast_bad_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_cast_bad.cu","diagnostic":{"check":8,"kernel":"cast_legal_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":5,"kernel":"uninit_read_kernel()","verdict":"SAFE","pointers":2,"bad":0,"findings":[{"op":"ptr_arith","line":40,"alloc":"_ZZ18uninit_read_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ18uninit_read_kernelvE1s (1024 bytes)"},{"op":"ptr_arith","line":42,"alloc":"g_buf","bound":65536,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":8,"kernel":"uninit_read_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":7,"kernel":"uninit_read_kernel()","verdict":"MAY_UNINIT_READ","accesses":4,"bad":1,"findings":[{"op":"load","line":40,"alloc":"@_ZZ18uninit_read_kernelvE1s","kind":"MAY_UNINIT_READ","must_written":false,"note":"read reaches an object that no path has written: may-analysis — uninitialized read (must-write=false)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":5,"kernel":"uninit_alloca_kernel()","verdict":"SAFE","pointers":1,"bad":0,"findings":[{"op":"ptr_arith","line":49,"alloc":"g_buf","bound":65536,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":8,"kernel":"uninit_alloca_kernel()","verdict":"SAFE","casts":1,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":7,"kernel":"uninit_alloca_kernel()","verdict":"MAY_UNINIT_READ","accesses":2,"bad":1,"findings":[{"op":"load","line":48,"alloc":"%1","kind":"MAY_UNINIT_READ","must_written":false,"note":"read reaches an object that no path has written: may-analysis — uninitialized read (must-write=false)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":5,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","pointers":3,"bad":0,"findings":[{"op":"ptr_arith","line":56,"alloc":"_ZZ25uninit_phase_clean_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ25uninit_phase_clean_kernelvE1s (1024 bytes)"},{"op":"ptr_arith","line":58,"alloc":"_ZZ25uninit_phase_clean_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ25uninit_phase_clean_kernelvE1s (1024 bytes)"},{"op":"ptr_arith","line":59,"alloc":"g_buf","bound":65536,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":8,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":7,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","accesses":3,"bad":0,"findings":[]}},
+  {"file":"ptr_escape_smem.cu","diagnostic":{"check":5,"kernel":"smem_escape_kernel()","verdict":"PTR_OOB","pointers":1,"bad":1,"findings":[{"op":"ptr_arith","line":31,"alloc":"_ZZ18smem_escape_kernelvE1s","bound":256,"range":"","span":"[4000,4001)","kind":"ESCAPED","note":"pointer arithmetic escapes allocation _ZZ18smem_escape_kernelvE1s (256 bytes): max offset 4000 > size"}]}},
+  {"file":"ptr_escape_smem.cu","diagnostic":{"check":7,"kernel":"smem_escape_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_escape_smem.cu","diagnostic":{"check":5,"kernel":"smem_sub_same_kernel()","verdict":"SAFE","pointers":1,"bad":0,"findings":[{"op":"ptr_arith","line":40,"alloc":"g_out","bound":256,"range":"[0,64)","span":"[0,260)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_out (256 bytes)"}]}},
+  {"file":"ptr_escape_smem.cu","diagnostic":{"check":8,"kernel":"smem_sub_same_kernel()","verdict":"SAFE","casts":1,"bad":0,"findings":[]}},
+  {"file":"ptr_escape_smem.cu","diagnostic":{"check":7,"kernel":"smem_sub_same_kernel()","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}},
+  {"file":"ptr_param_safe.cu","diagnostic":{"check":5,"kernel":"param_guarded_kernel(int*, int)","verdict":"SAFE","pointers":1,"bad":0,"findings":[{"op":"ptr_arith","line":29,"alloc":"","bound":0,"range":"","span":"","kind":"PARAM_BOUNDED","note":"runtime kernel parameter allocation: index expression bounded, static pointer-escape proof not possible (may-analysis scope)"}]}},
+  {"file":"ptr_param_safe.cu","diagnostic":{"check":7,"kernel":"param_guarded_kernel(int*, int)","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}}
+]

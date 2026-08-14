@@ -86,6 +86,8 @@ struct PtrFinding {
     Escaped,      ///< pointer VALUE provably outside its allocation.
     Unbounded,    ///< index range unbounded -> may-analysis PTR_OOB.
     UnrelatedSub, ///< subtraction of pointers from different allocations.
+    ParamBounded, ///< runtime kernel-param allocation: index bounded, no
+                  ///< static escape claim (not counted as bad).
   };
   Kind kind = Kind::InBounds;
   SourceLoc loc;
@@ -104,7 +106,22 @@ std::optional<PtrFinding> analyze_gep(llvm::GEPOperator& gep,
                                       VerifierContext& ctx) {
   const AllocationInfo alloc = resolveAllocation(&gep, ctx.module);
   if (!alloc.known_size) {
-    return std::nullopt;  // kernel param / unknown root: no static claim.
+    if (alloc.root == AllocationInfo::Root::KernelParam) {
+      PtrFinding f;
+      f.kind = PtrFinding::Kind::ParamBounded;
+      if (const auto* inst = llvm::dyn_cast<Instruction>(&gep)) {
+        f.loc = loc_of(inst);
+        f.instruction = short_instruction(*inst);
+      } else {
+        f.instruction = "constant-expr GEP";
+      }
+      f.base = alloc.name;
+      f.detail = "runtime kernel parameter allocation: index expression "
+                 "bounded, static pointer-escape proof not possible "
+                 "(may-analysis scope)";
+      return f;
+    }
+    return std::nullopt;  // unknown root: no static claim.
   }
   PtrFinding f;
   if (const auto* inst = llvm::dyn_cast<Instruction>(&gep)) {
@@ -204,6 +221,8 @@ const char* kind_name(PtrFinding::Kind k) {
       return "UNBOUNDED";
     case PtrFinding::Kind::UnrelatedSub:
       return "UNRELATED_SUB";
+    case PtrFinding::Kind::ParamBounded:
+      return "PARAM_BOUNDED";
   }
   return "?";
 }
@@ -365,7 +384,7 @@ void emit_cast_verdict(VerifierContext& ctx,
                std::to_string(CheckClass::kAddrSpaceCast) + ",\"kernel\":\"" +
                ctx.kernel.name + "\",\"verdict\":\"" +
                (safe ? kVerdictSafe : kVerdictInvalidAddrspaceCast) +
-               "\",\"casts\":" + std::to_string(casts.size()) +
+               "\",\"casts\":" + std::to_string(total_casts) +
                ",\"bad\":" + std::to_string(bad) + ",\"findings\":" +
                findings + "}";
   out.push_back(std::move(d));
@@ -770,7 +789,8 @@ class PointerDisciplineCheckPlugin : public CheckPlugin {
     if (!findings.empty()) {
       const size_t bad = std::count_if(
           findings.begin(), findings.end(), [](const PtrFinding& f) {
-            return f.kind != PtrFinding::Kind::InBounds;
+            return f.kind != PtrFinding::Kind::InBounds &&
+                 f.kind != PtrFinding::Kind::ParamBounded;
           });
       const bool safe = bad == 0;
       Diagnostic d;

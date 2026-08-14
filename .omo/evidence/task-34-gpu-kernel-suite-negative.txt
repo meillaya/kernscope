@@ -1,0 +1,29 @@
+TASK-34 EVIDENCE (negative/QA cases): precision guards
+======================================================
+QA 1: LEGAL generic-mediated cast (shared -> generic -> global) must NOT be flagged.
+  Fixture: tests/verify/corpus/ptr_cast_bad.cu kernel cast_legal_kernel.
+  Note: __cvta_generic_to_global is host-stubbed (returns size_t) in the staged
+  CUDA headers and fails the host pass, so the chain is expressed with explicit
+  __attribute__((address_space(1))) casts producing IR-identical addrspacecast
+  3->0 + 0->1; an empty `asm volatile` barrier prevents instcombine from folding
+  the pair into a direct 3->1 cast.
+[       OK ] VerifyPtr.LegalGenericMediatedChainNotFlagged (1001 ms)
+
+QA 2: write -> __syncthreads() -> cross-index smem read must NOT be flagged
+  (phase boundary: any-path writes become all-path readable at the barrier).
+  Fixture: tests/verify/corpus/ptr_uninit.cu kernel uninit_phase_clean_kernel.
+[       OK ] VerifyPtr.PhaseCleanKernelStaysSafe (993 ms)
+  {"file":"ptr_uninit.cu","diagnostic":{"check":8,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","casts":0,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":7,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","accesses":3,"bad":0,"findings":[]}},
+
+QA 3: guarded kernel-param access (runtime allocation) stays SAFE on class 5.
+  Fixture: tests/verify/corpus/ptr_param_safe.cu kernel param_guarded_kernel.
+  {"file":"ptr_param_safe.cu","diagnostic":{"check":7,"kernel":"param_guarded_kernel(int*, int)","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}}
+
+FRESH VERDICT LINES (final code):
+{"file":"ptr_cast_bad.cu","diagnostic":{"check":8,"kernel":"cast_legal_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":5,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","pointers":3,"bad":0,"findings":[{"op":"ptr_arith","line":56,"alloc":"_ZZ25uninit_phase_clean_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ25uninit_phase_clean_kernelvE1s (1024 bytes)"},{"op":"ptr_arith","line":58,"alloc":"_ZZ25uninit_phase_clean_kernelvE1s","bound":1024,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation _ZZ25uninit_phase_clean_kernelvE1s (1024 bytes)"},{"op":"ptr_arith","line":59,"alloc":"g_buf","bound":65536,"range":"[0,256)","span":"[0,1028)","kind":"IN_BOUNDS","note":"pointer arithmetic stays within allocation g_buf (65536 bytes)"}]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":8,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","casts":2,"bad":0,"findings":[]}},
+  {"file":"ptr_uninit.cu","diagnostic":{"check":7,"kernel":"uninit_phase_clean_kernel()","verdict":"SAFE","accesses":3,"bad":0,"findings":[]}},
+  {"file":"ptr_param_safe.cu","diagnostic":{"check":5,"kernel":"param_guarded_kernel(int*, int)","verdict":"SAFE","pointers":1,"bad":0,"findings":[{"op":"ptr_arith","line":29,"alloc":"","bound":0,"range":"","span":"","kind":"PARAM_BOUNDED","note":"runtime kernel parameter allocation: index expression bounded, static pointer-escape proof not possible (may-analysis scope)"}]}},
+  {"file":"ptr_param_safe.cu","diagnostic":{"check":7,"kernel":"param_guarded_kernel(int*, int)","verdict":"SAFE","accesses":1,"bad":0,"findings":[]}}
