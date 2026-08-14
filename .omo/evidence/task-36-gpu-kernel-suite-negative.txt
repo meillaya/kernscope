@@ -1,0 +1,84 @@
+task-36-gpu-kernel-suite — QA NEGATIVE (plugin ABI mismatch)
+============================================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 36 · Wave 7
+Acceptance: "load a plugin built against the wrong LLVM version -> graceful
+dlopen error message (no segfault) — build a mismatch fixture if feasible,
+else assert the graceful error path (document what you did)".
+
+SUMMARY
+-------
+Three fixtures were built and probed against the STORE LLVM 21.1.8 opt
+(/nix/store/l25n688gmqircnpypip13wy99ndycwbj-llvm-21.1.8/bin/opt):
+
+  A. Wrong-APIVersion plugin  -> GRACEFUL diagnostic, exit 1, no segfault.
+  B. Missing-entry-point .so  -> GRACEFUL diagnostic, exit 1, no segfault.
+  C. GENUINE 19.1.7-built plugin loaded into opt-21 (real C++ ABI
+     mismatch) -> segfault (exit 139) — the documented LLVM ABI
+     instability, see below.
+
+Graceful path (A + B) is asserted as evidence; C documents the boundary of
+what LLVM can catch: the research brief (§1.2) is explicit — APIVersion
+"only protects the struct layout; it does not make the C++ API ABI-stable.
+A plugin must be compiled against the same LLVM version... In practice:
+rebuild the plugin per LLVM release; expect source-level churn." C is that
+caveat proven, which is exactly why the scaffold pins the toolchain
+(devenv.nix llvmPackages_21) and rebuilds per release.
+
+FIXTURE A — wrong APIVersion (2 != LLVM_PLUGIN_API_VERSION 1)
+-------------------------------------------------------------
+Source: /tmp/kp-fixtures/apiversion_mismatch.cpp — standalone .so built
+with g++ -fPIC -shared, NO LLVM headers/link; PassPluginLibraryInfo layout
+copied from llvm/include/llvm/Passes/PassPlugin.h with APIVersion=2.
+This is the official guard: opt checks APIVersion BEFORE touching any C++
+API, so this exercises exactly the mismatch check the driver performs.
+
+$ opt -load-pass-plugin=/tmp/kp-fixtures/libapiversion-mismatch.so -passes=kernscope-hello -S /tmp/hp.ll
+LLVM ERROR: Wrong API version on plugin '/tmp/kp-fixtures/libapiversion-mismatch.so'. Got version 2, supported version is 1.
+$ echo $? -> 1
+-> no segfault; single diagnostic line; clean exit 1.
+
+FIXTURE B — plugin without the llvmGetPassPluginInfo symbol
+-----------------------------------------------------------
+Source: empty shared object (g++ -fPIC -shared -x c++ /dev/null).
+
+$ opt -load-pass-plugin=/tmp/kp-fixtures/libno-symbol.so -passes=kernscope-hello -S /tmp/hp.ll
+LLVM ERROR: Plugin entry point not found in '/tmp/kp-fixtures/libno-symbol.so'. Is this a legacy plugin?
+$ echo $? -> 1
+-> no segfault; single diagnostic line; clean exit 1.
+
+FIXTURE C — genuine cross-version C++ ABI mismatch (19.1.7 -> 21.1.8)
+---------------------------------------------------------------------
+The REAL kernscope-pass sources (src/register_pass.cpp, src/plugin.cpp,
+src/hello_pass.cpp + include/) compiled UNCHANGED against the store
+LLVM 19.1.7 dev package:
+  LLVM_DIR=/nix/store/qk0xmgzglmyrp3cq5z8plx0vxh4jizkr-llvm-19.1.7-dev/lib/cmake/llvm
+(notes: nixpkgs LLVMConfigVersion.cmake is strict-major.minor patched —
+find_package must request "19.1", same as the root project's "21.1").
+Output: /tmp/kp-mismatch/b/lib/kernscope-pass-19.so (linked against
+libLLVM.so.19).
+
+$ opt -load-pass-plugin=/tmp/kp-mismatch/b/lib/kernscope-pass-19.so -passes=kernscope-hello -S /tmp/hp.ll
+bash: line 4: 808134 Segmentation fault (core dumped) opt ...
+$ echo $? -> 139
+-> dlopen itself SUCCEEDED (the struct layout is identical between 19 and
+   21, and the mangled C++ symbols resolve lazily against opt-21's
+   libLLVM.so.21) — the crash is the C++-level ABI break (PassBuilder
+   internals differ), with LLVM's crash handler printing a stack dump
+   ("PLEASE submit a bug report..."). clang-21 -fpass-plugin with the
+   same .so likewise crashes (its handler converts the signal to a
+   diagnostic + exit 1, still a crash, not graceful).
+
+CONCLUSION (documented decision, per the plan's "else" branch)
+--------------------------------------------------------------
+- The graceful, LLVM-official error paths are ASSERTED via A (APIVersion
+  guard — the exact mechanism a struct-layout change triggers) and B
+  (entry-point guard): deterministic single-line diagnostics, exit 1, no
+  segfault, no core dump.
+- The genuine 19->21 C++-level mismatch (C) cannot be caught gracefully
+  by any version gate — that is LLVM's documented ABI-instability reality
+  (research brief §1.2), and the honest evidence shows it. This is the
+  "rebuild the plugin per LLVM release" mandate in action; the scaffold
+  enforces the match by building against the pinned llvmPackages_21 dev
+  outputs (LLVM_DIR from the nix store) and loading with the same LLVM 21
+  tools.
+- No changes were made to the repo for this QA (fixtures live in /tmp).

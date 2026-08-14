@@ -1,0 +1,151 @@
+task-36-gpu-kernel-suite — HAPPY PATH
+=====================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 36 · Wave 7 (pass track)
+Commit: 8727501 (skeleton) + final commit feat(pass): out-of-tree LLVM 21
+pass-plugin scaffold with lit wiring
+
+WHAT LANDED
+-----------
+tools/pass/ tree (out-of-tree LLVM 21 pass plugin, "kernscope-pass"):
+  tools/CMakeLists.txt                       + add_subdirectory(pass) (one-time)
+  tools/pass/CMakeLists.txt                  MODULE plugin target (PREFIX ""
+                                             = lib/kernscope-pass.so, Bye
+                                             convention) + lit site-cfg wiring
+                                             + the 5 pass-module subdirs
+  tools/pass/include/kernscope/pass/register_pass.h   REGISTER_PASS_CALLBACK
+                                             registry contract (see bottom)
+  tools/pass/include/kernscope/pass/hello_pass.h      HelloPass smoke pass
+  tools/pass/src/register_pass.cpp           global std::vector<std::function<
+                                             void(llvm::PassBuilder&)>>
+  tools/pass/src/plugin.cpp                  llvmGetPassPluginInfo — generic
+                                             entry iterating the registry
+  tools/pass/src/hello_pass.cpp              HelloPass + its
+                                             REGISTER_PASS_CALLBACK wiring
+                                             pipeline-start + peephole EPs
+                                             + parsing callback
+  tools/pass/passes/{vectorize,pad,rle,promote,tile}/CMakeLists.txt  STUBS
+  tools/pass/README.md                       module contract for todos 37-41
+tests/pass/                                  lit suite (added to the single
+                                             check-kernscope target in
+                                             test/CMakeLists.txt + DEPENDS
+                                             kernscope-pass):
+  lit.cfg.py / lit.site.cfg.py.in            mirrors tests/verify; unwraps
+                                             the nix clang wrapper + stages
+                                             the synthetic CUDA root
+                                             (todo-5 idiom, verify parity)
+  hello_pass.test                            opt -load-pass-plugin smoke
+  clang_fpass_plugin.test                    clang -fpass-plugin .cu smoke
+  Inputs/hello_kernel.cu                     minimal device-only kernel
+
+MUST-NOT compliance: no libs/* or other tools touched (only test/
+CMakeLists.txt one-time hook + tools/CMakeLists.txt one-time hook, both
+explicitly allowed by the plan); no sibling projects; LLVM IR only (no MLIR
+dialects); no llvm-tutor code (llvm/examples/Bye shape adapted); no NVIDIA
+runtime; scripts/ci-baseline.txt untouched.
+
+ACCEPTANCE 1: cmake --build build (Werror clean)
+-------------------------------------------------
+$ devenv shell -- cmake --build build --target kernscope-pass
+[1/5] Building CXX object tools/pass/CMakeFiles/kernscope-pass.dir/src/register_pass.cpp.o
+[2/5] Building CXX object tools/pass/CMakeFiles/kernscope-pass.dir/src/plugin.cpp.o
+[3/5] Building CXX object tools/pass/CMakeFiles/kernscope-pass.dir/src/hello_pass.cpp.o
+[4/5] Linking CXX shared module lib/kernscope-pass.so
+-> exit 0. Builds against llvmPackages_21 dev outputs
+   (LLVM_DIR=/nix/store/4768r0pa7fswbi0mdjalqc9pm56fh2vm-llvm-21.1.8-dev/
+    lib/cmake/llvm, LLVM 21.1.8; LLVM_ENABLE_RTTI=TRUE -> default RTTI,
+    LLVM_ENABLE_PLUGINS=ON -> dlopen works).
+
+ACCEPTANCE 2: opt -load-pass-plugin (textual name path)
+--------------------------------------------------------
+$ opt -load-pass-plugin=build/lib/kernscope-pass.so -passes=kernscope-hello -S /tmp/hp.ll
+; ModuleID = '/tmp/hp.ll'
+define void @smoke() #0 { ret void }
+attributes #0 = { "kernscope.hello" }
+-> marker attribute FileCheck-matched; rc=0
+
+ACCEPTANCE 3: opt -load-pass-plugin (EP path, pipeline-start + peephole)
+------------------------------------------------------------------------
+$ opt -load-pass-plugin=build/lib/kernscope-pass.so -passes='default<O2>' -S /tmp/hp.ll
+attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) "kernscope.hello" }
+-> marker survives the whole O2 pipeline (stamped at pipeline-start EP,
+   re-stamped by the peephole EP after InstCombine); rc=0
+
+ACCEPTANCE 4: clang -fpass-plugin (real CUDA device path)
+---------------------------------------------------------
+$ clang -x cuda --cuda-device-only -nocudalib --no-cuda-version-check \
+    --cuda-path=<staged root> --cuda-gpu-arch=sm_80 -O1 \
+    -fpass-plugin=build/lib/kernscope-pass.so -S -emit-llvm hello_kernel.cu
+define dso_local ptx_kernel void @hello_kernel() local_unnamed_addr #0 { ... }
+grep -c kernscope.hello -> 1  (marker in emitted IR)
+-> rc=0. Clang used: unwrapped /nix/store/...-clang-21.1.8/bin/clang (the
+   nix WRAPPER injects -mtls-dialect=/-fzero-call-used-regs= which nvptx64
+   rejects — the same unwrap the verify ingester does). CUDA root staged
+   in lit.cfg.py from $CUDA_HOME include/ + nvcc package bin/ + nvvm/ +
+   curand shim (todo-5 synthetic-root idiom).
+
+ACCEPTANCE 5: check-kernscope lit (both load paths in one target)
+-----------------------------------------------------------------
+$ devenv shell -- cmake --build build --target check-kernscope
+PASS: kernscope :: Other/echo.test (1 of 9)
+PASS: kernscope :: Other/hello.ll (2 of 9)
+PASS: kernscope :: analyze/amd.test (3 of 9)
+PASS: kernscope-pass :: hello_pass.test (4 of 9)
+PASS: kernscope :: analyze/golden.test (5 of 9)
+PASS: kernscope :: analyze/corpus.test (6 of 9)
+PASS: kernscope-pass :: clang_fpass_plugin.test (7 of 9)
+PASS: kernscope-verify :: e2e_approved_ir.test (8 of 9)
+PASS: kernscope-verify :: verify_manifest.test (9 of 9)
+Total Discovered Tests: 9  Passed: 9 (100.00%)
+-> exit 0. LLVM_EXTERNAL_LIT pin (tt-flow pattern) in effect:
+   .../python3.14-lit-18.1.8/bin/.lit-wrapped (from CMakeCache).
+
+ACCEPTANCE 6: bash scripts/ci.sh
+--------------------------------
+$ devenv shell -- bash scripts/ci.sh ; echo $? -> 0
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"
+[PASS] ctest count guard: 565 tests >= baseline 550 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)
+[PASS] pytest tests/golden -q
+[PASS] generated-code compile checks (scripts/compile_checks.sh)
+[PASS] fixture size: 1MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard
+[PASS] NVIDIA-content guard
+[PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail)
+-> exit 0; baseline 550 untouched, count grew 550 -> 565.
+
+THE REGISTER_PASS CONTRACT (verbatim from register_pass.h, abbreviated)
+-----------------------------------------------------------------------
+PassRegistry: singleton holding
+std::vector<std::function<void(llvm::PassBuilder&)>> callbacks_;
+(registerCallback / callbacks accessors; PassRegistrar ctor appends).
+Macro:
+#define REGISTER_PASS_CALLBACK(CallbackLambda)                          \
+  static ::kernscope::pass::PassRegistrar kernscope_pass_register_##__COUNTER__(\
+      CallbackLambda)
+Module contract: each pass module (tools/pass/passes/<name>/) defines its
+PassInfoMixin pass(es) in its own dir and at file scope of one of its .cpp
+files calls REGISTER_PASS_CALLBACK([](llvm::PassBuilder &PB){ ... }) which
+wires (a) registerPipelineParsingCallback for `opt -passes=kernscope-<name>`
+and (b) EP callbacks (registerPipelineStartEPCallback / registerPeepholeEP
+Callback / ...) for auto-run under clang -fpass-plugin and
+opt -passes=default<O2>. src/plugin.cpp never names a pass — it iterates
+PassRegistry::instance().callbacks() with the PassBuilder at dlopen time.
+No shared-file edits needed by todos 37-41 (their stub CMakeLists exist).
+
+RISKS / DEVIATIONS
+------------------
+1. MODULE libs DO get the "lib" prefix under CMake 4.3.4 by default —
+   set PREFIX "" to match the in-tree Bye.so convention; path pinned in
+   lit site cfg (build/lib/kernscope-pass.so).
+2. nix clang wrapper breaks nvptx device compiles (-mtls-dialect= etc.) —
+   lit.cfg.py unwraps it (verify ingester parity); documented in file.
+3. clang 21 only enables CUDA keywords when it DETECTS an installation:
+   -nocudainc demotes to C++ (__global__ unknown). Synthetic staged root
+   (verify's stage_cuda_root recipe) + -nocudalib, no -nocudainc.
+4. lit RUN lines must quote 'default<O2>' for the test shell.
+5. REAL cross-version C++ ABI mismatch (plugin built vs LLVM 19 loaded in
+   opt-21) SEGFAULTS — LLVM only guards the struct layout via APIVersion
+   (research brief §1.2); graceful failure is asserted via the version-
+   guard + entry-point-guard fixtures (negative evidence file).
