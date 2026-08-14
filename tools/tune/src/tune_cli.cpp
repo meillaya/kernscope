@@ -402,7 +402,9 @@ void print_html(const std::string &evidence_json, const std::string &family,
   std::printf("<header><h1>kernscope-tune variant report: %s %s (%s)</h1>"
               "<p class=\"meta\">correctness-gated autotune &middot; "
               "GPU-free pre-screen &rarr; compile &rarr; golden gate &rarr; "
-              "bench &rarr; select</p></header><main>\n");
+              "bench &rarr; select</p></header><main>\n",
+              html_escape(family).c_str(), html_escape(shape_csv).c_str(),
+              html_escape(arch).c_str());
 
   const bool has_best = ev && ev->find("best");
   std::printf("<section><h2>Summary</h2><div class=\"cards\">");
