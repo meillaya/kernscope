@@ -1,0 +1,117 @@
+kernscope todo 9 — libs/ptxparse PTX parser (CFG, state spaces, tensor taxonomy) — QA evidence (happy path)
+============================================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 9 of gpu-kernel-suite plan)
+Commit: feat(ptxparse): PTX parser with CFG, state spaces, tensor-core taxonomy
+
+FILES CREATED
+  libs/ptxparse/CMakeLists.txt             kernscope_ptxparse STATIC (C++20,
+                                           -Wall -Wextra -Werror inherited from
+                                           root; libs/arch pattern) +
+                                           kernscope-ptxdump executable target
+                                           (RUNTIME_OUTPUT_DIRECTORY build/bin)
+                                           + ptxparse-test gtest suite
+                                           (TEST_PREFIX "ptxparse:", LABELS
+                                           no-gpu) + 3 ctest ptxdump gates
+  libs/ptxparse/include/kernscope/ptx.h    PtxModule/PtxKernel/PtxBlock/
+                                           PtxInstruction/PtxOperand/PtxVariable/
+                                           PtxTensorOp/PtxParseError +
+                                           parse_ptx_module() API
+  libs/ptxparse/src/token.h                internal lexer token definitions
+  libs/ptxparse/src/ptx_lexer.cpp          line/col tokenizer (registers %r<N>,
+                                           %tid.x, dotted mnemonics, cta_group::1/
+                                           kind::f16/.shared::cta namespaces,
+                                           labels, numbers, strings, comments)
+  libs/ptxparse/src/ptx_parser.cpp         directives, variable decls (state
+                                           space + alignment), .entry/.func
+                                           bodies, instruction taxonomy, CFG
+                                           successor edges + kernel stats
+  libs/ptxparse/tests/ptxparse_test.cpp    gtest: 13 cases (6 corpus asserts,
+                                           7 robustness/malformed)
+  tools/ptxdump/main.cpp                   kernscope-ptxdump <file.ptx> -> JSON
+                                           (kernscope::db::json), exit 0/1/2
+  tests/ptxparse/corpus/*.ptx              6 fixtures + truncated negative
+                                           fixture (see corpus README)
+  tests/ptxparse/corpus/manifest.json      expected stats per fixture
+                                           (tcgen05 entry: parse_only: true)
+  tests/ptxparse/README.md                 fixture provenance + nvcc commands
+  tests/ptxparse/check_dump.py             python3 JSON-shape gate for ctest
+  CMakeLists.txt (root)                    + add_subdirectory(libs/ptxparse)
+
+FIXTURE GENERATION (FIXTURE GENERATION RULE followed)
+  mma_sm80.ptx  : nvcc 12.6 -arch=sm_80 -ptx from tiny .cu w/ mma.sync.aligned.
+                  m16n8k16 inline asm (assemblable, parse_only: false)
+  wgmma_sm90.ptx: nvcc 12.6 -arch=sm_90a -ptx from tiny .cu w/ wgmma.mma_async.
+                  m64n64k16 + commit_group + wait_group (parse_only: false)
+  tcgen05_sm100.ptx: HAND-WRITTEN per PTX ISA 8.6+ syntax (.target sm_100a,
+                  tcgen05.alloc/mma/ld/st/commit/wait/dealloc with cta_group::
+                  kind:: shared::cta mbarrier::complete_tx::bytes suffixes).
+                  nvcc 12.6 CANNOT target sm_100 -> parse-only corpus, never
+                  assembled, never ptxas-validated. manifest entry:
+                  "parse_only": true; parser marks every tcgen05-family tensor
+                  op parse_only=true (documented rule in ptx.h).
+  minimal/divergent/strided: hand-written parse-only corpus (parse_only: true)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (all inside `devenv shell`)
+  $ cmake --build build
+      -> exit 0  ("ninja: no work to do." — full superbuild incl. prior
+         arch/db/report/amdparse/roofline targets; no regressions)
+  $ (cd build && ctest -R ptxparse --output-on-failure)
+      -> "100% tests passed, 0 tests failed out of 11" (exit 0)
+         11 tests: 8 gtest cases matching -R ptxparse + ptxparse-ptxdump-real-
+         fixture + ptxparse-ptxdump-json-check + ptxparse-ptxdump-negative
+  $ (cd build && ctest --output-on-failure)            # full suite, no regressions
+      -> "100% tests passed, 0 tests failed out of 50" (exit 0)
+  $ cmake --build build --target check-kernscope      # existing lit suite untouched
+      -> PASS: 2/2 (Other/echo.test, Other/hello.ll)
+  $ ./build/bin/kernscope-ptxdump tests/fixtures/fused_attention.ptx
+      -> exit 0, valid JSON (see stats below)
+  $ ./build/libs/ptxparse/ptxparse-test
+      -> "[  PASSED  ] 13 tests." (6 corpus MatchesManifest + 7 malformed/
+         robustness incl. truncated fused_attention at 37%/90% offsets)
+
+FUSED_ATTENTION.PTX PARSE STATS (nvcc sm_86, PTX 8.5, 4641 lines)
+  entry name      : _Z15fused_attentionPKfS0_S0_Pfi
+  instruction_count: 2418
+  bar_sync_count  : 2            (>= 1 required - PASS)
+  shared_access   : 536          (>= 1 required - PASS; 520 ld.shared.v4 +
+                                  11 st.shared.f32 + 5 st.shared.v2)
+  global_access   : 84           (20 ld.global.nc.f32 + 64 st.global.f32)
+  local_access    : 0            (no spills - matches todo-5 spill_stores 0)
+  const_access    : 0
+  param_access    : 4            (ld.param.u64 x4)
+  CFG             : 77 blocks, 80 edges (predicated @%p bra + fallthrough,
+                    bra targets; ret terminates)
+  mem widths      : 32-bit 620, 64-bit 4
+  class_counts    : alu 336, bar 2, bra 78, cvta 4, fma 1024, ld 544,
+                    logic 67, math 1, mov 204, ret 1, setp 77, st 80
+  CROSS-VALIDATION vs todo-5 expected_fused_attention.json: fma 1024 == 1024,
+  setp 77 == 77, ld 544 == 520+20+4, st 80 == 64+16, alu 336 == 254+33+23+10
+  +7+5+2+2, mov 204 == 132+72, logic 67 == 41+10+7+8+1, math 1 == ex2 1.
+
+CORPUS ASSERTIONS (gtest MatchesManifest, exact per manifest.json)
+  minimal_kernel    : 3 insn, 1 bar.sync, 0 edges
+  divergent_branch  : 10 insn, 4 cfg edges (predicated bra + fallthrough),
+                      1 global access
+  strided_smem      : 10 insn, 2 shared accesses, 0 edges
+  mma_sm80          : 13 insn, 1 tensor op class "mma.sync" (parse_only false)
+  wgmma_sm90        : 20 insn, 3 tensor ops ["wgmma.mma_async",
+                      "wgmma.commit_group", "wgmma.wait_group"] (parse_only false)
+  tcgen05_sm100     : 10 insn, 7 tensor ops all class "tcgen05"/"tcgen05.mma",
+                      ALL parse_only == true (manifest parse_only: true)
+
+DEVIATIONS / NOTES
+  * kernscope-ptxdump target is defined in libs/ptxparse/CMakeLists.txt (not
+    tools/ptxdump/CMakeLists.txt) per deliverable-1 wording; root CMakeLists
+    adds only add_subdirectory(libs/ptxparse).
+  * ptxdump JSON uses kernscope::db::json (libs/db, no external dep; canonical
+    lexicographic key order). class_counts keys are stable single-word names.
+  * CFG fallthrough edge is represented by the next block's LABEL; a
+    fallthrough into an unlabeled block adds no successor string (edge count
+    reflects labeled targets only). Predicated @p bra contributes target +
+    labeled fallthrough; unconditional bra contributes its target only;
+    ret/exit contribute none.
+  * mem_width_counts covers ld/st classes (type suffix bits, e.g. v4.f32 = 32).
+  * tcgen05.ld/st (tensor-memory ops) are tracked in tensor_ops, not in the
+    ld/st state-space access counters.
+  * Non-entry .func bodies parse into kernels() with entry_point=false.

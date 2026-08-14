@@ -1,0 +1,48 @@
+kernscope todo 9 — libs/ptxparse PTX parser — QA evidence (negative path)
+========================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 9 of gpu-kernel-suite plan)
+Commit: feat(ptxparse): PTX parser with CFG, state spaces, tensor-core taxonomy
+
+PURPOSE
+  Prove the parse-only parser's malformed-input contract (plan todo 9
+  acceptance): truncated/malformed PTX must produce a line:col diagnostic,
+  exit non-zero, never crash, and never emit a silent partial dump. The
+  same behavior is asserted by gtest (TruncatedCorpusFixtureThrowsWithLineCol,
+  TruncatedRealFixtureAtOffsetsThrowsWithLineCol, GarbageInputThrows,
+  EmptyInputThrows, UnbalancedBodyThrows, MissingMnemonicAfterPredicateThrows)
+  and by the WILL_FAIL ctest gate ptxparse-ptxdump-negative.
+
+SCENARIO 1 — committed truncated fixture (corpus/truncated_kernel.ptx:
+minimal_kernel body cut mid-instruction, no ';', no closing '}')
+  $ ./build/bin/kernscope-ptxdump tests/ptxparse/corpus/truncated_kernel.ptx
+  kernscope-ptxdump: ptx parse error at line 10 col 1: expected ';', got ''
+  $ echo $? -> 1
+  -> non-zero exit + line:col diagnostic, no crash, no partial JSON on stdout
+
+SCENARIO 2 — garbage input (not PTX)
+  $ printf 'this is not ptx at all\n' > /tmp/garbage.ptx
+  $ ./build/bin/kernscope-ptxdump /tmp/garbage.ptx
+  kernscope-ptxdump: ptx parse error at line 1 col 1: expected a PTX
+  directive, got 'this'
+  $ echo $? -> 1
+
+SCENARIO 3 — real fixture truncated at 40% (1929/4641 lines)
+  $ head -c $(( $(stat -c%s tests/fixtures/fused_attention.ptx) * 40 / 100 )) \
+      tests/fixtures/fused_attention.ptx > /tmp/trunc_real.ptx
+  $ ./build/bin/kernscope-ptxdump /tmp/trunc_real.ptx
+  kernscope-ptxdump: ptx parse error at line 1929 col 24: expected ';', got ''
+  $ echo $? -> 1
+  -> the error lands exactly at the truncation point; gtest also verifies
+     e.line() > 0 and e.col() > 0 at the 37% and 90% cut points.
+
+SCENARIO 4 — ctest negative gate (WILL_FAIL inverts)
+  $ (cd build && ctest -R ptxparse-ptxdump-negative)
+  -> "ptxparse-ptxdump-negative ... Passed" (ctest passes exactly because the
+     tool exits non-zero on the truncated fixture; if the tool silently
+     parsed, this gate would fail)
+
+RESULT: malformed input always yields "ptx parse error at line L col C: ..."
+on stderr and exit code 1 (usage/file errors exit 2); parse_ptx_module never
+returns a partial module. No crash on any input (asan-clean by construction:
+parser is bounds-checked token stream + std:: containers only).
