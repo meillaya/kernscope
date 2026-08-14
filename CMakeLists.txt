@@ -50,6 +50,10 @@ add_subdirectory(libs/ptxparse)
 # occupancy depends on libs/arch (ISA-resolved constants) and is consumed by
 # tools/analyze (todo 14) / tools/tune (todo 28) / tools/profile (todo 50).
 add_subdirectory(libs/occupancy)
+# gpuruntime: thin CUDA/HIP runtime abstraction (todo 21), consumed by the
+# capture/profile tracks; registers the no-gpu mock/compile-only suites and
+# the gpu-amd live HIP suite.
+add_subdirectory(libs/gpuruntime)
 add_subdirectory(tools/analyze)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
