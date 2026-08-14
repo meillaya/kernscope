@@ -1,0 +1,33 @@
+task-26-gpu-kernel-suite.txt
+============================
+Todo 26 (tune: bias+GELU/softmax/layernorm/reduction templates) — HAPPY
+PATH evidence. Owner: implementation worker.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+COMMITS
+-------
+  16f4a84  feat(tune): bias+GELU/softmax/layernorm/reduction templates
+  958cf05  fix(tune): reduction column offset + elem CLI mode validation
+
+VERIFICATION COMMANDS + RESULTS (as recorded in ledger entry task-26)
+--------------------------------------------------------------------
+  1. ctest -R tune_elem_gen 15/15 — recorded pass (redo after an aborted
+     first dispatch).
+  2. 8 live gfx1101 golden verdicts, all pass:true, cosine >= 0.999.
+  3. softmax vec4 non-divisible rejection (510 not divisible by 1024).
+
+VERIFIER CONFIRMATION (verifier_session ses_ffee4f39cffegFIry9G9mPW6fc)
+----------------------------------------------------------------------
+  - verifier confirmed all 8 live verdicts.
+  - real reduction bug found + fixed during QA (cosine 0.0126 -> 1.0).
+  - stale_state: baseline 547 read before editing; no clobber with the
+    parallel matmul (todo 25) worker.
+
+ARTIFACTS
+---------
+  tools/tune elementwise template family (bias+GELU/softmax/layernorm/
+  reduction emitters + elem CLI mode validation)
+  .omo/evidence/task-26-gpu-kernel-suite.txt + -negative.txt (this pair)

@@ -1,0 +1,34 @@
+task-21-gpu-kernel-suite.txt
+============================
+Todo 21 (gpuruntime: CUDA/HIP runtime abstraction with compile-only + mock
+modes) — HAPPY PATH evidence. Owner: implementation worker.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+COMMIT
+------
+  e96ca6c  feat(gpuruntime): CUDA/HIP runtime abstraction with compile-only
+           + mock modes
+
+VERIFICATION COMMANDS + RESULTS (as recorded in ledger entry task-21)
+--------------------------------------------------------------------
+  1. ctest -R gpuruntime 13 (10 no-gpu + 3 gpu-amd live) — recorded pass.
+  2. live HIP gfx1101 launch+roundtrip — host-computed expected values
+     (not self-referential); recorded pass.
+  3. mock byte-exact buffers + op-order contract — recorded pass.
+  4. compile-only typed errors — recorded pass.
+
+VERIFIER CONFIRMATION (verifier_session ses_fff9a364effebnQK5MEK1CSRun)
+----------------------------------------------------------------------
+  - live tests genuinely ran on gfx1101: ldd libamdhip64, rocminfo gfx1101,
+    /dev/kfd accessible, non-trivial durations, KERNSCOPE_NO_LIVE_HIP stub
+    NOT registered.
+  - dirty_worktree: first attempt committed nothing (verified); redo
+    committed e96ca6c.
+
+ARTIFACTS
+---------
+  tools/gpuruntime (CUDA/HIP runtime abstraction; compile-only + mock modes)
+  .omo/evidence/task-21-gpu-kernel-suite.txt + -negative.txt (this pair)

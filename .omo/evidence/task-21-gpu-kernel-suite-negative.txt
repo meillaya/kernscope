@@ -1,0 +1,22 @@
+task-21-gpu-kernel-suite-negative.txt
+=====================================
+Todo 21 (gpuruntime) — QA NEGATIVE evidence.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+ADVERSARIAL / NEGATIVE SCENARIOS (as recorded in ledger entry task-21)
+----------------------------------------------------------------------
+  1. Live-HIP anti-stub check: KERNSCOPE_NO_LIVE_HIP stub NOT registered —
+     the 3 gpu-amd live tests genuinely ran on hardware (gfx1101) and were
+     not silently stubbed to a mock path.
+  2. compile-only mode must fail with typed errors (no silent success on
+     unsupported runtimes / invalid usage).
+  3. First dispatch produced zero deliverables and no commit — caught by
+     orchestration, re-dispatched; the redo committed e96ca6c and nothing
+     from the first attempt leaked into the tree.
+
+These match the ledger's adversarial_classes notes
+(misleading_success_output / dirty_worktree); no separate negative
+scenario beyond these is recorded in the ledger.

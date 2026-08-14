@@ -1,0 +1,42 @@
+task-29-gpu-kernel-suite.txt
+============================
+Todo 29 (tune: kernscope-tune CLI + reports + reproducibility scripts) —
+HAPPY PATH evidence. Owner: implementation worker.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+COMMITS
+-------
+  9b77cd6  feat(tune): kernscope-tune CLI + reports + reproducibility
+           scripts
+  433e8fa  fix(tune): interpolate kernel metadata into report h1
+
+VERIFICATION COMMANDS + RESULTS (as recorded in ledger entry task-29)
+--------------------------------------------------------------------
+  1. check_report.py PASS — best 64x64x16 warps4 stages1, median 0.2027ms,
+     roofline pos 1 compute, occ 0.875, speedup 4.2x, 15/24 measured.
+  2. ctest tune_report #550 PASS.
+  3. --text owner-format verified.
+  4. --html self-contained (0 external URLs, 2 JSON payloads parse).
+  5. --emit-repro ran for real: gen -> compile -> golden pass:true on
+     gfx1101.
+  6. exit-3 unknown --kernel QA PASS.
+  7. ci.sh green 550/550.
+
+VERIFIER CONFIRMATION (verifier_session ses_ffea651b8ffed9yOtMYa2FZ5Ym)
+----------------------------------------------------------------------
+  - re-ran every acceptance + repro actually executed on GPU (not cache
+    replay).
+  - html header (null) bug found + fixed (433e8fa: printf %s with no args).
+  - stale_state: pre-existing flaky BenchLive.PeakBwD2dCopy (296.79 vs 300
+    floor) blocked ci.sh -> fixed 4f55504 max-of-5 sampling; 10/10
+    measurement passes + 2 consecutive green ci.sh runs; count guard
+    stable 550.
+
+ARTIFACTS
+---------
+  tools/tune kernscope-tune CLI + report generator + reproducibility
+  scripts + docs/tuning.md
+  .omo/evidence/task-29-gpu-kernel-suite.txt + -negative.txt (this pair)

@@ -1,0 +1,18 @@
+task-28-gpu-kernel-suite-negative.txt
+=====================================
+Todo 28 (tuning driver + cache) — QA NEGATIVE evidence.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+ADVERSARIAL / NEGATIVE SCENARIOS (as recorded in ledger entry task-28)
+----------------------------------------------------------------------
+  1. min-occupancy 1.0 cold cache -> no viable config, driver exits 1
+     (honest failure, not a fabricated best).
+  2. injected-sabotage negative: a deliberately bad candidate was discarded
+     by the golden gate; tunecache recorded golden_gate_failed=1 (NOT
+     skipped / NOT silently accepted).
+  3. cache-semantics gaps found during QA and fixed: min-occupancy now
+     per-entry floor-gated (24a573f) + --no-cache flag.
+  4. cache resume: old-format cache entries load as floor 0 gracefully.

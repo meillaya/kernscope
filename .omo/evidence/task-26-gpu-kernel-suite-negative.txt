@@ -1,0 +1,17 @@
+task-26-gpu-kernel-suite-negative.txt
+=====================================
+Todo 26 (elem templates) — QA NEGATIVE evidence.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+ADVERSARIAL / NEGATIVE SCENARIOS (as recorded in ledger entry task-26)
+----------------------------------------------------------------------
+  1. softmax vec4 non-divisible rejection: 510 is not divisible by 1024 ->
+     config rejected (pre-compile) rather than emitting a miscompiling
+     kernel.
+  2. reduction bug caught during QA: a real reduction defect produced
+     cosine 0.0126 (wrong result); found + fixed, final verdict cosine 1.0.
+  3. no cross-worker clobber: baseline 547 read before editing; elementwise
+     work did not clobber the parallel matmul (todo 25) worker's files.

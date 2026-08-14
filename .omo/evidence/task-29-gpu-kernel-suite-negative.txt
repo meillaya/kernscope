@@ -1,0 +1,20 @@
+task-29-gpu-kernel-suite-negative.txt
+=====================================
+Todo 29 (tune CLI + reports) — QA NEGATIVE evidence.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+ADVERSARIAL / NEGATIVE SCENARIOS (as recorded in ledger entry task-29)
+----------------------------------------------------------------------
+  1. exit-3 unknown --kernel QA PASS — unknown kernel name exits 3, not a
+     silent success.
+  2. html header (null) bug: found by verifier, fixed in 433e8fa (printf
+     %s with no args) — report renders interpolated kernel metadata, no
+     null header.
+  3. not-cache-replay check: the --emit-repro path was executed for real on
+     the GPU (gen -> compile -> golden pass:true), not replayed from the
+     JSON cache.
+  4. stale_state: pre-existing flaky BenchLive.PeakBwD2dCopy (296.79 vs 300
+     floor) blocked ci.sh -> fixed 4f55504 (max-of-5 sampling).

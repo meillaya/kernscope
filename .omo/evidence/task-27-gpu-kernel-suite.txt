@@ -1,0 +1,33 @@
+task-27-gpu-kernel-suite.txt
+============================
+Todo 27 (tune: FlashAttention-lite template) — HAPPY PATH evidence. Owner:
+implementation worker.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+COMMIT
+------
+  f97ca8f  feat(tune): FlashAttention-lite template
+
+VERIFICATION COMMANDS + RESULTS (as recorded in ledger entry task-27)
+--------------------------------------------------------------------
+  1. ctest -R tune_flash_gen 8/8 — recorded pass.
+  2. live gfx1101 online-softmax: non-causal pass:true (cosine
+     0.99999994) + causal pass:true (cosine 1.0).
+  3. over-budget rejection (67072 > 65536) pre-compile.
+  4. sanctioned golden causal extension.
+
+VERIFIER CONFIRMATION (verifier_session ses_fff55ec97ffehQrmfqMaTZNesX)
+----------------------------------------------------------------------
+  - confirmed genuine GPU run: backend=hip, real launches grid 2x1 block
+    32x32, rocminfo gfx1101.
+  - algorithm is parametric online-softmax, not hardcoded.
+  - rejection message reproduced standalone.
+  - stale_state: causal mask semantics proven via two-sided golden pytest.
+
+ARTIFACTS
+---------
+  tools/tune FlashAttention-lite template (online-softmax emitter)
+  .omo/evidence/task-27-gpu-kernel-suite.txt + -negative.txt (this pair)

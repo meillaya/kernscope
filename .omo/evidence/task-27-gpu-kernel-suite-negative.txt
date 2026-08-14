@@ -1,0 +1,18 @@
+task-27-gpu-kernel-suite-negative.txt
+=====================================
+Todo 27 (FlashAttention-lite template) — QA NEGATIVE evidence.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+ADVERSARIAL / NEGATIVE SCENARIOS (as recorded in ledger entry task-27)
+----------------------------------------------------------------------
+  1. over-budget rejection: shared-memory estimate 67072 bytes > 65536
+     limit -> rejected pre-compile (no compile attempt for an
+     unplaceable config).
+  2. no-hardcoding check: algorithm is parametric online-softmax; verifier
+     confirmed the rejection message reproduced standalone (not
+     special-cased).
+  3. causal-vs-non-causal distinction proven via two-sided golden pytest
+     (causal mask semantics not assumed).

@@ -1,0 +1,35 @@
+task-28-gpu-kernel-suite.txt
+============================
+Todo 28 (tune: correctness-gated tuning driver with GPU-free pre-screen +
+JSON cache) — HAPPY PATH evidence. Owner: implementation worker.
+
+RECONSTRUCTED 2026-08-14 from .omo/start-work/ledger.jsonl + git history
+(originals lost to a cleanup over-match during todo 30; underlying work was
+independently verified at the time — see git log + ledger)
+
+COMMITS
+-------
+  2c57116  feat(tune): correctness-gated tuning driver with GPU-free
+           pre-screen + JSON cache
+  24a573f  fix(tune): min-occupancy in cache key + --no-cache flag
+
+VERIFICATION COMMANDS + RESULTS (as recorded in ledger entry task-28)
+--------------------------------------------------------------------
+  1. ctest -R tune_driver 2/2 — live run: prescreen 9, golden_failed 1,
+     best 0.2028ms, cache re-run compiles 0.
+  2. min-occupancy 1.0 cold -> no viable config, exit 1.
+  3. db + tunecache written.
+
+VERIFIER CONFIRMATION (verifier_session ses_ffec530f3ffew3aowLzxV8ys9e)
+----------------------------------------------------------------------
+  - golden gate genuinely gates: injected sabotage discarded, tunecache
+    golden_gate_failed=1, NOT skipped; results measured, not hardcoded.
+  - 2 cache-semantics gaps found + fixed (min-occupancy per-entry
+    floor-gated in 24a573f; --no-cache flag).
+  - stale_state: cache resume verified (old-format entries load as floor 0
+    gracefully).
+
+ARTIFACTS
+---------
+  tools/tune correctness-gated tuning driver + JSON cache + reports/tune/
+  .omo/evidence/task-28-gpu-kernel-suite.txt + -negative.txt (this pair)
