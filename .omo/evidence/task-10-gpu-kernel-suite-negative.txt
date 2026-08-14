@@ -1,0 +1,47 @@
+TASK 10 (gpu-kernel-suite) - AMDGPU ISA TEXT PARSER (libs/amdparse) - EVIDENCE
+===============================================================================
+Date: 2026-08-14  |  Repo: /home/mei/projects/llvm.h  |  Mode: NEGATIVE PATH (QA failure scenario)
+Worker: implementation worker (todo 10)
+
+SCENARIO
+--------
+Feed assembly text containing an unknown mnemonic (`v_frobnicate_bogus`,
+which exists in no AMDGPU ISA) for target gfx1101. Contract:
+  - the parser MUST raise AmdParseError (it must NOT silently accept);
+  - the diagnostic MUST name the offending source line AND the target triple;
+  - a CLI consuming the parser MUST exit non-zero on this failure.
+
+QA TOOL (source /tmp/neg2.cpp, linked against the built libkernscope_amdparse):
+  exits 0 if parse unexpectedly SUCCEEDS (broken outcome),
+  exits 1 when AmdParseError is raised (expected outcome).
+
+EXACT OUTPUT
+------------
+  $ /tmp/amneg2
+  AmdParseError (line=3 col=2 triple=amdgcn-amd-amdhsa--gfx1101)
+    amdparse: failed to parse negative-fixture.s for target
+    amdgcn-amd-amdhsa--gfx1101 at line 3: invalid instruction
+  $ echo $?
+  1
+
+  -> line=3 (the `v_frobnicate_bogus v0, v1` line; input has
+     line1 ".text", line2 "s_waitcnt", line3 the bogus mnemonic)
+  -> triple=amdgcn-amd-amdhsa--gfx1101 (the exact acceptance triple)
+  -> exit code 1 (non-zero, as required)
+
+GTest ASSERTION (AmdParse.UnknownMnemonicThrowsWithLineAndTriple)
+-----------------------------------------------------------------
+  Asserts: parse_amd_module(...,"gfx1101") THROWS AmdParseError;
+           E.line == 3; E.target_triple == "amdgcn-amd-amdhsa--gfx1101";
+           what() mentions "line 3" and "gfx1101".
+  Result: [       OK ] AmdParse.UnknownMnemonicThrowsWithLineAndTriple
+  (ctest: 9/9 AmdParse tests passed; exit 0)
+
+DIAGNOSTIC SOURCE
+-----------------
+  The failing mnemonic is rejected by LLVM 21's AMDGPUAsmParser itself
+  (message "invalid instruction", SMLoc line 3). The parser's SourceMgr +
+  MCContext diagnostic handlers capture that diagnostic and re-raise it as
+  AmdParseError{message, line, column, target_triple}, so downstream tools
+  (todo 14 analyzer CLI) get structured, line-numbered failure diagnostics
+  for broken ISA input.

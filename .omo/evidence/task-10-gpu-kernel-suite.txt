@@ -1,0 +1,107 @@
+TASK 10 (gpu-kernel-suite) - AMDGPU ISA TEXT PARSER (libs/amdparse) - EVIDENCE
+===============================================================================
+Date: 2026-08-14  |  Repo: /home/mei/projects/llvm.h  |  Mode: HAPPY PATH
+Worker: implementation worker (todo 10)
+
+FILES CREATED
+--------------
+  libs/amdparse/CMakeLists.txt
+      Library `kernscope_amdparse` (static, C++20), links the LLVM component
+      (`target_link_libraries(... PUBLIC LLVM)` -- the imported LLVM target
+      from find_package(LLVM 21.1) = libLLVM.so.21.1 carrying every
+      registered target incl. AMDGPU). gtest suite `amdparse-test` with
+      LABELS no-gpu (ISA-text parsing is pure host-side).
+  libs/amdparse/include/kernscope/amd.h
+      Public API: parse_amd_module(asm, target, source_name) -> AmdModule
+      (instructions: mnemonic/class/operands/line/CFG metadata; blocks:
+      successors/predecessors/fallthrough); AmdParseError with line+column+
+      target_triple; InstrClass taxonomy (VALU/SALU/LDS/Global/Buffer/Flat/
+      Scratch/Branch/Barrier/Wait/EndPgm/MFMA/WMMA).
+  libs/amdparse/src/amd_parser.cpp
+      Drives LLVM 21 MC (InitializeAllTargetInfos/MCs/AsmParsers,
+      TargetRegistry::lookupTarget("amdgcn"), createMCAsmParser +
+      AMDGPUAsmParser via MCTargetAsmParser, custom MCStreamer recording
+      emitLabel/emitInstruction, AMDGPU null target streamer attached for
+      .amdhsa_kernel/.amdgpu_metadata directives, SourceMgr + MCContext
+      diagnostic handlers -> AmdParseError). CFG built from label events +
+      terminator instructions (s_branch/s_cbranch_*/s_endpgm).
+  libs/amdparse/tests/amdparse_test.cpp
+      9 gtests: layernorm counts (ds_*>0, global_load_*>0, CFG >= 1 branch),
+      wmma fixture tensor-tag (6 variants), mfma fixture tensor-tag,
+      unknown-mnemonic -> AmdParseError(line+triple), full-triple target,
+      scratch spill class, taxonomy classes, CFG edges/fallthrough.
+  tests/amdparse/corpus/{layernorm_gfx1101.s,wmma_fixture.s,mfma_fixture.s,README.md}
+      hipcc-generated gfx1101 asm (committed) + hand-authored RDNA3 WMMA and
+      CDNA2 MFMA fixtures (exact LLVM-MC syntax, verified with llvm-mc).
+  CMakeLists.txt: add_subdirectory(libs/amdparse) wired into superbuild.
+
+ACCEPTANCE COMMANDS (run inside `devenv shell`) + EXACT RESULTS
+----------------------------------------------------------------
+1) cmake --build build
+   Result: exit 0
+   (last lines: "[3/4] Linking CXX static library
+    libs/amdparse/libkernscope_amdparse.a", "[4/4] Linking CXX executable
+    libs/amdparse/amdparse-test", "ninja: no work to do." -> exit 0)
+
+2) (cd build && ctest -R "AmdParse" --output-on-failure)
+   Result: exit 0 -- 9/9 tests passed:
+     AmdParse.LayernormGfx1101ParseAndCounts       Passed
+     AmdParse.LayernormGfx1101GlobalLoadCount      Passed
+     AmdParse.WmmaFixtureTensorClass               Passed
+     AmdParse.MfmaFixtureTensorClass               Passed
+     AmdParse.UnknownMnemonicThrowsWithLineAndTriple Passed
+     AmdParse.FullTripleTargetAccepted             Passed
+     AmdParse.ScratchIsSpillClass                  Passed
+     AmdParse.TaxonomyClasses                      Passed
+     AmdParse.CfgEdgesAndFallthrough               Passed
+   "100% tests passed, 0 tests failed out of 9"
+
+3) Layernorm gfx1101 asm parse assertions (gtest asserted):
+   ds_* > 0  : LDS class count = 31 (ds_load_2addr_b32,
+               ds_load_2addr_stride64_b32, ds_load_b32,
+               ds_store_2addr_stride64_b32, ds_store_b32)  -> PASS
+   global_load_* > 0 : Global class = 4, global_load_u16 (is_load=3) -> PASS
+   CFG >= 1 branch : Branch class = 8 (s_cbranch_execz x7, ...); CFG has
+               branch edges (e.g. entry -> .LBB0_16, .LBB0_15 -> .LBB0_16)
+               -> PASS
+
+4) v_wmma fixture -> tensor-class tag (gtest):
+   WmmaFixtureTensorClass PASSED; WMMA count = 6 (all six RDNA3 16x16x16
+   variants: v_wmma_f32_16x16x16_f16, _bf16, v_wmma_f16_16x16x16_f16,
+   v_wmma_bf16_16x16x16_bf16, v_wmma_i32_16x16x16_iu8, v_wmma_i32_16x16x16_iu4);
+   every WMMA instruction has is_tensor == true.
+
+PARSE STATS (layernorm_gfx1101.s, triple amdgcn-amd-amdhsa--gfx1101)
+---------------------------------------------------------------------
+  instructions = 190, blocks = 20
+  VALU=65 SALU=43 LDS=31 Global=4 Buffer=8 Flat=0 Scratch=0 Branch=8
+  Barrier=8 Wait=22 EndPgm=1 MFMA=0 WMMA=0 Unknown=0
+  ds_*=31  global_load_*=3  branches=8
+  CFG edges (sampled): entry -> .LBB0_16; .LBB0_15 -> .LBB0_16;
+  conditional-branch diamonds .LBB0_3/.LBB0_5/.LBB0_7/.LBB0_9/.LBB0_11/
+  .LBB0_13 -> their .LBB0_N successor + fallthrough.
+
+FULL SUITE (regression check)
+-----------------------------
+  (cd build && ctest)  -> 39/39 passed, "100% tests passed, 0 tests failed
+  out of 39". (existing arch/db/report/analyze tests unaffected.)
+
+RISKS / DEVIATIONS
+------------------
+  * MC brittleness encountered (as anticipated in the task): LLVM 21.1's
+    AMDGPUAsmParser validates hipcc/clang's `.amdgcn_target
+    "amdgcn-amd-amdhsa--gfx1101"` against the TargetID it computes from the
+    STI. When the CPU is embedded in the triple ("...--gfx1101"), the
+    computed TargetID differs ("...-unknown-gfx1101-gfx1101") and llvm-mc
+    itself rejects the file. FIX (documented in code): pass the bare
+    "amdgcn-amd-amdhsa" triple to MC and give the CPU to
+    createMCSubtargetInfo() separately; TargetID then matches exactly.
+  * Scope fallback decision: NOT needed. The MC path parses the full
+    hipcc-generated file (incl. .amdhsa_kernel descriptor + .amdgpu_metadata
+    YAML) and hand-authored WMMA/MFMA fixtures. The parser's contract is
+    "hipcc/clang -S output" (the analyzer's exact input), with real
+    RDNA3/CDNA ISA fixtures as bonus coverage.
+  * No ROCm device libraries linked; SASS never parsed (ISA text only).
+  * One test-name note: ctest -R is case-sensitive; suite is "AmdParse",
+    so `ctest -R amdparse` matches zero tests. Verified with
+    `ctest -R "AmdParse"`. (Planned acceptance cmd was case-insensitive.)
