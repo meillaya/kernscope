@@ -9,9 +9,13 @@
 //   ...                               the load erased)
 //
 // For every candidate load L2 (non-volatile, non-atomic) the pass walks
-// its MemorySSA defining-access chain UP through:
+// the block's MemorySSA ACCESS LIST backward in program order (the
+// use-def chain alone never reaches earlier loads — sibling uses hang off
+// the same def):
 //
-//   * MemoryUse   — transparent: continue to its defining access.
+//   * MemoryUse   — a plain must-alias load (AA isMustAlias on
+//     MemoryLocation::get of both loads) is the redundancy proof; any
+//     other use is transparent.
 //   * MemoryDef   — if the def's instruction does not may-modify the
 //     location (AA getModRefInfo), it is transparent: continue. Otherwise
 //     STOP (a may-alias write between the two loads).
@@ -22,16 +26,17 @@
 //     conservatively. To continue PAST a barrier the location must be
 //     GLOBALLY INVARIANT (no MemoryDef anywhere in the function
 //     may-modifies it, per AA).
-//   * MemoryPhi   — continue only if the location is globally invariant
-//     AND every incoming edge walks to the same must-alias load (a single
-//     load dominating all paths to L2).
+//   * MemoryPhi   (head of a block's list) — continue only if the
+//     location is globally invariant AND every incoming edge walks to
+//     the same must-alias load (a single load dominating all paths to
+//     L2).
+//   * Volatile/atomic accesses — STOP the walk outright (their ordering
+//     semantics are not location-value semantics).
 //
-// When the walk reaches an earlier MemoryUse whose instruction is a plain
-// (non-volatile, non-atomic) load L1 of a MUST-ALIAS location (AA
-// isMustAlias on MemoryLocation::get of both loads), L2 is redundant. All
-// candidates are collected BEFORE any mutation (MemorySSA is stale after
-// the first rewrite and must never be re-queried); replacements then
-// erasures are applied afterwards.
+// Reaching a plain must-alias load L1 makes L2 redundant. All candidates
+// are collected BEFORE any mutation (MemorySSA is stale after the first
+// rewrite and must never be re-queried); replacements then erasures are
+// applied afterwards.
 //
 // THE TWO SOUNDNESS RULES (the GPU-specific value of this pass)
 // --------------------------------------------------------------

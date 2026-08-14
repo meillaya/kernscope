@@ -1,16 +1,44 @@
 ; addrsimp.test — kernscope-addrsimp: SCEV-based address simplification
 ; (todo 39, Wave 7).
 ;
-; SKELETON smoke: the pass is registered and runs without error. The golden
-; fixtures (mul->shl, GEP folding, loop-invariant hoisting) land with the
-; feature commit.
+; Three rewrites, framed for GPU address computation:
+;   1. mul X, 2^k -> shl X, k (SCEV-proven power-of-two ConstantInt;
+;      k == 0 erases the mul; nsw/nuw preserved — a mul by 2^k and a shl
+;      by k overflow identically for k >= 1).
+;   2. GEP folding via llvm::simplifyInstruction (InstSimplify).
+;   3. Loop-invariant address-chain hoisting to the preheader (whitelist:
+;      non-inbounds GEPs + integer arith without nsw/nuw/exact, operands
+;      all outside the loop, SCEV loop-invariant).
+;
+; Fixtures (tests/pass/Inputs/addrsimp/):
+;   * mul_shl.ll      mul-by-2^k -> shl (k=0 erased; nuw/nsw preserved;
+;                     non-power-of-2 untouched). GOLDEN.
+;   * hoist.ll        invariant GEP hoisted to the preheader. GOLDEN.
+;   * loop_varying.ll GEP with an induction-variable index -> NOT hoisted
+;                     (llvm-diff unchanged).
 ;
 ; REQUIRES: no-gpu
 
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-addrsimp -S %s | FileCheck %s --check-prefix=SMOKE
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-addrsimp,verify' -S %S/Inputs/addrsimp/mul_shl.ll | FileCheck %s --check-prefix=MUL
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-addrsimp,verify' -S %S/Inputs/addrsimp/hoist.ll | FileCheck %s --check-prefix=HOIST
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-addrsimp -S %S/Inputs/addrsimp/loop_varying.ll -o %t.lv
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/addrsimp/loop_varying.ll %t.lv
 
-; SMOKE: @smoke
+; MUL: define i64 @scale(i64 %x)
+; MUL: %[[A:.*]] = shl i64 %x, 3
+; MUL: %[[C:.*]] = add i64 %[[A]], %x
+; MUL: ret i64 %[[C]]
+; MUL: define i64 @scale_nuw(i64 %x)
+; MUL: shl nuw i64 %x, 4
+; MUL: define i64 @scale_nsw(i64 %x)
+; MUL: shl nsw i64 %x, 2
+; MUL: define i64 @scale_none(i64 %x)
+; MUL: mul i64 %x, 3
+; MUL: ret i64 %{{.*}}
 
-define void @smoke() {
-  ret void
-}
+; HOIST: entry:
+; HOIST: %[[ADDR:.*]] = getelementptr float, ptr %base, i64 %idx
+; HOIST: br label %loop
+; HOIST: loop:
+; HOIST-NOT: getelementptr
+; HOIST: %[[V:.*]] = load float, ptr %[[ADDR]]

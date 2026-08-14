@@ -1,0 +1,25 @@
+TODO 39 — QA NEGATIVE: intervening may-alias store blocks elimination
+====================================================================
+Fixture: tests/pass/Inputs/rle/mayalias_store.ll
+  define float @mayalias(ptr %p, ptr %q) {
+  entry:
+    %a = load float, ptr %p
+    store float 0.0, ptr %q     <- %p vs %q: plain params, may alias
+    %b = load float, ptr %p
+    %s = fadd float %a, %b
+    ret float %s
+  }
+
+Command (devenv shell):
+  opt -load-pass-plugin=build/lib/kernscope-pass.so -passes=kernscope-rle \
+      -S tests/pass/Inputs/rle/mayalias_store.ll -o neg.ll
+  llvm-diff tests/pass/Inputs/rle/mayalias_store.ll neg.ll
+
+ASSERTED RESULT: llvm-diff prints NOTHING and exits 0 — output is
+byte-identical: both loads AND the store are still present, %s still
+fadds %a and %b. The MemorySSA walk hits the store MemoryDef,
+AA.getModRefInfo says it may modify the location -> STOP (no candidate).
+The same negative is enforced in the lit suite (rle.test llvm-diff RUN).
+
+Also asserted negative in the same lit file: barrier_global.ll
+(llvm-diff unchanged) and loop_varying.ll (addrsimp: no hoisting).

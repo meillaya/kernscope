@@ -1,0 +1,62 @@
+TODO 39 — kernscope-rle + kernscope-addrsimp (HAPPY PATH EVIDENCE)
+==================================================================
+Passes: tools/pass/passes/rle/{src/rle.cpp, src/addrsimp.cpp} (both
+self-register via REGISTER_PASS_CALLBACK; kernscope-rle / kernscope-addrsimp)
+Skeleton: ad86215  feat(pass): rle + addrsimp module skeleton (todo 39)
+Feature:  (this commit) feat(pass): redundant load elimination + address
+          simplification passes
+
+1) BUILD — `cmake --build build --target kernscope-pass` (devenv shell)
+   EXIT 0, Werror clean (clang++ -Wall -Wextra -Werror, LLVM 21.1.8).
+
+2) LIT — `lit build/tests/pass --filter='rle|addrsimp'`  -> both PASS
+   Full suite `lit build/tests/pass`: 6/6 PASS (hello, addrsimp, pad,
+   vectorize, rle, clang_fpass_plugin — EP callbacks do not disturb the
+   existing pipeline tests).
+
+3) RLE GOLDEN — tests/pass/Inputs/rle/reload_elim.ll
+   input:  %a = load float, ptr %p ; %b = load float, ptr %p ;
+           %s = fadd float %a, %b
+   output: %a = load float, ptr %p ; %s = fadd float %a, %a
+   -> reload eliminated EXACT (FileCheck RELOAD prefix asserts the exact
+      shape + RELOAD-NOT: no second load).
+
+4) RLE BARRIER RULES — tests/pass/Inputs/rle/barrier_{global,const}.ll
+   - barrier_global.ll (non-constant global across llvm.nvvm.barrier0):
+     llvm-diff UNCHANGED — cross-barrier elimination refused for a
+     location other threads may write (rule 2). PASS.
+   - barrier_const.ll (internal constant float across the barrier):
+     output `%s = fadd float %a, %a` — the reload IS eliminated across
+     the barrier because the location is GLOBALLY INVARIANT (no MemoryDef
+     in the function may-modifies it; AA proves the barrier call cannot
+     touch a constant object). GOLDEN asserted (BCONST prefix). PASS.
+
+5) ADDRSIMP GOLDEN — tests/pass/Inputs/addrsimp/mul_shl.ll (opt output)
+   define i64 @scale(i64 %x) {
+     %a1 = shl i64 %x, 3          ; mul x, 8  -> shl x, 3
+     %c  = add i64 %a1, %x        ; mul x, 1  -> erased (k == 0)
+   }
+   define i64 @scale_nuw(i64 %x) { %a1 = shl nuw i64 %x, 4 }   ; flags kept
+   define i64 @scale_nsw(i64 %x) { %a1 = shl nsw i64 %x, 2 }
+   define i64 @scale_none(i64 %x) { %a = mul i64 %x, 3 }       ; untouched
+   GOLDEN asserted (MUL prefix: shl forms + retained mul-by-non-power-2).
+
+6) ADDRSIMP HOIST GOLDEN — tests/pass/Inputs/addrsimp/hoist.ll
+   %addr = getelementptr float, ptr %base, i64 %idx  moved from the loop
+   body to the preheader (entry); the load stays in the loop. GOLDEN
+   asserted (HOIST prefix: GEP in entry, HOIST-NOT: no GEP in loop).
+   Counter-case Inputs/addrsimp/loop_varying.ll (GEP indexed by the
+   induction variable): llvm-diff UNCHANGED. PASS.
+
+7) VOLATILE FIXTURE — tests/pass/Inputs/rle/volatile.ll:
+   llvm-diff UNCHANGED (volatile loads are never candidates and block
+   the walk). PASS.
+
+COUNT FEED FOR TODO 42 (coalescing-analysis report):
+   - kernscope-rle: 1 reload eliminated in the golden kernel; barrier
+     rule keeps 1 load-pair per phase on shared globals (fixture-level
+     counts: reload_elim 1/2 eliminated, barrier_const 1/2 eliminated,
+     barrier_global 0/2, mayalias_store 0/2).
+   - kernscope-addrsimp: 3 muls -> shl (incl. 1 erased), 0 GEP folds on
+     the fixtures, 1 address chain hoisted. These feed the
+     instruction-count / register-pressure deltas for the report.

@@ -1,16 +1,47 @@
 ; rle.test — kernscope-rle: GPU barrier-aware redundant load elimination
 ; (todo 39, Wave 7).
 ;
-; SKELETON smoke: the pass is registered and runs without error. The golden
-; fixtures (reload elimination, barrier rules, volatile/atomic negative)
-; land with the feature commit.
+; The pass walks the MemorySSA defining-access chain of every candidate
+; load (non-volatile, non-atomic) up to an earlier must-alias load (AA
+; isMustAlias). WITHIN a phase (no barrier between the loads) plain AA +
+; MemorySSA proves the value unchanged — sound for concurrent threads
+; because GPU writes by other threads only become visible at barriers.
+; ACROSS a barrier elimination is sound only for GLOBALLY INVARIANT
+; locations (no MemoryDef anywhere may-modifies them): read-only/constant
+; objects, never-escaping allocas.
+;
+; Fixtures (tests/pass/Inputs/rle/):
+;   * reload_elim.ll     two loads, no def between -> second eliminated
+;                        (GOLDEN, exact shape asserted).
+;   * barrier_global.ll  loads of a non-constant global across a barrier
+;                        -> NOT eliminated (llvm-diff unchanged).
+;   * barrier_const.ll   loads of a constant global across a barrier ->
+;                        eliminated (GLOBALLY INVARIANT, GOLDEN).
+;   * volatile.ll        volatile loads -> never candidates, IR unchanged
+;                        (llvm-diff).
+;   * mayalias_store.ll  QA negative: intervening may-alias store blocks
+;                        elimination (llvm-diff unchanged).
 ;
 ; REQUIRES: no-gpu
 
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-rle -S %s | FileCheck %s --check-prefix=SMOKE
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-rle,verify' -S %S/Inputs/rle/reload_elim.ll | FileCheck %s --check-prefix=RELOAD
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-rle -S %S/Inputs/rle/barrier_global.ll -o %t.bg
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/rle/barrier_global.ll %t.bg
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-rle,verify' -S %S/Inputs/rle/barrier_const.ll | FileCheck %s --check-prefix=BCONST
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-rle -S %S/Inputs/rle/volatile.ll -o %t.vol
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/rle/volatile.ll %t.vol
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-rle -S %S/Inputs/rle/mayalias_store.ll -o %t.ms
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/rle/mayalias_store.ll %t.ms
 
-; SMOKE: @smoke
+; RELOAD: define float @reload
+; RELOAD: %[[A:.*]] = load float, ptr %p
+; RELOAD-NOT: load float, ptr %p
+; RELOAD: %[[S:.*]] = fadd float %[[A]], %[[A]]
+; RELOAD: ret float %[[S]]
 
-define void @smoke() {
-  ret void
-}
+; BCONST: define float @bar_const
+; BCONST: %[[A:.*]] = load float, ptr @c
+; BCONST: call void @llvm.nvvm.barrier{{.*}}(i32 0)
+; BCONST-NOT: load float, ptr @c
+; BCONST: %[[S:.*]] = fadd float %[[A]], %[[A]]
+; BCONST: ret float %[[S]]
