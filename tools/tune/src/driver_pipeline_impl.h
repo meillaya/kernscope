@@ -94,6 +94,14 @@ struct CachedOutcome {
   double median = 0.0;
   double p20 = 0.0;
   double p80 = 0.0;
+  // The min_occupancy floor this outcome was produced under. The pre-screen
+  // (and therefore the outcome) depends on the floor, so a cached entry is
+  // only valid for the SAME floor: a "prescreen_rejected" recorded at
+  // floor 1.0 must not replay for floor 0.0 (the config may be viable
+  // there), and a "benchmarked" recorded at floor 0.0 must not replay for
+  // floor 1.0. Entries written before this field existed load as 0.0 and
+  // are therefore valid only for the default floor (graceful compatibility).
+  double min_occupancy = 0.0;
 };
 
 class Tunecache {
@@ -135,6 +143,10 @@ public:
           out.status = s->as_string();
         if (const db::json::Value *r = o->find("reason"))
           out.reason = r->as_string();
+        // Pre-floor-field entries (old cache format) have no min_occupancy:
+        // they load as 0.0 and stay valid only for the default floor.
+        if (const db::json::Value *m = o->find("min_occupancy"))
+          out.min_occupancy = m->as_number();
         if (const db::json::Value *t = o->find("timings")) {
           out.has_timings = true;
           if (const db::json::Value *m = t->find("median"))
@@ -152,13 +164,23 @@ public:
     return true;
   }
 
-  const CachedOutcome *get(const std::string &cache_key,
-                           const std::string &canonical) const {
+  // Lookup a cached outcome for (cache_key, canonical) produced under
+  // `floor`. Returns false when absent OR the stored floor differs (an entry
+  // recorded under a different min_occupancy must not satisfy this run — the
+  // pre-screen outcome depends on the floor).
+  bool get(const std::string &cache_key, const std::string &canonical,
+           double floor, CachedOutcome *out) const {
     const auto it = entries_.find(cache_key);
     if (it == entries_.end())
-      return nullptr;
+      return false;
     const auto jt = it->second.find(canonical);
-    return jt == it->second.end() ? nullptr : &jt->second.outcome;
+    if (jt == it->second.end())
+      return false;
+    if (jt->second.outcome.min_occupancy != floor)
+      return false;
+    if (out)
+      *out = jt->second.outcome;
+    return true;
   }
 
   void set(const std::string &cache_key, const db::json::Value &config,
@@ -177,7 +199,8 @@ public:
       for (const auto &[canonical, rec] : entry) {
         (void)canonical;
         std::vector<db::json::Value::Member> out_members{
-            {"status", db::json::Value(rec.outcome.status)}};
+            {"status", db::json::Value(rec.outcome.status)},
+            {"min_occupancy", db::json::Value(rec.outcome.min_occupancy)}};
         if (!rec.outcome.reason.empty())
           out_members.emplace_back("reason", db::json::Value(rec.outcome.reason));
         if (rec.outcome.has_timings)
@@ -327,7 +350,11 @@ struct Tuner {
     // --- tunecache (resume) -------------------------------------------------
     Tunecache cache;
     std::string cache_warning;
-    cache.load(opts.cache_path, &cache_warning);
+    if (opts.use_cache)
+      cache.load(opts.cache_path, &cache_warning);
+    else
+      cache_warning = "cache read skipped (--no-cache); fresh results are "
+                      "written";
 
     // --- family-level roofline position (recorded in the evidence) ----------
     db::json::Value roofline_entry;
@@ -410,15 +437,15 @@ struct Tuner {
       v.canonical = v.config.dump();
 
       // 0. cache hit -> skip everything (resume; brief §1 check_disk_cache).
-      if (const CachedOutcome *hit =
-              cache.get(out.cache_key, v.canonical)) {
+      CachedOutcome hit;
+      if (cache.get(out.cache_key, v.canonical, opts.min_occupancy, &hit)) {
         v.cached = true;
-        v.status = hit->status;
-        v.reason = hit->reason;
-        v.has_timings = hit->has_timings;
-        v.median = hit->median;
-        v.p20 = hit->p20;
-        v.p80 = hit->p80;
+        v.status = hit.status;
+        v.reason = hit.reason;
+        v.has_timings = hit.has_timings;
+        v.median = hit.median;
+        v.p20 = hit.p20;
+        v.p80 = hit.p80;
         ++out.cached;
         variants.push_back(std::move(v));
         continue;
@@ -433,7 +460,7 @@ struct Tuner {
         v.status = "prescreen_rejected";
         v.reason = "generator pre-screen: " + verdict.reason;
         ++out.prescreen_rejected;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -451,7 +478,7 @@ struct Tuner {
         v.reason = "occupancy pre-screen: 0 resident blocks (smem/block/warp "
                    "limits)";
         ++out.prescreen_rejected;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -462,7 +489,7 @@ struct Tuner {
                    std::to_string(opts.min_occupancy) + " (limiter=" +
                    std::string(v.limiter) + ")";
         ++out.prescreen_rejected;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -475,7 +502,7 @@ struct Tuner {
           v.status = "compile_failed";
           v.reason = "generate: " + err;
           ++out.compile_failed;
-          cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+          CachePut(cache, out.cache_key, v, opts.min_occupancy);
           variants.push_back(std::move(v));
           continue;
         }
@@ -498,7 +525,7 @@ struct Tuner {
             driver_detail::log_tail(
                 driver_detail::read_file(abs_workdir + "/cmd.log"));
         ++out.compile_failed;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -506,7 +533,7 @@ struct Tuner {
       if (!want_live) {
         // NVIDIA / compile-only: the gate + bench need a live HIP device.
         v.status = "compiled";
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -531,7 +558,7 @@ struct Tuner {
             driver_detail::log_tail(
                 driver_detail::read_file(abs_workdir + "/cmd.log"));
         ++out.golden_failed;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -546,7 +573,7 @@ struct Tuner {
         v.status = "bench_failed";
         v.reason = "benchmark session: " + out.message;
         ++out.bench_failed;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -559,7 +586,7 @@ struct Tuner {
         v.status = "bench_failed";
         v.reason = "benchmark failed: " + br.error_message;
         ++out.bench_failed;
-        cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+        CachePut(cache, out.cache_key, v, opts.min_occupancy);
         variants.push_back(std::move(v));
         continue;
       }
@@ -569,7 +596,7 @@ struct Tuner {
       v.p20 = br.p20_ms;
       v.p80 = br.p80_ms;
       ++out.benchmarked;
-      cache.set(out.cache_key, v.config, v.canonical, CachedOutcomeFrom(v));
+      CachePut(cache, out.cache_key, v, opts.min_occupancy);
       variants.push_back(std::move(v));
     }
 
@@ -659,6 +686,15 @@ struct Tuner {
   // ---------------------------------------------------------------------------
   // Helpers.
   // ---------------------------------------------------------------------------
+
+  // Cache an outcome with the run's min_occupancy floor stamped in, so a
+  // later run under a different floor misses it (see CachedOutcome).
+  static void CachePut(Tunecache &cache, const std::string &key,
+                       const VariantRecord &v, double floor) {
+    CachedOutcome o = CachedOutcomeFrom(v);
+    o.min_occupancy = floor;
+    cache.set(key, v.config, v.canonical, std::move(o));
+  }
 
   static CachedOutcome CachedOutcomeFrom(const VariantRecord &v) {
     CachedOutcome c;

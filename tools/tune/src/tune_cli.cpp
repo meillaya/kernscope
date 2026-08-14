@@ -49,10 +49,12 @@ void usage(const char *argv0) {
                "              [--gate-shape <csv>] [--json|--html]\n"
                "              [--db <path>] [--cache <path>]\n"
                "              [--workdir <dir>] [--min-occupancy <f>]\n"
-               "              [--no-bench] [--version]\n"
+               "              [--no-bench] [--no-cache|--force] [--version]\n"
                "  family: matmul | bias_gelu | softmax | layernorm |\n"
                "          reduction | flash_attention\n"
-               "  --arch auto resolves to gfx1101 on this machine\n",
+               "  --arch auto resolves to gfx1101 on this machine\n"
+               "  --no-cache skips the tunecache READ (always re-runs the\n"
+               "            pipeline) but still writes the cache\n",
                argv0);
 }
 
@@ -175,8 +177,10 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "kernscope-tune: bad --min-occupancy value\n");
         return 2;
       }
-    } else if (a == "--no-bench")
+    }     else if (a == "--no-bench")
       opts.live_bench = false;
+    else if (a == "--no-cache" || a == "--force")
+      opts.use_cache = false;
     else if (a == "--json")
       json = true;
     else if (a == "--html")

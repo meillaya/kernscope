@@ -96,6 +96,11 @@ struct DriverOptions {
   double min_occupancy = 0.0;      // pre-screen occupancy floor (0 = disabled)
   bool live_bench = true;          // run golden gate + benchmark (needs a
                                    // live HIP device; false = compile-only)
+  // false = skip the tunecache READ (a fresh session always re-runs
+  // pre-screen+compile+gate+bench — the clean acceptance/repro story) while
+  // still WRITING the cache, so later normal runs resume from the fresh
+  // results. The written cache holds this run's entries (no merge).
+  bool use_cache = true;
 
   // Shape the CORRECTNESS GATE validates the kernel at, decoupled from the
   // benchmark shape. The golden contract pins max_rel_err <= 1e-2 for the
