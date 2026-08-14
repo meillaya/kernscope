@@ -262,3 +262,105 @@ else()
   message(STATUS "tools/tune: live matmul gates skipped (hipcc or "
                  "kernscope_templates_hip_runner not available)")
 endif()
+
+# --- todo 28: correctness-gated tuning driver + kernscope-tune CLI ----------
+# The integration core of the tune track: GPU-free pre-screen (generator
+# validate_config + libs/occupancy + libs/roofline) -> compile (hipcc --genco
+# for gfxXXXX, nvcc compile-only for sm_XX) -> golden gate (run_hip_gate.py;
+# discard on non-pass:true) -> libs/bench -> select best by median ->
+# libs/db records + Triton-style tunecache JSON (resume skips cached
+# configs). The per-family adapter TUs each include EXACTLY ONE generator
+# header (the generators each declare their own ConfigVerdict/LaunchGeometry
+# in kernscope::tune, so mixing them in one TU would be an ODR violation).
+add_library(kernscope_tune_driver STATIC
+  src/driver.cpp
+  src/driver_matmul.cpp
+  src/driver_elem.cpp
+  src/driver_flash.cpp
+)
+target_include_directories(kernscope_tune_driver PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(kernscope_tune_driver PUBLIC cxx_std_20)
+add_library(kernscope::tune_driver ALIAS kernscope_tune_driver)
+target_link_libraries(kernscope_tune_driver PUBLIC
+  kernscope::matmul_gen
+  kernscope::elem_gen
+  kernscope::flash_gen
+  kernscope::arch
+  kernscope::occupancy
+  kernscope::roofline
+  kernscope::bench
+  kernscope::db
+  kernscope::gpuruntime
+)
+target_compile_definitions(kernscope_tune_driver PRIVATE
+  ${KERNSCOPE_TUNE_TEST_DEFS})
+if(TARGET kernscope_templates_hip_runner)
+  target_compile_definitions(kernscope_tune_driver PRIVATE
+    KERNSCOPE_TUNE_RUNNER="$<TARGET_FILE:kernscope_templates_hip_runner>")
+  add_dependencies(kernscope_tune_driver kernscope_templates_hip_runner)
+endif()
+
+# The kernscope-tune CLI (todo 28): --kernel <family> --shape M,N,K|R,C|
+# Nq,Nk,d --arch <auto|sm_XX|gfxXXXX> [--grid auto|full] [--json|--html]
+# [--db <path>] [--cache <path>] [--workdir <dir>] [--min-occupancy <f>]
+# [--no-bench]. --arch auto resolves to gfx1101 (the local RX 7800 XT).
+add_executable(kernscope-tune src/tune_cli.cpp)
+target_link_libraries(kernscope-tune PRIVATE kernscope::tune_driver)
+target_compile_features(kernscope-tune PRIVATE cxx_std_20)
+# The driver is the FIRST target to link two generator libs (matmul + flash).
+# Both export an identical `kernscope::tune::smem_layout_name(SmemLayout)`
+# (same-name enum helpers with identical "padding"/"xor_swizzle" strings) —
+# a latent collision unreachable by the per-generator tests/CLIs, benign here
+# because either definition is equivalent. Allow the duplicate definition
+# instead of rewriting the generators' public API (sibling deliverables).
+target_link_options(kernscope-tune PRIVATE "-Wl,--allow-multiple-definition")
+
+# --- todo 28 acceptance suite ------------------------------------------------
+# tune_driver_test.cpp is compiled twice (the generators' shared pattern):
+# once without KERNSCOPE_TUNE_LIVE for the no-gpu negative test (every config
+# infeasible at the pre-screen -> "no viable config" + JSON reason, no crash,
+# no GPU touched) and once with it for the gpu-amd LIVE tune on gfx1101
+# (matmul 512^3 bf16 over the 24-config auto grid: pre-screen rejections >= 1,
+# injected bad variant discarded by the golden gate, best selected with
+# median == min of measured, libs/db records queryable, cache-hit re-run
+# compiles 0 new variants).
+add_executable(tune-driver-test tests/tune_driver_test.cpp)
+target_link_libraries(tune-driver-test PRIVATE
+  kernscope::tune_driver
+  kernscope::db
+  GTest::gtest_main
+)
+target_compile_definitions(tune-driver-test PRIVATE
+  ${KERNSCOPE_TUNE_TEST_DEFS})
+target_link_options(tune-driver-test PRIVATE "-Wl,--allow-multiple-definition")
+include(GoogleTest)
+gtest_discover_tests(tune-driver-test
+  TEST_PREFIX "tune_driver:"
+  PROPERTIES LABELS "no-gpu"
+)
+
+if(KERNSCOPE_TUNE_HAVE_HIP AND TARGET kernscope_templates_hip_runner)
+  add_executable(tune-driver-live-test tests/tune_driver_test.cpp)
+  target_link_libraries(tune-driver-live-test PRIVATE
+    kernscope::tune_driver
+    kernscope::db
+    GTest::gtest_main
+  )
+  target_compile_definitions(tune-driver-live-test PRIVATE
+    ${KERNSCOPE_TUNE_TEST_DEFS}
+    KERNSCOPE_TUNE_LIVE=1
+    KERNSCOPE_TUNE_RUNNER="$<TARGET_FILE:kernscope_templates_hip_runner>"
+  )
+  target_link_options(tune-driver-live-test PRIVATE
+    "-Wl,--allow-multiple-definition")
+  # The runner binary + the gate script must exist before the live tune runs.
+  add_dependencies(tune-driver-live-test kernscope_templates_hip_runner)
+  gtest_discover_tests(tune-driver-live-test
+    TEST_PREFIX "tune_driver_live:"
+    PROPERTIES LABELS "gpu-amd"
+  )
+else()
+  message(STATUS "tools/tune: live tune-driver gates skipped (hipcc or "
+                 "kernscope_templates_hip_runner not available)")
+endif()
