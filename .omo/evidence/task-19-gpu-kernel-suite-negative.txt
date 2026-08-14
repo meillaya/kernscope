@@ -1,0 +1,57 @@
+kernscope todo 19 - suggestion engine - QA evidence (negative/failure paths)
+============================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 19 of gpu-kernel-suite plan)
+
+Two REQUIRED failure scenarios + one general-rule scenario. All are committed
+gtests (TEST_PREFIX "analyze_golden:"), run via
+(cd build && ctest -R analyze_golden --output-on-failure) -> all PASSED.
+
+SCENARIO A - findings trigger NO rule -> report has 0 suggestions
+-----------------------------------------------------------------
+Input: tests/analyze/corpus/coalesced.ptx (fully-coalesced unit-stride global
+load, no shared memory, no branches), block_size 64 (limiter lands on the
+blocks cap, NOT registers).
+Assertions (PASS):
+  - no "bank_conflict" warning, no "divergent_inner_loop" warning,
+    no "coalescing" warning (efficiency == 1.0)
+  - report.limiter != "registers"
+  - report.suggestions.size() == 0
+    (the engine emits NO generic advice; every rule requires its trigger)
+
+SCENARIO B - bank_conflict present but NO register limiter -> ONLY the
+             bank-derived suggestion (no suggestion without a trigger)
+---------------------------------------------------------------------
+Input: tests/analyze/corpus/bank_conflict.ptx (68-word shared stride -> 4-way
+bank_conflict warning), block_size 64 (limiter on the blocks cap, not
+registers).
+Assertions (PASS):
+  - "bank_conflict" warning present
+  - report.limiter != "registers"
+  - report.suggestions.size() == 1
+  - suggestions[0].id == "tile_k_32"
+  - suggestions[0].evidence["triggered_by"] == "bank_conflict"
+  - suggested_tile_k == 32
+  - NO "split_accumulator" suggestion (register rule stays quiet)
+
+SCENARIO C - coalescing-only kernel (no bank conflict) -> general
+             vectorize_coalescing rule fires (general rule exercised)
+-------------------------------------------------------------------
+Input: tests/analyze/corpus/strided_global.ptx (stride-32B global loads ->
+"coalescing" warning efficiency < 1.0, no shared memory -> no bank_conflict).
+Assertions (PASS):
+  - "coalescing" warning present, no "bank_conflict" warning
+  - report.suggestions.size() == 1
+  - suggestions[0].id == "vectorize_coalescing"
+  - suggestions[0].evidence["triggered_by"] == "coalescing"
+
+Priority policy (docs/analyzer-rules.md, vectorize_coalescing row): when a
+kernel ALSO has a bank_conflict warning, the smem-layout fix (tile_k_32)
+addresses the same staging data path, so vectorize_coalescing stays silent —
+this is exactly why the fused_attention golden carries only the owner's three
+suggestions (Scenario B proves the suppression path).
+
+CRASH-safety note: every QA input is fed through the FULL analyze_ptx_module
+pipeline (all six modules + the engine). No input crashed; the report always
+satisfies libs/report validate() (non-finite "not modeled" headroom metrics
+are normalized away by the orchestrator so JSON/HTML always render).

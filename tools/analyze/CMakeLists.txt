@@ -20,6 +20,8 @@ add_library(kernscope_analyze STATIC
   src/analyze_banks.cpp
   src/analyze_divergence.cpp
   src/analyze_mix.cpp
+  src/analyze_suggest.cpp
+  src/analyze_all.cpp
 )
 target_include_directories(kernscope_analyze PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -124,3 +126,33 @@ gtest_discover_tests(analyze-mix-test
   TEST_PREFIX "analyze_mix:"
   PROPERTIES LABELS "no-gpu"
 )
+
+# --- TODO 19: suggestion engine + fused_attention golden report -------------
+# The golden report test runs the FULL pipeline (analyze_ptx_module: all six
+# analysis modules + the suggestion engine) on the committed fused_attention
+# fixture and asserts NUMERICALLY against tests/fixtures/
+# expected_fused_attention.json (occupancy 0.375, limiter registers, the three
+# owner warning ids, the three owner suggestion ids, counts). The fixtures'
+# JSON is loaded through libs/db's self-contained json::Value.
+add_executable(analyze-golden-test tests/analyze_golden_test.cpp)
+target_link_libraries(analyze-golden-test PRIVATE kernscope::analyze
+  kernscope::db GTest::gtest_main)
+target_compile_definitions(analyze-golden-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-golden-test
+  TEST_PREFIX "analyze_golden:"
+  PROPERTIES LABELS "no-gpu"
+)
+
+# --- TODO 19: golden report artifact dumper (todo-20 CLI / todo-56 input) ---
+# Dumps <build>/test_reports/fused_attention_report.{json,html} from the
+# golden run via a ctest; the build tree is gitignored so these are
+# artifacts, not committed fixtures.
+add_executable(analyze-fixture-main tests/fixture_main.cpp)
+target_link_libraries(analyze-fixture-main PRIVATE kernscope::analyze
+  kernscope::db)
+target_compile_definitions(analyze-fixture-main PRIVATE
+  ${ANALYZE_TEST_DEFS}
+  TEST_REPORTS_DIR="${CMAKE_BINARY_DIR}/test_reports"
+)
+add_test(NAME analyze-fixture-reports COMMAND analyze-fixture-main)
+set_tests_properties(analyze-fixture-reports PROPERTIES LABELS "no-gpu")
