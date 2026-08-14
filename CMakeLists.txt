@@ -40,6 +40,11 @@ enable_testing()
 add_subdirectory(libs/arch)
 add_subdirectory(libs/db)
 add_subdirectory(libs/report)
+# roofline depends on libs/arch (occupancy/roofline engines); registered after
+# libs/report and before libs/amdparse so the test suite is part of the
+# superbuild. Regression note: todo-10 (f4bcd31) briefly replaced this line
+# with libs/amdparse, silently dropping the 14-case roofline suite from ctest.
+add_subdirectory(libs/roofline)
 add_subdirectory(libs/amdparse)
 add_subdirectory(libs/ptxparse)
 add_subdirectory(tools/analyze)

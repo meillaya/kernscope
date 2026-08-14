@@ -66,6 +66,34 @@ else
     skip 'ctest -L "no-gpu|gpu-amd" — no CTest suite yet (todo 3)'
 fi
 
+# --- (b2) ctest test-count guard --------------------------------------------
+# Hardening (todo-12 follow-up): the no-gpu|gpu-amd suite count must never
+# regress. Todo 10 (f4bcd31) replaced add_subdirectory(libs/roofline) with
+# libs/amdparse, silently dropping 14 registered tests while the remaining
+# tests still passed — a pure green/red ctest gate cannot see such a
+# registration regression, only a count assertion can.
+# Mechanism: `ctest -L "no-gpu|gpu-amd" -N` (dry-run) ends with "Total
+# Tests: N"; we require N >= the committed floor in scripts/ci-baseline.txt
+# (a single integer). The check is non-decreasing (>=), not exact-match, so
+# it never goes stale: later waves add tests and simply raise the floor in
+# scripts/ci-baseline.txt when they land; until they do, extra tests are
+# always green. If the suite ever drops below the floor, CI fails loudly.
+if [ -f build/CTestTestfile.cmake ] && [ -f scripts/ci-baseline.txt ]; then
+    baseline=$(tr -d '[:space:]' < scripts/ci-baseline.txt)
+    count_line=$(cd build && ctest -L "no-gpu|gpu-amd" -N 2>/dev/null | tail -1)
+    actual=$(printf '%s' "$count_line" | grep -oE '[0-9]+' | tail -1)
+    if [ -z "$actual" ]; then
+        fail "ctest count guard — could not parse ctest -N output: '$count_line'"
+    fi
+    if [ "$actual" -ge "$baseline" ]; then
+        pass "ctest count guard: ${actual} tests >= baseline ${baseline} (scripts/ci-baseline.txt)"
+    else
+        fail "ctest count guard — ${actual} tests < baseline ${baseline}; suite regressed (raise scripts/ci-baseline.txt only when tests are ADDED)"
+    fi
+else
+    skip "ctest count guard — needs build/CTestTestfile.cmake + scripts/ci-baseline.txt"
+fi
+
 # --- (c) lit suite (check-kernscope) ---------------------------------------
 if [ -f build/CTestTestfile.cmake ]; then
     cmake --build build --target check-kernscope \
