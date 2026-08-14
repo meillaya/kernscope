@@ -71,6 +71,10 @@ add_subdirectory(tools/bench)
 # executables; todos 25/26 append the matmul/elementwise generators here.
 # Consumes libs/arch + libs/roofline and the kernels/templates live runner.
 add_subdirectory(tools/tune)
+# tools/: kernscope-verify (todo 30, C3 static verifier core). One-time hook
+# for the verify track; future tools (capture/pass/profile) add themselves
+# inside tools/CMakeLists.txt.
+add_subdirectory(tools)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
 # come after tools/ so the kernscope-analyze target it DEPENDS on exists.
