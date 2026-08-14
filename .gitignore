@@ -7,3 +7,17 @@ caches
 .codegraph
 __pycache__/
 *.pyc
+
+# Secrets / sensitive — MUST NEVER COMMIT (PrimeIntellect rental SSH keys,
+# live credentials for /home/mei/projects/tensors sibling project)
+private_key.pem
+public_key.pem
+.env
+.env.*
+!.env.example
+
+# Internal / evidence (not for the public repo).
+# NOTE: .omo/ is a FUTURE-UNTRACKED GUARD only — .omo/ files (incl.
+# .omo/evidence/) are already tracked in history and stay tracked;
+# this rule prevents NEW .omo/ files from being committed. No git rm.
+.omo/
