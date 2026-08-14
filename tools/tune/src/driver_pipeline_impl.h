@@ -94,6 +94,17 @@ struct CachedOutcome {
   double median = 0.0;
   double p20 = 0.0;
   double p80 = 0.0;
+  // Prescreen evidence, cached so a replayed entry still carries the
+  // occupancy estimate + golden-gate launch geometry in the evidence
+  // (todo 29: the report surfaces occupancy/occupancy.limiter in every
+  // output mode, cache-hit runs included; the repro (--emit-repro) reads
+  // the winning variant's gate geometry from the cache).
+  double occupancy = 0.0;
+  std::string limiter;
+  std::string gate_shape;   // "64,64,64" (empty when never gated)
+  std::string gate_grid;    // "gx" or "gx x gy" (run_hip_gate --grid)
+  std::string gate_block;   // "bx x by" (run_hip_gate --block)
+  std::string gate_symbol;  // kernel symbol the gate resolved
   // The min_occupancy floor this outcome was produced under. The pre-screen
   // (and therefore the outcome) depends on the floor, so a cached entry is
   // only valid for the SAME floor: a "prescreen_rejected" recorded at
@@ -156,6 +167,20 @@ public:
           if (const db::json::Value *p = t->find("p80"))
             out.p80 = p->as_number();
         }
+        if (const db::json::Value *m = o->find("occupancy"))
+          out.occupancy = m->as_number();
+        if (const db::json::Value *l = o->find("limiter"))
+          out.limiter = l->as_string();
+        if (const db::json::Value *g = o->find("gate")) {
+          if (const db::json::Value *s = g->find("shape"))
+            out.gate_shape = s->as_string();
+          if (const db::json::Value *s = g->find("grid"))
+            out.gate_grid = s->as_string();
+          if (const db::json::Value *s = g->find("block"))
+            out.gate_block = s->as_string();
+          if (const db::json::Value *s = g->find("symbol"))
+            out.gate_symbol = s->as_string();
+        }
         const std::string canonical = c->dump();  // canonical -> key
         e[canonical] = {*c, std::move(out)};
       }
@@ -209,6 +234,21 @@ public:
                              {{"median", db::json::Value(rec.outcome.median)},
                               {"p20", db::json::Value(rec.outcome.p20)},
                               {"p80", db::json::Value(rec.outcome.p80)}}));
+        if (rec.outcome.occupancy > 0.0)
+          out_members.emplace_back("occupancy",
+                                   db::json::Value(rec.outcome.occupancy));
+        if (!rec.outcome.limiter.empty())
+          out_members.emplace_back("limiter",
+                                   db::json::Value(rec.outcome.limiter));
+        if (!rec.outcome.gate_shape.empty()) {
+          std::vector<db::json::Value::Member> gate_members{
+              {"shape", db::json::Value(rec.outcome.gate_shape)},
+              {"grid", db::json::Value(rec.outcome.gate_grid)},
+              {"block", db::json::Value(rec.outcome.gate_block)},
+              {"symbol", db::json::Value(rec.outcome.gate_symbol)}};
+          out_members.emplace_back("gate",
+                                   db::json::Value(std::move(gate_members)));
+        }
         configs.push_back(db::json::object(
             {{"config", rec.config},
              {"outcome", db::json::Value(std::move(out_members))}}));
@@ -267,6 +307,12 @@ struct VariantRecord {
   double occupancy = 0.0;
   std::string limiter;
   int blocks_per_sm = 0;
+  // Golden-gate launch geometry (set in the gate step; empty when the gate
+  // never ran — cache replays restore them from the tunecache).
+  std::string gate_shape;
+  std::string gate_grid;
+  std::string gate_block;
+  std::string gate_symbol;
   bool has_timings = false;
   double median = 0.0;
   double p20 = 0.0;
@@ -373,6 +419,14 @@ struct Tuner {
           Traits::kRooflineFamily, rshape, bytes, flops, opts.arch, &pos,
           &rerr, roofline::PeakKind::kFp32);
       if (rc == roofline::ErrorCode::kNone) {
+        // position = the workload's fraction of the compute roof
+        // (attained_flops / compute ceiling — min(1, AI/ridge)); bound is
+        // the stable "compute"|"memory"|"latency" class (todo 29 contract:
+        // roofline.position / roofline.bound surface in every output mode).
+        const double position =
+            pos.compute_bound_ceiling > 0.0
+                ? pos.attained_flops / pos.compute_bound_ceiling
+                : 0.0;
         roofline_entry = db::json::object(
             {{"ok", db::json::Value(true)},
              {"family", db::json::Value(roofline::kernel_family_name(
@@ -384,6 +438,9 @@ struct Tuner {
              {"ridge_point", db::json::Value(pos.ridge_point)},
              {"bound_class",
               db::json::Value(roofline::bound_class_name(pos.bound_class))},
+             {"bound",
+              db::json::Value(roofline::bound_class_name(pos.bound_class))},
+             {"position", db::json::Value(position)},
              {"compute_bound_ceiling",
               db::json::Value(pos.compute_bound_ceiling)},
              {"memory_bound_ceiling",
@@ -446,6 +503,12 @@ struct Tuner {
         v.median = hit.median;
         v.p20 = hit.p20;
         v.p80 = hit.p80;
+        v.occupancy = hit.occupancy;
+        v.limiter = hit.limiter;
+        v.gate_shape = hit.gate_shape;
+        v.gate_grid = hit.gate_grid;
+        v.gate_block = hit.gate_block;
+        v.gate_symbol = hit.gate_symbol;
         ++out.cached;
         variants.push_back(std::move(v));
         continue;
@@ -547,6 +610,10 @@ struct Tuner {
       const std::string block_str =
           std::to_string(gate_geo.block_x) + "x" +
           std::to_string(gate_geo.block_y);
+      v.gate_shape = Traits::shape_string(gate_shape);
+      v.gate_grid = grid_str;
+      v.gate_block = block_str;
+      v.gate_symbol = Traits::symbol(cfg);
       const int gate_rc =
           RunGate(abs_workdir, obj, Traits::symbol(cfg), grid_str, block_str,
                   Traits::shape_string(gate_shape));
@@ -704,6 +771,12 @@ struct Tuner {
     c.median = v.median;
     c.p20 = v.p20;
     c.p80 = v.p80;
+    c.occupancy = v.occupancy;
+    c.limiter = v.limiter;
+    c.gate_shape = v.gate_shape;
+    c.gate_grid = v.gate_grid;
+    c.gate_block = v.gate_block;
+    c.gate_symbol = v.gate_symbol;
     return c;
   }
 
@@ -927,8 +1000,45 @@ struct Tuner {
       const std::string &workdir, const db::json::Value &roofline_entry,
       const std::vector<VariantRecord> &variants,
       const std::string &cache_warning, int db_records, bool db_ok) {
-    std::vector<db::json::Value> var_arr;
+    // The naive baseline: the FIRST enumerated variant that was measured
+    // (enumeration order is the search-space order — the first viable
+    // config, e.g. matmul's smallest tile / no pipelining / single warp).
+    // Speedup is computed against it before the variants are re-ordered for
+    // the report (measured-first, median-ascending).
+    double baseline_median = 0.0;
+    db::json::Value baseline_config;  // null when no variant measured
     for (const VariantRecord &v : variants) {
+      if (v.has_timings) {
+        baseline_median = v.median;
+        baseline_config = v.config;
+        break;
+      }
+    }
+
+    // Report order: measured variants first sorted by median (ties p20,
+    // p80), then non-measured variants in enumeration order. The check
+    // contract: "variants sorted by median ascending".
+    std::vector<const VariantRecord *> ordered;
+    ordered.reserve(variants.size());
+    for (const VariantRecord &v : variants)
+      ordered.push_back(&v);
+    std::stable_sort(
+        ordered.begin(), ordered.end(),
+        [](const VariantRecord *a, const VariantRecord *b) {
+          if (a->has_timings != b->has_timings)
+            return a->has_timings;
+          if (a->has_timings && a->median != b->median)
+            return a->median < b->median;
+          if (a->has_timings && a->p20 != b->p20)
+            return a->p20 < b->p20;
+          if (a->has_timings && a->p80 != b->p80)
+            return a->p80 < b->p80;
+          return a->index < b->index;
+        });
+
+    std::vector<db::json::Value> var_arr;
+    for (const VariantRecord *vp : ordered) {
+      const VariantRecord &v = *vp;
       std::vector<db::json::Value::Member> m{
           {"index", db::json::Value(v.index)},
           {"config", v.config},
@@ -938,10 +1048,19 @@ struct Tuner {
       };
       if (!v.reason.empty())
         m.emplace_back("reason", db::json::Value(v.reason));
-      if (v.prescreened) {
+      if (v.prescreened || v.occupancy > 0.0) {
         m.emplace_back("occupancy", db::json::Value(v.occupancy));
-        m.emplace_back("limiter", db::json::Value(v.limiter));
+        if (!v.limiter.empty())
+          m.emplace_back("limiter", db::json::Value(v.limiter));
         m.emplace_back("blocks_per_sm", db::json::Value(v.blocks_per_sm));
+      }
+      if (!v.gate_shape.empty()) {
+        m.emplace_back(
+            "gate", db::json::object(
+                        {{"shape", db::json::Value(v.gate_shape)},
+                         {"grid", db::json::Value(v.gate_grid)},
+                         {"block", db::json::Value(v.gate_block)},
+                         {"symbol", db::json::Value(v.gate_symbol)}}));
       }
       if (v.has_timings)
         m.emplace_back(
@@ -991,15 +1110,56 @@ struct Tuner {
         {"variants", db::json::Value(std::move(var_arr))},
     };
     if (out.has_best) {
+      // The winning variant's prescreen evidence (occupancy estimate +
+      // limiter) and golden-gate geometry — the report surfaces
+      // occupancy / occupancy.limiter and the repro (--emit-repro) consumes
+      // best.gate.
+      double best_occ = 0.0;
+      std::string best_limiter;
+      std::string best_gate_shape, best_gate_grid, best_gate_block,
+          best_gate_symbol;
+      for (const VariantRecord &v : variants) {
+        if (!v.best)
+          continue;
+        best_occ = v.occupancy;
+        best_limiter = v.limiter;
+        best_gate_shape = v.gate_shape;
+        best_gate_grid = v.gate_grid;
+        best_gate_block = v.gate_block;
+        best_gate_symbol = v.gate_symbol;
+      }
+      members.emplace_back("occupancy", db::json::Value(best_occ));
+      if (!best_limiter.empty())
+        members.emplace_back("occupancy.limiter",
+                             db::json::Value(best_limiter));
+      members.emplace_back("speedup",
+                           db::json::Value(baseline_median > 0.0
+                                               ? baseline_median /
+                                                     out.best_median_ms
+                                               : 0.0));
       members.emplace_back(
-          "best",
+          "baseline",
           db::json::object(
-              {{"config", out.best_config},
+              {{"config", baseline_config},
                {"timings",
                 db::json::object(
-                    {{"median", db::json::Value(out.best_median_ms)},
-                     {"p20", db::json::Value(out.best_p20_ms)},
-                     {"p80", db::json::Value(out.best_p80_ms)}})}}));
+                    {{"median", db::json::Value(baseline_median)}})}}));
+      std::vector<db::json::Value::Member> best_members{
+          {"config", out.best_config},
+          {"timings",
+           db::json::object(
+               {{"median", db::json::Value(out.best_median_ms)},
+                {"p20", db::json::Value(out.best_p20_ms)},
+                {"p80", db::json::Value(out.best_p80_ms)}})}};
+      if (!best_gate_shape.empty())
+        best_members.emplace_back(
+            "gate",
+            db::json::object(
+                {{"shape", db::json::Value(best_gate_shape)},
+                 {"grid", db::json::Value(best_gate_grid)},
+                 {"block", db::json::Value(best_gate_block)},
+                 {"symbol", db::json::Value(best_gate_symbol)}}));
+      members.emplace_back("best", db::json::Value(std::move(best_members)));
     }
     if (!cache_warning.empty())
       members.emplace_back("cache_warning", db::json::Value(cache_warning));

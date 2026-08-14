@@ -168,6 +168,23 @@ std::string make_cache_key(const std::string &arch,
                            const std::string &kernel_family,
                            const std::string &shape_hash);
 
+// --- toolchain paths --------------------------------------------------------
+// Configure-time toolchain resolution (empty string when a piece was not
+// found at configure time), exposed for the CLI's --emit-repro so the
+// emitted reproducibility script pins the exact hipcc / python / runner /
+// gate the tune ran with. Never null ("" = absent).
+struct ToolchainPaths {
+  std::string nvcc;             // compile-only NVIDIA gate (owner-gated)
+  std::string hipcc;
+  std::string hip_include;      // ROCm <clr>/include (hip_runtime_api.h)
+  std::string traits_include;   // kernels/templates/include
+  std::string repo_root;
+  std::string run_hip_gate;     // kernels/templates/tests/run_hip_gate.py
+  std::string python;
+  std::string runner;           // kernscope_templates_hip_runner binary
+};
+ToolchainPaths toolchain_paths() noexcept;
+
 // --- entry point ------------------------------------------------------------
 // Run the full pipeline for one (family, shape, arch) over the family's
 // config grid. Returns the result + JSON evidence. Never throws (all

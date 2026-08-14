@@ -4,7 +4,8 @@
 // stable status names, and the Triton-style key helpers (arch:family:
 // shape_hash — brief §1: re-tune when the keyed args change). The pipeline
 // itself is family-generic (driver_pipeline_impl.h), instantiated per family
-// in the adapter TUs.
+// in the adapter TUs. toolchain_paths() (todo 29) exposes the configure-time
+// toolchain resolution for the CLI's --emit-repro.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +17,33 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+// Toolchain paths injected by tools/tune/CMakeLists.txt (absolute at
+// configure time; empty when the piece was not found).
+#ifndef KERNSCOPE_TUNE_NVCC
+#define KERNSCOPE_TUNE_NVCC ""
+#endif
+#ifndef KERNSCOPE_TUNE_HIPCC
+#define KERNSCOPE_TUNE_HIPCC ""
+#endif
+#ifndef KERNSCOPE_TUNE_HIP_INCLUDE
+#define KERNSCOPE_TUNE_HIP_INCLUDE ""
+#endif
+#ifndef KERNSCOPE_TUNE_KERNEL_TRAITS_INCLUDE
+#define KERNSCOPE_TUNE_KERNEL_TRAITS_INCLUDE ""
+#endif
+#ifndef KERNSCOPE_TUNE_REPO_ROOT
+#define KERNSCOPE_TUNE_REPO_ROOT ""
+#endif
+#ifndef KERNSCOPE_TUNE_RUN_HIP_GATE
+#define KERNSCOPE_TUNE_RUN_HIP_GATE ""
+#endif
+#ifndef KERNSCOPE_TUNE_PYTHON
+#define KERNSCOPE_TUNE_PYTHON "python3"
+#endif
+#ifndef KERNSCOPE_TUNE_RUNNER
+#define KERNSCOPE_TUNE_RUNNER ""
+#endif
 
 namespace kernscope::tune {
 
@@ -51,6 +79,19 @@ std::string make_cache_key(const std::string &arch,
                            const std::string &kernel_family,
                            const std::string &shape_hash) {
   return arch + ":" + kernel_family + ":" + shape_hash;
+}
+
+ToolchainPaths toolchain_paths() noexcept {
+  ToolchainPaths p;
+  p.nvcc = KERNSCOPE_TUNE_NVCC;
+  p.hipcc = KERNSCOPE_TUNE_HIPCC;
+  p.hip_include = KERNSCOPE_TUNE_HIP_INCLUDE;
+  p.traits_include = KERNSCOPE_TUNE_KERNEL_TRAITS_INCLUDE;
+  p.repo_root = KERNSCOPE_TUNE_REPO_ROOT;
+  p.run_hip_gate = KERNSCOPE_TUNE_RUN_HIP_GATE;
+  p.python = KERNSCOPE_TUNE_PYTHON;
+  p.runner = KERNSCOPE_TUNE_RUNNER;
+  return p;
 }
 
 DriverResult tune(const DriverOptions &opts, const DriverHooks *hooks) {

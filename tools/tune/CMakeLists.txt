@@ -301,12 +301,19 @@ if(TARGET kernscope_templates_hip_runner)
   add_dependencies(kernscope_tune_driver kernscope_templates_hip_runner)
 endif()
 
-# The kernscope-tune CLI (todo 28): --kernel <family> --shape M,N,K|R,C|
-# Nq,Nk,d --arch <auto|sm_XX|gfxXXXX> [--grid auto|full] [--json|--html]
-# [--db <path>] [--cache <path>] [--workdir <dir>] [--min-occupancy <f>]
-# [--no-bench]. --arch auto resolves to gfx1101 (the local RX 7800 XT).
+# The kernscope-tune CLI (todos 28+29): --kernel <family> --shape M,N,K|R,C|
+# Nq,Nk,d --arch <auto|sm_XX|gfxXXXX> [--grid auto|full] [--json|--html|
+# --text] [--db <path>] [--cache <path>] [--workdir <dir>]
+# [--min-occupancy <f>] [--no-bench] [--no-cache] [--emit-repro <dir>].
+# --arch auto resolves to gfx1101 (the local RX 7800 XT). Todo 29 added the
+# owner-format --text report, the self-contained libs/report variant-
+# comparison --html, and --emit-repro (reproducibility bundle; needs the
+# kernscope::report renderer).
 add_executable(kernscope-tune src/tune_cli.cpp)
-target_link_libraries(kernscope-tune PRIVATE kernscope::tune_driver)
+target_link_libraries(kernscope-tune PRIVATE
+  kernscope::tune_driver
+  kernscope::report
+)
 target_compile_features(kernscope-tune PRIVATE cxx_std_20)
 # The driver is the FIRST target to link two generator libs (matmul + flash).
 # Both export an identical `kernscope::tune::smem_layout_name(SmemLayout)`
@@ -364,3 +371,17 @@ else()
   message(STATUS "tools/tune: live tune-driver gates skipped (hipcc or "
                  "kernscope_templates_hip_runner not available)")
 endif()
+
+# --- todo 29: report check (ctest, LABELS no-gpu) ---------------------------
+# tests/tune/check_report.py runs the kernscope-tune --json pipeline for
+# matmul 512^3 on gfx1101 (tunecache-backed: a warm cache replays without
+# recompiling) and asserts the numeric report contract: best config present
+# with all config keys, roofline.position in (0,1], roofline.bound in
+# {compute,memory,latency}, occupancy in (0,1], variants >= 20 sorted by
+# median ascending, speedup >= 1.0 vs the naive baseline. LABELS no-gpu per
+# the task contract (the count-guard suite); it runs the live tune, so it
+# requires the local HIP device in practice.
+add_test(NAME tune_report
+  COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_report.py
+          $<TARGET_FILE:kernscope-tune> ${CMAKE_SOURCE_DIR})
+set_tests_properties(tune_report PROPERTIES LABELS "no-gpu")
