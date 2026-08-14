@@ -1,0 +1,88 @@
+kernscope todo 8 — libs/db JSONL benchmark/config database — QA evidence (happy path)
+=====================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 8 of gpu-kernel-suite plan)
+Commit: feat(db): JSONL benchmark/config database with versioned schema
+
+FILES CREATED
+  libs/db/CMakeLists.txt               kernscope_db STATIC (C++20, -Wall -Wextra
+                                       -Werror inherited from root) + gtest target
+                                       kernscope-db-test, ctest LABELS no-gpu
+  libs/db/include/kernscope/db.h       JSON value model + Record/Database API
+  libs/db/src/db.cpp                   JSON parser/writer + put/query_best/
+                                       load/save implementation
+  libs/db/tests/db_test.cpp            gtest: 4 acceptance tests
+  libs/db/tests/fixtures/benchmarks.jsonl  committed 5-record clean fixture
+                                       (hand-written, non-canonical member order)
+  CMakeLists.txt (root)                add_subdirectory(libs/db)
+
+JSON LIBRARY CHOICE (documented deviation resolution)
+  nlohmann/json is NOT in the devenv profile (verified 2026-08-14: no
+  nlohmann/json.hpp reachable from the profile CPATH; CMAKE_PREFIX_PATH
+  empty). todo 8 MUST NOT modify devenv files, so nlohmann_json could not be
+  added. llvm::json (polykernel precedent) would couple libs/db to
+  LLVMSupport. RESOLUTION: self-contained ~350-line JSON value model in
+  kernscope/db.h (recursive-descent parser with \uXXXX+surrogate support,
+  128-level nesting cap, canonical sorted-member writer, shortest-round-trip
+  numbers via std::to_chars). Record envelope is fixed and small; zero
+  dependencies; fully gtest-covered.
+
+DESIGN (per docs/research/autotuner-research-brief.md)
+  §1 Triton disk cache: config hashed into the key (config_canonical =
+  canonical JSON dump), configs_timings pairs = one record per config,
+  winner re-picked by min median without re-benchmarking = query_best.
+  §2 MetaSchedule JSONDatabase: workload-keyed records (shape_hash),
+  NDJSON, warm-start seeding (load merges; dedupe/replace on identical
+  (gpu_arch, kernel_family, shape_hash, config) keys).
+  Forward-compatible loader: schema_version > 1 -> warn + skip with line
+  number; corrupt line -> warn + skip with line number; loading continues.
+
+ACCEPTANCE COMMANDS + EXACT RESULTS
+  (a) cmake --build build
+      -> exit 1 (TRANSIENT, ENVIRONMENTAL: the parallel todo-7 worker's
+         libs/report/tests/report_test.cpp:234/252/261 fails its own
+         -Werror nodiscard check; libs/db targets build clean, see (a'))
+      (a') cmake --build build --target kernscope-db-test
+      -> "ninja: no work to do." / BUILD_EXIT=0
+  (b) (cd build && ctest -R db --output-on-failure)
+      -> "1/1 Test #1: db ................... Passed 0.01 sec"
+         "100% tests passed, 0 tests failed out of 1"
+         CTEST_EXIT=0
+
+GTEST ASSERTIONS (all 4, exact output from kernscope-db-test)
+  [ RUN      ] DbTest.Roundtrip1000RecordsUnderOneSecond
+  [       OK ] DbTest.Roundtrip1000RecordsUnderOneSecond (7 ms)
+      - 1000 put + dedupe/replace + save + load-fresh: 7 ms < 1s (accepted)
+  [ RUN      ] DbTest.QueryBestReturnsConfigWithMinimalMedian
+  [       OK ] DbTest.QueryBestReturnsConfigWithMinimalMedian (0 ms)
+      - BK=64/median 0.35 selected over 1.20/0.90/2.00/0.60; foreign-arch
+        record (0.001) does not leak into the query
+  [ RUN      ] DbTest.CorruptMiddleLineSkippedAndWarningNamesLine
+  [       OK ] DbTest.CorruptMiddleLineSkippedAndWarningNamesLine (0 ms)
+      - fixture line 3 corrupted -> count == 4 (N-1 == 5-1), warnings[0].line
+        == 3, message contains "line 3", records before AND after survive
+        in order (sha256:3f4a / sha256:c0a8 / sha256:51f7)
+  [ RUN      ] DbTest.NewerSchemaVersionSkippedWithWarning
+  [       OK ] DbTest.NewerSchemaVersionSkippedWithWarning (0 ms)
+      - schema_version 99 record -> skipped with warning, count == 5
+        (skew line 6, message names schema_version and 99)
+  [  PASSED  ] 4 tests. (7 ms total)
+
+QA SCENARIO (happy)
+  (cd build && ctest -R db --output-on-failure)
+  -> PASS (output above; Label Time Summary no-gpu = 0.01 sec)
+
+RISKS / DEVIATIONS
+  1. JSON library: self-contained minimal JSON model instead of
+     nlohmann/json (not in devenv profile; MUST NOT touch devenv.nix) or
+     llvm::json (would drag LLVMSupport). See rationale in db.h header.
+  2. Canonical serialization: save() emits sorted member order (deterministic,
+     diffable, dedupe-key-stable) - member order of hand-written files is
+     not preserved on re-save (logical content identical).
+  3. put() rejects (std::invalid_argument) non-object config / non-finite
+     numbers: JSON has no NaN/Inf literal, so this keeps save() emit-safe.
+  4. Full `cmake --build build` exit 1 is a transient parallel-worker
+     condition (todo-7 report_test.cpp Werror nodiscard); kernscope_db and
+     kernscope-db-test compile clean under the same -Wall -Wextra -Werror.
+  5. Blank lines and CRLF line endings are tolerated silently (not warned);
+     only malformed content is warned.

@@ -8,7 +8,7 @@
       "plan_name": "gpu-kernel-suite",
       "status": "active",
       "started_at": "2026-08-14T04:11:50.633Z",
-      "updated_at": "2026-08-14T07:54:03.102Z",
+      "updated_at": "2026-08-14T08:20:47.352Z",
       "session_ids": [
         "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
       ],
@@ -40,6 +40,18 @@
           "updated_at": "2026-08-14T07:54:03.102Z",
           "ended_at": "2026-08-14T07:54:03.102Z",
           "elapsed_ms": 902674
+        },
+        "todo:5": {
+          "task_key": "todo:5",
+          "task_label": "5",
+          "task_title": "Golden fixture materialization + CUDA toolchain smoke gates (fused_attention.ptx, layernorm_fused HIP app, clang<->CUDA-12.6 header check)",
+          "session_id": "opencode:ses_000a6e2ecffeaanjM3MB60D379",
+          "agent": "explore",
+          "started_at": "2026-08-14T08:17:15.238Z",
+          "status": "completed",
+          "updated_at": "2026-08-14T08:20:47.352Z",
+          "ended_at": "2026-08-14T08:20:47.352Z",
+          "elapsed_ms": 212114
         }
       }
     }
@@ -47,7 +59,7 @@
   "active_plan": "/home/mei/projects/llvm.h/.omo/plans/gpu-kernel-suite.md",
   "started_at": "2026-08-14T04:11:50.633Z",
   "status": "active",
-  "updated_at": "2026-08-14T07:54:03.102Z",
+  "updated_at": "2026-08-14T08:20:47.352Z",
   "session_ids": [
     "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
   ],
@@ -79,6 +91,18 @@
       "updated_at": "2026-08-14T07:54:03.102Z",
       "ended_at": "2026-08-14T07:54:03.102Z",
       "elapsed_ms": 902674
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "Golden fixture materialization + CUDA toolchain smoke gates (fused_attention.ptx, layernorm_fused HIP app, clang<->CUDA-12.6 header check)",
+      "session_id": "opencode:ses_000a6e2ecffeaanjM3MB60D379",
+      "agent": "explore",
+      "started_at": "2026-08-14T08:17:15.238Z",
+      "status": "completed",
+      "updated_at": "2026-08-14T08:20:47.352Z",
+      "ended_at": "2026-08-14T08:20:47.352Z",
+      "elapsed_ms": 212114
     }
   },
   "agent": "atlas"

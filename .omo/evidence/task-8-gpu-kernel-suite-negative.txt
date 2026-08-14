@@ -1,0 +1,52 @@
+kernscope todo 8 — QA evidence (negative path): corrupt-line resilience
+========================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 8 of gpu-kernel-suite plan)
+Commit: feat(db): JSONL benchmark/config database with versioned schema
+
+PURPOSE
+  Prove the loader's corrupt-line contract (plan todo 8 acceptance, audited
+  by F1): a hand-corrupted JSONL line must be WARNED with its line number
+  and SKIPPED; loading continues; the record count reflects the skip
+  (N-1). Same behavior is asserted by gtest
+  DbTest.CorruptMiddleLineSkippedAndWarningNamesLine; this scenario runs it
+  against a committed fixture with a real standalone driver.
+
+SCENARIO
+  1. Copy the committed 5-record fixture libs/db/tests/fixtures/benchmarks.jsonl
+     to a scratch copy (fixture itself is NEVER modified).
+  2. Hand-corrupt line 3 (replace the valid attention record with
+     "this line is deliberately not json {{{").
+  3. Load both the clean copy (baseline) and the corrupted copy with the
+     standalone driver (compiled with the same -Wall -Wextra -Werror flags
+     against libkernscope_db.a).
+
+EXACT OUTPUTS
+  --- corrupted file line 3:
+  this line is deliberately not json {{{
+  --- original fixture line 3 (for contrast):
+  {"schema_version": 1, "gpu_arch": "sm_90", "kernel_family": "attention",
+   "shape_hash": "sha256:e7d1", ... "mode": "projected"}}
+
+  --- run driver on clean fixture copy (baseline):
+  loaded records: 5
+  warnings: 0
+
+  --- run driver on corrupted fixture copy:
+  loaded records: 4
+  warnings: 1
+    warning: line 3: malformed JSON line skipped: byte 0: invalid literal (expected true)
+
+ASSERTIONS SATISFIED
+  - loader continues past the corrupted line: exit 0, warning (not abort)  [PASS]
+  - result count == N-1: 4 == 5-1                                              [PASS]
+  - warning names the line number: "line 3:" in the message; LoadWarning.line
+    == 3 (gtest asserts the same: warnings[0].line == 3u)                     [PASS]
+  - records before AND after the corruption survive in order (gtest:
+    records()[0] sha256:3f4a, records()[2] sha256:c0a8, records()[3]
+    sha256:51f7)                                                              [PASS]
+
+RELATED ASSERTED BEHAVIOR (same loader, gtest)
+  DbTest.NewerSchemaVersionSkippedWithWarning: schema_version 99 record ->
+  warning "line 6: record schema_version 99 > current 1 - forward-incompatible,
+  skipped"; count == 5 of 6. (schema-skew negative path)
