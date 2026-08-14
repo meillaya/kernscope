@@ -1,0 +1,53 @@
+todo 32 (gpu-kernel-suite) QA-negative evidence: uniform-condition barriers
+must stay SAFE (regression guard against over-reporting).
+Date: 2026-08-14T20:00Z   |   Commit base: 7102e2b + cdd8d2c
+
+SCENARIO 1 (the planned QA negative): barrier under a UNIFORM loop-carried
+condition — tests/verify/corpus/barrier_uniform_loop.cu:
+
+  __global__ void uniform_loop_kernel(int* out) {
+      for (int j = 0; j < 4; ++j) {
+          if (j == 2) {
+              __syncthreads();        // uniform loop-carried condition
+          }
+      }
+      __syncthreads();                // post-loop: same count for all threads
+      out[threadIdx.x] = 1;
+  }
+
+Why SAFE: j is a plain uniform loop counter, so every thread of the block
+evaluates j == 2 identically and reaches the same number of barriers. The
+class-6 divergence check sees no thread-dependent branch (UniformityInfo:
+both branches uniform), and the class-3 count dataflow merges the j == 2
+join as {0,1} with the simultaneously-active flag OFF (uniform branch) —
+no BARRIER_MISMATCH can fire. Count-set overflow (unknown counts) would
+also suppress reporting, keeping the guard sound for deeper loops.
+
+Asserted by gtest BarrierCheck.UniformLoopCarriedConditionStaysSafe
+(zero class-3 AND zero class-6 diagnostics for uniform_loop_kernel) and by
+manifest entry {barrier_uniform_loop.cu, uniform_loop_kernel, check 3,
+expected_verdict SAFE}.
+
+SCENARIO 2: barrier under a block-uniform blockIdx condition —
+tests/verify/corpus/barrier_uniform.cu (if (blockIdx.x == 0) __syncthreads();
++ an unconditional leading barrier). blockIdx is identical for every thread
+of the block (llvm.nvvm.read.ptx.sreg.ctaid.x is always-uniform per the
+module's TTI seeding) -> join counts {1,2}, active OFF -> SAFE. Asserted by
+gtest BarrierCheck.UniformBlockIdxConditionStaysSafe + manifest entry
+{barrier_uniform.cu, uniform_kernel, check 3, expected_verdict SAFE}.
+
+Verification run (both scenarios, Werror build):
+
+  $ ctest --test-dir build -R verify_barrier
+  1/1 Test #563: verify_barrier ... Passed  3.92 sec
+  100% tests passed, 0 tests failed out of 1
+
+  $ ./build/tools/verify/checks/barrier/verify-barrier-test
+  [       OK ] BarrierCheck.UniformLoopCarriedConditionStaysSafe
+  [       OK ] BarrierCheck.UniformBlockIdxConditionStaysSafe
+  [  PASSED  ] 5 tests.        (all 5; the other three cover the happy path)
+
+Counter-example proving the detector is live (not vacuously SAFE): the
+thread-dependent fixture barrier_mismatch.cu / barrier_divergent.cu DO
+produce findings (BARRIER_MISMATCH / DIVERGENT_BARRIER) on the same
+pipeline — see task-32-gpu-kernel-suite.txt.

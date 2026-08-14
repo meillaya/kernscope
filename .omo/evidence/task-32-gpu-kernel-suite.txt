@@ -1,0 +1,60 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+  CC/CXX:      /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang / /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang++
+  CUDA_HOME:   /nix/store/an6sdsdk5b1apdvlq80687rkymzqm73r-cuda12.6-cuda_cudart-12.6.77 (single root)
+  CUPTI_HOME:  /nix/store/fxwhb6kzfnrw8fm7swbbzqvhh4lkkw9y-cuda-cupti-home
+  mlir-tblgen: LLVM (http://llvm.org/):
+  nvcc:        Cuda compilation tools, release 12.6, V12.6.85
+  hipcc:       HIP version: 7.2.53211-9999
+  cmake:       cmake version 4.3.4
+  clang:       clang version 21.1.8
+todo 32 (gpu-kernel-suite): barrier correctness (class 3) + divergent
+__syncthreads detection (class 6) — kernscope-verify check module.
+Date: 2026-08-14T20:00:18Z
+Commit base: 7102e2b (core pipeline) + cdd8d2c (-O2 SCEV assertion)
+
+== files created (module) ==
+  tools/verify/checks/barrier/barrier_check.cpp   (plugin, classes 3+6)
+  tools/verify/checks/barrier/CMakeLists.txt      (lib + verify-barrier-test)
+  tools/verify/checks/barrier/barrier_test.cpp    (manifest-driven ctest)
+  tests/verify/corpus/barrier_divergent.cu        (class 6 fixture)
+  tests/verify/corpus/barrier_uniform.cu          (SAFE fixture)
+  tests/verify/corpus/barrier_mismatch.cu         (class 3 fixture)
+  tests/verify/corpus/barrier_uniform_loop.cu     (QA-negative fixture)
+  tests/verify/corpus/manifest.barrier.json       (verdict manifest)
+
+== acceptance 1: cmake --build build (Werror clean) ==
+ninja: no work to do.
+build exit: 0
+
+== acceptance 2: ctest -R verify_barrier ==
+1/1 Test #563: verify_barrier ...................   Passed    3.92 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+no-gpu    =   3.92 sec*proc (1 test)
+
+Total Test time (real) =   3.93 sec
+ctest exit: 0
+
+== acceptance 3: full gtest detail (5/5) ==
+Running main() from /build/source/googletest/src/gtest_main.cc
+[==========] Running 5 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 5 tests from BarrierCheck
+[ RUN      ] BarrierCheck.ManifestVerdicts
+[       OK ] BarrierCheck.ManifestVerdicts (3911 ms)
+[ RUN      ] BarrierCheck.UniformLoopCarriedConditionStaysSafe
+[       OK ] BarrierCheck.UniformLoopCarriedConditionStaysSafe (0 ms)
+[ RUN      ] BarrierCheck.UniformBlockIdxConditionStaysSafe
+[       OK ] BarrierCheck.UniformBlockIdxConditionStaysSafe (0 ms)
+[ RUN      ] BarrierCheck.DivergentBarrierHasSourceLocation
+[       OK ] BarrierCheck.DivergentBarrierHasSourceLocation (0 ms)
+[ RUN      ] BarrierCheck.PluginRegisteredWithClasses36
+[       OK ] BarrierCheck.PluginRegisteredWithClasses36 (0 ms)
+[----------] 5 tests from BarrierCheck (3911 ms total)
+
+[----------] Global test environment tear-down
+[==========] 5 tests from 1 test suite ran. (3911 ms total)
+[  PASSED  ] 5 tests.
+gtest exit: 0

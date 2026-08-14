@@ -1,0 +1,26 @@
+[
+  {
+    "file": "barrier_divergent.cu",
+    "kernel": "divergent_kernel",
+    "check": 6,
+    "expected_verdict": "DIVERGENT_BARRIER"
+  },
+  {
+    "file": "barrier_uniform.cu",
+    "kernel": "uniform_kernel",
+    "check": 3,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "barrier_mismatch.cu",
+    "kernel": "mismatch_kernel",
+    "check": 3,
+    "expected_verdict": "BARRIER_MISMATCH"
+  },
+  {
+    "file": "barrier_uniform_loop.cu",
+    "kernel": "uniform_loop_kernel",
+    "check": 3,
+    "expected_verdict": "SAFE"
+  }
+]
