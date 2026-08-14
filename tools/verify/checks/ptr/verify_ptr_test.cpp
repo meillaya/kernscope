@@ -302,6 +302,11 @@ Analyzed runAnalyze(const std::string& file, IngestionOptions iopts,
   IngestionResult result = ingester.ingest(corpusDir() + "/" + file, iopts);
   Analyzed out;
   if (!result.success) {
+    llvm::errs() << "[ingest-fail] " << file << " diags="
+                 << result.clang_diagnostics.size() << "\n";
+    for (const std::string& d : result.clang_diagnostics) {
+      llvm::errs() << "[clang] " << d << "\n";
+    }
     return out;
   }
   out.context = result.context;
@@ -479,6 +484,68 @@ TEST(VerifyPtr, PtrSubUnrelatedFlagged) {
     }
   }
   EXPECT_TRUE(saw_unrelated) << "no UNRELATED_SUB finding emitted";
+}
+
+// --- class-8 detail: the bad cast is an Error citing the table ------------
+TEST(VerifyPtr, BadCastErrorCitesTable) {
+  const Analyzed a = runAnalyze("ptr_cast_bad.cu", IngestionOptions());
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = findKernel(a, "cast_bad_kernel");
+  ASSERT_NE(k, nullptr);
+  const std::optional<Verdict> v =
+      pluginVerdict(a, k->name, CheckClass::kAddrSpaceCast);
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(v->verdict, ptr::kVerdictInvalidAddrspaceCast);
+  EXPECT_GT(v->payload.getInt("bad"), 0);
+  const Json* findings = v->payload.find("findings");
+  ASSERT_NE(findings, nullptr);
+  ASSERT_FALSE(findings->array.empty());
+  const Json& f = findings->array.front();
+  EXPECT_EQ(f.getInt("src_as"), 3);
+  EXPECT_EQ(f.getInt("dst_as"), 1);
+  EXPECT_EQ(f.getString("src"), "shared");
+  EXPECT_EQ(f.getString("dst"), "global");
+  // The diagnostic message must cite the verified table
+  // (docs/research/gpu-memory-pass-research.md §2.1).
+  bool cited = false;
+  for (const Diagnostic& d : a.state->diagnostics()) {
+    if (d.class_id == CheckClass::kAddrSpaceCast &&
+        d.function.find("cast_bad_kernel") != std::string::npos) {
+      EXPECT_EQ(d.severity, Severity::Error);
+      EXPECT_NE(d.message.find("gpu-memory-pass-research.md"),
+                std::string::npos)
+          << "class-8 diagnostic must cite the research table";
+      EXPECT_NE(d.message.find("§2.1"), std::string::npos);
+      cited = true;
+    }
+  }
+  EXPECT_TRUE(cited);
+}
+
+// --- QA negative: generic-mediated chain stays SAFE ------------------------
+// The shared -> generic -> global chain (the pattern the plan names via
+// __cvta_generic_to_global; expressed here with explicit attribute casts —
+// the cvta builtins are host-stubbed in the staged CUDA headers and fail
+// the host pass — producing IR-identical addrspacecast 3->0 + 0->1) must
+// NOT be flagged: both individual casts are legal per the table.
+TEST(VerifyPtr, LegalGenericMediatedChainNotFlagged) {
+  const Analyzed a = runAnalyze("ptr_cast_bad.cu", IngestionOptions());
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = findKernel(a, "cast_legal_kernel");
+  ASSERT_NE(k, nullptr);
+  const std::optional<Verdict> v =
+      pluginVerdict(a, k->name, CheckClass::kAddrSpaceCast);
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(v->verdict, ptr::kVerdictSafe);
+  EXPECT_EQ(v->payload.getInt("bad"), 0);
+  // No class-8 Error may exist for this kernel (precision guard).
+  for (const Diagnostic& d : a.state->diagnostics()) {
+    if (d.class_id == CheckClass::kAddrSpaceCast &&
+        d.function.find("cast_legal_kernel") != std::string::npos) {
+      EXPECT_NE(d.severity, Severity::Error)
+          << "legal generic-mediated cast must not be flagged";
+    }
+  }
 }
 
 // --- registry contract -----------------------------------------------------
