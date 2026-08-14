@@ -1,0 +1,42 @@
+kernscope todo 4 — CI scripts + README skeleton — QA evidence (negative path)
+=============================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 4 of gpu-kernel-suite plan)
+
+SCENARIO (per plan todo 4 QA): a staged file carrying an NVIDIA copyright
+marker must trip the content guard, making ci.sh exit non-zero. The scenario
+must STAGE the file first, because git grep only sees tracked files.
+
+COMMAND EXECUTED (exact)
+------------------------
+bash -c 'echo "// Copyright NVIDIA CUPTI header bytes" > tools/dummy.cpp &&
+         git add tools/dummy.cpp && bash scripts/ci.sh'
+
+RESULT
+------
+Exit code: 1  (non-zero as required — CI gate fails on first failure)
+
+Tail of the log (guard stages):
+  [SKIP] check-kernscope - lit suite lands with todo 3
+  [SKIP] pytest tests/golden - golden harness lands in wave 4 (todo 23)
+  [SKIP] generated-code compile checks - hook placeholder; activates when scripts/compile_checks.sh lands (todo 24)
+  [SKIP] fixture size - tests/fixtures lands in wave 1 (todo 5)
+  [PASS] NVIDIA-header filename guard (no vendored CUDA/CUPTI/NVTX .h files tracked)
+  [FAIL] NVIDIA-content guard - matches: tools/dummy.cpp
+
+Notes: the filename guard does not trip on tools/dummy.cpp (.cpp, not a
+vendored header .h file) — the content guard ("Copyright.*NVIDIA" outside
+the documented exceptions) catches the staged marker file, exactly as
+review-mandated. The guard's two layers are independent and both exercised.
+
+CLEANUP (exact)
+---------------
+git reset -q && rm -f tools/dummy.cpp
+-> success; git status --porcelain afterwards shows only the pre-scenario
+   modified/untracked set (omo state + todo-4 files + parallel-worker
+   devenv/tests files), no tools/dummy.cpp.
+
+POST-CLEANUP VERIFICATION
+-------------------------
+bash scripts/ci.sh again -> exit 0 (guards green; see
+task-4-gpu-kernel-suite.txt for the full PASS log).

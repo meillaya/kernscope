@@ -1,0 +1,68 @@
+kernscope todo 4 — CI scripts + README skeleton — QA evidence (happy path)
+==========================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 4 of gpu-kernel-suite plan)
+Commit: chore(foundation): ci.sh, rental-validate.sh dry-run, README skeleton
+
+FILES CREATED/MODIFIED
+  scripts/ci.sh              (new, executable)
+  scripts/rental-validate.sh (new, executable)
+  README.md                  (replaced stub with polykernel-convention skeleton)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS
+  1. bash scripts/ci.sh
+     -> exit 0
+     (full log below: 2 PASS guards, 7 SKIP stages that legitimately no-op
+      pre-wave-3/4; header guards return nothing)
+  2. bash scripts/rental-validate.sh --dry-run
+     -> exit 0 AND stdout contains "ctest -L gpu-nvidia-rental" (literal,
+      STEP 3 of the printed owner command sequence)
+  3. grep -q "^## Resume bullets" README.md -> heading present
+  4. test -x scripts/rental-validate.sh -> executable bit set
+
+FULL CI LOG (bash scripts/ci.sh)
+--------------------------------
+== kernscope CI gate ==
+[SKIP] configure - scripts/configure.sh lands with todo 3 (parallel worker)
+[SKIP] build - build/ not configured yet (todo 3)
+[SKIP] ctest -L "no-gpu|gpu-amd" - no CTest suite yet (todo 3)
+[SKIP] check-kernscope - lit suite lands with todo 3
+[SKIP] pytest tests/golden - golden harness lands in wave 4 (todo 23)
+[SKIP] generated-code compile checks - hook placeholder; activates when scripts/compile_checks.sh lands (todo 24)
+[SKIP] fixture size - tests/fixtures lands in wave 1 (todo 5)
+[PASS] NVIDIA-header filename guard (no vendored CUDA/CUPTI/NVTX .h files tracked)
+[PASS] NVIDIA-content guard (no Copyright.*NVIDIA outside documented exceptions)
+
+[PASS] kernscope CI gate green (2 pass, 7 skip, 0 fail)
+
+RENTAL-VALIDATE DRY-RUN OUTPUT (bash scripts/rental-validate.sh --dry-run)
+-------------------------------------------------------------------------
+[kernscope] rental-validate.sh --dry-run
+Owner-executed command sequence for an NVIDIA rental validation run
+(owner-initiated only - never auto-triggered by CI):
+
+  STEP 1 - CUDA toolkit version check (on the rental host)
+      ssh <rental-host> nvcc --version
+      # CUDA 13 note: Event/Metric/PC-sampling APIs + nvprof removed
+      # (docs/research/profiler-research-brief.md §1.5); expect
+      # CUpti_ActivityKernel10 + CUPTI_API_VERSION 130001 on 13.x.
+  STEP 2 - CUPTI version detect (on the rental host)
+      ssh <rental-host> bash -c 'grep -m1 "CUPTI_API_VERSION" "$(find / -path "*/extras/CUPTI/include/cupti_version.h" 2>/dev/null | head -1)"'
+  STEP 3 - run the NVIDIA-runtime ctest label
+      cd build && ctest -L gpu-nvidia-rental --output-on-failure
+  STEP 4 - evidence lands under reports/rentals/ (owner commits it after
+      inspecting the results; e.g. reports/rentals/<timestamp>-summary.txt)
+
+Run the real thing with:  bash scripts/rental-validate.sh
+
+NOTES / DEVIATIONS
+  - ci.sh stage (e) is a guarded hook (not `|| true`): once
+    scripts/compile_checks.sh exists (todo 24) a failure there fails CI,
+    matching the gate semantics; pre-todo-24 it is a no-op [SKIP].
+  - ci.sh content guard adds ':!.omo' to the spec pathspec: the tracked
+    plan file .omo/plans/gpu-kernel-suite.md quotes this guard's own regex
+    literal (self-reference false positive); the guard still covers the
+    whole project source tree. .omo/ is orchestration machinery, not
+    vendored header content.
+  - No external CI service wired; no devenv/CMake files touched (owned by
+    parallel workers todos 2-3, landed in the working tree during this run).
