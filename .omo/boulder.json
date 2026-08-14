@@ -8,7 +8,7 @@
       "plan_name": "gpu-kernel-suite",
       "status": "active",
       "started_at": "2026-08-14T04:11:50.633Z",
-      "updated_at": "2026-08-14T04:11:50.633Z",
+      "updated_at": "2026-08-14T04:18:08.460Z",
       "session_ids": [
         "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
       ],
@@ -16,13 +16,24 @@
         "opencode:ses_002ed12d6ffe9UenisQWpUtLaL": "direct"
       },
       "agent": "atlas",
-      "task_sessions": {}
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "Repo foundation: git init, skeleton, briefs -> docs/research/, owner-examples materialization, LICENSE + THIRD-PARTY.md",
+          "session_id": "opencode:ses_00182a0c3ffe7Zq8KSVRcrsZjY",
+          "agent": "explore",
+          "started_at": "2026-08-14T04:16:51.326Z",
+          "status": "running",
+          "updated_at": "2026-08-14T04:18:08.460Z"
+        }
+      }
     }
   },
   "active_plan": "/home/mei/projects/llvm.h/.omo/plans/gpu-kernel-suite.md",
   "started_at": "2026-08-14T04:11:50.633Z",
   "status": "active",
-  "updated_at": "2026-08-14T04:11:50.633Z",
+  "updated_at": "2026-08-14T04:18:08.460Z",
   "session_ids": [
     "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
   ],
@@ -30,6 +41,17 @@
     "opencode:ses_002ed12d6ffe9UenisQWpUtLaL": "direct"
   },
   "plan_name": "gpu-kernel-suite",
-  "task_sessions": {},
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Repo foundation: git init, skeleton, briefs -> docs/research/, owner-examples materialization, LICENSE + THIRD-PARTY.md",
+      "session_id": "opencode:ses_00182a0c3ffe7Zq8KSVRcrsZjY",
+      "agent": "explore",
+      "started_at": "2026-08-14T04:16:51.326Z",
+      "status": "running",
+      "updated_at": "2026-08-14T04:18:08.460Z"
+    }
+  },
   "agent": "atlas"
 }
