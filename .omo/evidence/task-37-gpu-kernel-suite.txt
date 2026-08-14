@@ -1,7 +1,7 @@
 task-37-gpu-kernel-suite — HAPPY PATH
 =====================================
 Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 37 · Wave 7 (pass track)
-Commit: feat(pass): vectorized load/store rewrite pass
+Commit: e416d01 feat(pass): vectorized load/store rewrite pass (+ 68788de)
 
 WHAT LANDED
 -----------
@@ -96,15 +96,24 @@ ACCEPTANCE (all executed)
    store <4 x float> %kernscope.vins6, ptr addrspace(1) %q0, align 16
    No scalar load/store remains in the loop (VEC-NOT asserted).
 
-INTERLOCK NOTE (parallel workers)
----------------------------------
-tools/pass/passes/pad/pad_pass.cpp (todo-38 worker, uncommitted WIP) is
-added to the shared kernscope-pass target by their own CMakeLists and is
-currently in a broken state, so `cmake --build build --target
-kernscope-pass` was NOT runnable at the time of this commit. My module
-compiles Werror-clean standalone (its own target vectorize-rewrite-test
-builds both of my TUs), and the full opt/lit acceptance was executed
-against a scratch plugin .so built from the todo-36 core sources + my
-pass (no repo files touched). Once the todo-38 worker lands, the exact
-same `cmake --build build --target kernscope-pass` + check-kernscope
-acceptance runs untouched.
+INTERLOCK RESOLVED + FULL GATE STATE
+------------------------------------
+At commit time the todo-38 worker's uncommitted WIP (pad_pass.cpp) blocked
+the shared plugin target, so acceptance was run against a scratch .so; the
+worker has since landed, and the REAL acceptance now passes end-to-end:
+
+  $ cmake --build build --target kernscope-pass        -> exit 0 (Werror
+    clean; also builds vectorize-rewrite-test)
+  $ ctest --test-dir build -R vectorize_rewrite         -> 100% passed
+    (3/3 gtest cases)
+  $ lit -v build/tests/pass/vectorize.test              -> PASS (1/1)
+  $ cmake --build build --target check-kernscope        -> 10/11; the sole
+    failure is kernscope-pass :: pad.test — the todo-38 worker's OWN
+    in-progress pass (RUN line invokes only -passes=kernscope-pad; the
+    pad logic is not yet implemented — alloca comes out unpadded). Not
+    caused by this module (custom pipelines do not fire EP callbacks).
+    Owner runs the full gate after all three parallel todos land.
+
+Follow-up commits: 68788de fix(pass): add vectorize module include dir to
+plugin target (module header lives in the module's own include/ tree;
+required for the real plugin build).
