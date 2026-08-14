@@ -1,0 +1,19 @@
+// clang_fpass_plugin.test — clang -fpass-plugin smoke (todo 36).
+//
+// Compiles a tiny device-only CUDA source through the real clang CUDA path
+// with the pass plugin loaded via -fpass-plugin, and FileChecks the
+// "kernscope.hello" marker in the emitted IR.
+//
+// CUDA root: the lit config stages a synthetic root (lit.cfg.py
+// _stage_cuda_root — include/ from $CUDA_HOME + bin/ + nvvm/ from the nvcc
+// package + the curand shim; the todo-5 fallback idiom, same as the verify
+// ingester) because clang 21 only enables the CUDA language when it can
+// detect an installation. -O1 runs the full default pipeline, so the EP
+// callbacks (pipeline-start + peephole) fire exactly as they will for real
+// GPU compiles with todos 37-41's passes.
+//
+// REQUIRES: no-gpu, cuda-root
+
+; RUN: %clang -x cuda --cuda-device-only -nocudalib --no-cuda-version-check --cuda-path=%cuda_root --cuda-gpu-arch=sm_80 -O1 -fpass-plugin=%kernscope-pass-plugin -S -emit-llvm %S/Inputs/hello_kernel.cu -o - | FileCheck %s
+; CHECK: define {{.*}} @hello_kernel
+; CHECK: "kernscope.hello"

@@ -1,0 +1,27 @@
+; hello_pass.test — opt -load-pass-plugin smoke (todo 36).
+;
+; Exercises BOTH wiring paths of the HelloPass registration lambda:
+;   RUN 1: textual name via registerPipelineParsingCallback
+;          (opt -passes=kernscope-hello).
+;   RUN 2: PassBuilder EP callbacks under a real default pipeline
+;          (opt -passes=default<O2>): the pipeline-start EP stamps the
+;          marker first, the peephole EP re-stamps it after each
+;          InstCombine. Proves the same EP path clang -fpass-plugin uses
+;          (clang_fpass_plugin.test).
+;
+; The marker is the inert custom function attribute "kernscope.hello"
+; (empty value), which no optimization strips.
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-hello -S %s | FileCheck %s --check-prefix=NAME
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='default<O2>' -S %s | FileCheck %s --check-prefix=EP
+
+; NAME: @smoke
+; NAME: attributes #0 = { "kernscope.hello" }
+; EP: @smoke
+; EP: "kernscope.hello"
+
+define void @smoke() {
+  ret void
+}

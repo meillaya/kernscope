@@ -31,11 +31,16 @@ configure_lit_site_cfg(
 # opt/FileCheck/count/not are prebuilt in the installed LLVM (nix store), not
 # CMake targets, so DEPENDS only lists the tools we build here.
 # ${CMAKE_BINARY_DIR}/tests/verify is the todo-35 kernscope-verify lit suite
-# (site cfg configured in tools/verify/CMakeLists.txt); one lit invocation
-# runs both suites, so check-kernscope covers the verifier corpus gate too.
+# (site cfg configured in tools/verify/CMakeLists.txt) and
+# ${CMAKE_BINARY_DIR}/tests/pass is the todo-36 kernscope-pass lit suite
+# (site cfg configured in tools/pass/CMakeLists.txt); one lit invocation
+# runs all suites, so check-kernscope covers the verifier corpus gate and
+# the pass-plugin load-path smokes too. DEPENDS kernscope-pass makes sure
+# the plugin .so exists before lit runs.
 add_lit_testsuite(check-kernscope "Running the kernscope regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_BINARY_DIR}/tests/verify
-  DEPENDS kernscope-analyze kernscope-verify
+  ${CMAKE_BINARY_DIR}/tests/pass
+  DEPENDS kernscope-analyze kernscope-verify kernscope-pass
 )
 set_target_properties(check-kernscope PROPERTIES FOLDER "Tests")
