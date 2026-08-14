@@ -1,0 +1,90 @@
+Task 3 (gpu-kernel-suite): CMake superbuild + lit/ctest skeleton with hardware labels
+=====================================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Environment: CachyOS (AMD-only, RX 7800 XT / gfx1101). nix-store toolchain
+LLVM 21.1.8 + MLIR 21.1.8 (nixpkgs), lit 18.1.8, devenv 2.2.1.
+
+Context / deviation from the "inside devenv shell" path
+-------------------------------------------------------
+The todo-2 worker owns devenv.yaml/devenv.nix and is mid-materialization: at
+verification time `devenv shell -- true` FAILS with an evaluation error
+(`attribute 'dev' missing` at devenv.nix:93, `env.CUDA_HOME = "${cudaPackages.cuda_cudart.dev}"`).
+Per the plan's acceptance wording ("run inside devenv shell if available, else
+with nix-store paths"), ALL verification below ran with explicit nix-store
+paths. scripts/configure.sh auto-detects the unready devenv (90s probe) and
+falls back to nix-store resolution; it will use the devenv shell once todo 2
+lands a working env.
+
+Materialized nix-store paths used (all exist):
+  LLVM_DIR=.../238i6ljarh959f2dak1a8rsyiz6hnmgw-llvm-21.1.8-dev/lib/cmake/llvm
+    (LLVM_TOOLS_BINARY_DIR -> 5x5mgygx57h5aasxwwpqafafabd1a4p8-llvm-21.1.8/bin,
+     contains opt/FileCheck/count/not)
+  MLIR_DIR=.../21f3qk8szrz48q7wzcs2cwqg1a7d95mp-mlir-21.1.8-dev/lib/cmake/mlir
+  LLVM_EXTERNAL_LIT=.../xw9cfqm3xlszlwmifd832b9wq5v61qkr-python3.12-lit-18.1.8/bin/.lit-wrapped
+    (verified: bin/lit is a bash wrapper; .lit-wrapped is the real python lit -
+     exactly the tt-flow README:44-50 pin workaround)
+
+FILES CREATED
+-------------
+CMakeLists.txt                        root: project(kernscope CXX), C++20 REQUIRED,
+                                      -Wall -Wextra -Werror (F2 gate), LLVM/MLIR,
+                                      enable_testing(), subdirs libs/arch, tools/analyze, test
+.clang-tidy                           committed config (bugprone/performance/portability/
+                                      readability/misc minus noisy; WarningsAsErrors '*')
+scripts/configure.sh                  devenv-or-nix-store resolution + .lit-wrapped pin
+libs/arch/CMakeLists.txt              kernscope_arch INTERFACE lib (+ kernscope::arch alias)
+libs/arch/include/kernscope/version.h KERNSCOPE_VERSION_* macros ("0.1.0")
+tools/analyze/CMakeLists.txt          kernscope-analyze stub + ctest LABELS no-gpu
+tools/analyze/main.cpp                prints kernscope-analyze 0.1.0 (--version)
+test/CMakeLists.txt                   find_package(Python3) + configure_lit_site_cfg +
+                                      add_lit_testsuite(check-kernscope)
+test/lit.cfg.py                       hardware feature detection (no-gpu always; gpu-amd iff
+                                      /dev/kfd; gfx1101 via rocminfo; gpu-nvidia-rental iff nvcc)
+test/lit.site.cfg.py.in               site config template
+test/Other/hello.ll                   smoke: opt -passes=verify | FileCheck (REQUIRES: no-gpu)
+test/Other/echo.test                  smoke: echo | FileCheck + %llvm_tools_dir probe
+                                      (REQUIRES: no-gpu)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS
+-----------------------------------
+1. LLVM_DIR=... MLIR_DIR=... LLVM_EXTERNAL_LIT=... bash scripts/configure.sh
+   -> exit 0; "Found LLVM 21.1.8 (LLVM_DIR=...)", "Found MLIR", "Build files
+      have been written to: /home/mei/projects/llvm.h/build"
+2. cmake --build build
+   -> exit 0 (2/2 targets, clean under -Werror)
+3. cmake --build build --target check-kernscope
+   -> exit 0:
+      PASS: kernscope :: Other/echo.test (1 of 2)
+      PASS: kernscope :: Other/hello.ll (2 of 2)
+      Total Discovered Tests: 2 / Passed: 2 (100.00%)
+4. (cd build && ctest -L no-gpu --output-on-failure)
+   -> exit 0: "1/1 Test #1: analyze-version ... Passed  0.00 sec"
+      "100% tests passed, 0 tests failed out of 1"
+      Label Time Summary: no-gpu = 0.00 sec (1 test)
+5. test -f .clang-tidy -> exists
+Bonus: clang-tidy --config-file=.clang-tidy tools/analyze/main.cpp -> exit 0,
+       zero diagnostics in project code (2537 suppressed in non-user code).
+
+QA (happy path): scripts/configure.sh + check-kernscope PASS lines captured
+above (also /tmp/opencode/cfg1.log, build1.log, check1.log).
+
+DEVIATIONS / FINDINGS (documented in-code too)
+----------------------------------------------
+1. find_package(LLVM 21 REQUIRED CONFIG) FAILS against the nixpkgs toolchain:
+   nixpkgs patches LLVMConfigVersion.cmake to strict major.minor matching
+   ("LLVM is API-compatible only with matching major.minor versions"), so a
+   request for "21" (i.e. 21.0) is rejected for 21.1.8. Used
+   find_package(LLVM 21.1 REQUIRED CONFIG) instead - same intent (LLVM-21
+   family), works with the store toolchain.
+2. lit 18.1.8's use_default_substitutions() does NOT define %llvm_tools_dir;
+   added the substitution explicitly in lit.cfg.py (FileCheck/opt discovered
+   via LLVM_TOOLS_BINARY_DIR -> config.llvm_tools_dir).
+3. Kernscope tools land in build/bin via RUNTIME_OUTPUT_DIRECTORY (tt-flow
+   convention) so lit's KERNSCOPE_TOOLS_DIR finds them.
+4. scripts/configure.sh probes `devenv shell` readiness (timeout 90) before
+   re-exec'ing into it, so a mid-materialization devenv (todo 2 in progress)
+   falls back to nix-store paths instead of hard-failing.
+5. Hardware features on this machine: /dev/kfd present -> gpu-amd active;
+   nvcc NOT on bare PATH (comes from the devenv) -> gpu-nvidia-rental inactive
+   outside the shell; gfx1101 detection wired via rocminfo when present.

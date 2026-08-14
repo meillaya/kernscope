@@ -1,0 +1,8 @@
+; Smoke test: echo through FileCheck + explicit LLVM tools dir probe.
+; Proves lit's %llvm_tools_dir substitution (FileCheck/opt live in
+; ${LLVM_TOOLS_BINARY_DIR}) works end to end.
+; REQUIRES: no-gpu
+; RUN: echo "kernscope echo smoke" | FileCheck %s
+; RUN: %llvm_tools_dir/opt --version | grep -q "LLVM version"
+
+; CHECK: kernscope echo smoke

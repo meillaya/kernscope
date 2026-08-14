@@ -1,0 +1,35 @@
+Task 3 (gpu-kernel-suite): NEGATIVE QA - configure without nix env vars
+=======================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+
+Scenario: run cmake OUTSIDE the devenv shell / without nix-store env vars
+(LLVM_DIR/MLIR_DIR unset) -> configure MUST fail with an "LLVM 21 not found"-
+style error, exit != 0.
+
+Invocation (clean env, only cmake+ninja on PATH):
+  env -i PATH=/home/mei/.nix-profile/bin:/usr/bin:/bin HOME=$HOME \
+    cmake -B build-neg -G Ninja
+
+Result: EXIT=1  (asserted: != 0, PASS)
+
+Captured message (verbatim):
+  CMake Error at CMakeLists.txt:21 (find_package):
+    Could not find a configuration file for package "LLVM" that is compatible
+    with requested version "21.1".
+
+    The following configuration files were considered but not accepted:
+      /usr/lib64/cmake/llvm/LLVMConfig.cmake, version: 22.1.8
+      /usr/lib/cmake/llvm/LLVMConfig.cmake, version: 22.1.8
+      /lib64/cmake/llvm/LLVMConfig.cmake, version: 22.1.8
+      /lib/cmake/llvm/LLVMConfig.cmake, version: 22.1.8
+
+  -- Configuring incomplete, errors occurred!
+
+Note: the system-wide LLVM 22.1.8 configs are rejected by the strict version
+match - exactly the desired failure (the build is pinned to the nix-store
+LLVM 21.1.8 toolchain and refuses to silently fall back to a different
+major version).
+
+The scratch build-neg directory was removed afterwards; git status clean
+except for the intended task files.

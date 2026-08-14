@@ -1,0 +1,24 @@
+---
+# kernscope clang-tidy configuration (committed, F2 prerequisite).
+#
+# Families: bugprone-*, performance-*, portability-*, readability-*, misc-*,
+# minus the noisy checks (see the disabled list below). The disabled checks
+# produce too many false positives on kernel-style numeric code to be worth
+# their signal here.
+#
+# WarningsAsErrors: '*' matches the build's -Wall -Wextra -Werror guarantee:
+# a clang-tidy finding is a build failure, not a suggestion.
+Checks: >-
+  -*,bugprone-*,performance-*,portability-*,readability-*,misc-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-suspicious-call-argument
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(libs|tools|tests)/.*'
+FormatStyle: none
+...
