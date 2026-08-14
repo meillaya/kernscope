@@ -1,0 +1,48 @@
+task-25-gpu-kernel-suite-negative.txt
+=====================================
+Todo 25 (tune: matmul template + full search space instantiation) — NEGATIVE
+PATH evidence. The failure mode is a pre-compile REASON STRING, never a broken
+compile or an emitted uncompilable source. Owner: implementation worker.
+Date: 2026-08-14 (devenv shell).
+
+QA SCENARIO FAILURE: smem-over-budget config must be rejected pre-compile with
+the reason naming the budget (asserted), and the generator must NEVER emit
+uncompilable source.
+
+1) CLI rejection (smem over-budget on gfx1101):
+   kernscope-tune-gen --arch gfx1101 --bm 128 --bn 128 --bk 64 --warps 4
+     --stages 2 --vec 1 --layout padded --unroll 1 --out /tmp/opencode/matmul_bad.hip
+   -> rc=1, stderr:
+     "kernscope-tune-gen: invalid matmul config: smem budget exceeded: 132608
+      bytes needed > 65536 available per block on gfx1101"
+   Budget named: 132608 needed vs 65536 (arch DB smem_per_block_max_bytes for
+   gfx1101) and the arch name. No file written (exit non-zero).
+
+2) CLI rejection (vector-width misdivision):
+   kernscope-tune-gen --arch gfx1101 --bm 64 --bn 64 --bk 16 --warps 1
+     --stages 1 --vec 4 --layout padded --unroll 1 --out /tmp/opencode/matmul_bad2.hip
+   -> rc=1:
+     "invalid matmul config: vector width 4 must divide the per-thread column
+      fragment cpt = BN/(32·warps_n) = 2"
+
+3) gtest assertions (ctest #527/#528/#529/#530 all PASSed):
+   - OverBudgetRejectedPreCompile: BM=BN=128 BK=64 warps=4 stages=2 padding on
+     gfx1101 -> validate_config.valid==false, reason contains "smem budget",
+     "132608" and "gfx1101"; generate_source returns empty with error
+     containing "invalid matmul config". Same config IS valid on sm_80
+     (132608 <= 163 KB budget) — asserted.
+   - RegisterOverBudgetRejectedPreCompile: BM=BN=128 warps=1 -> reason
+     "register budget exceeded: 512 acc fragment regs/thread (+32 overhead) =
+     544 > 256 max_regs_per_thread on gfx1101".
+   - VecMisdivisionRejectedPreCompile: BN=64 warps=1 vec=4 -> reason names
+     "vector width" and "cpt".
+   - RejectionCountExact: exactly 4/4 deliberately-invalid configs rejected
+     pre-compile with non-empty reasons; generate_source refused to emit for
+     every one.
+   - SearchSpaceEnumerationSanity (4608 combos): 0 rejected configs carried an
+     empty reason; 0 valid configs produced an empty generate_source result —
+     the generator never emits uncompilable source.
+
+CONCLUSION: the negative path behaves exactly per contract — the failure mode
+is a reason string citing the arch budget, and no uncompilable source is ever
+emitted.

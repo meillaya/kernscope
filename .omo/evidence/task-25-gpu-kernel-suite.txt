@@ -1,0 +1,86 @@
+task-25-gpu-kernel-suite.txt
+===========================
+Todo 25 (tune: matmul template + full search space instantiation) — HAPPY PATH
+evidence. Owner: implementation worker. Date: 2026-08-14 (devenv shell).
+
+DELIVERABLES (files created)
+----------------------------
+  tools/tune/include/kernscope/tune/matmul_gen.h   - API: MatmulConfig /
+    MatmulProblem / ConfigVerdict / validate_config / smem_bytes /
+    warp_decomposition / launch_geometry / kernel_symbol / generate_source /
+    generate_to_file + full search-space choice arrays.
+  tools/tune/src/matmul_gen.cpp                    - validate_config
+    (pre-compile: search-space membership, warp/block divisibility, vector
+    width, threads cap, register budget, smem budget via libs/arch) +
+    single-source tiled-GEMM emitter (bf16 in, fp32 acc, bf16 out,
+    bounds-checked for non-multiple M/N/K).
+  tools/tune/src/matmul_gen_cli.cpp                - kernscope-tune-gen CLI.
+  tools/tune/tests/matmul_gen_test.cpp             - no-gpu + gpu-amd gates.
+  tools/tune/CMakeLists.txt                        - APPENDED (flash targets
+    untouched): kernscope_matmul_gen, kernscope-tune-gen, tune-matmul-gen-test
+    (no-gpu), tune-matmul-gen-live-test (gpu-amd).
+  tools/tune/README.md                             - matmul section appended.
+  scripts/ci-baseline.txt                          - raised 523 -> 532 (+9 tests).
+
+ACCEPTANCE COMMANDS + RESULTS
+-----------------------------
+1) cmake --build build
+   -> exit 0 (ninja: no work to do after full build; BUILD_RC=0).
+
+2) ctest --test-dir build -R tune_matmul_gen --output-on-failure
+   -> exit 0; 100% tests passed, 0 failed out of 9:
+     #524 tune_matmul_gen:MatmulGen.NvccCompileGate .......... Passed (6.41s)
+     #525 tune_matmul_gen:MatmulGen.HipccGfx1101GencoGate .... Passed (1.83s)
+     #526 tune_matmul_gen:MatmulGen.GridEnumerationCountExact  Passed
+     #527 tune_matmul_gen:MatmulGen.RejectionCountExact ...... Passed
+     #528 tune_matmul_gen:MatmulGen.OverBudgetRejectedPreCompile Passed
+     #529 tune_matmul_gen:MatmulGen.RegisterOverBudgetRejectedPreCompile Passed
+     #530 tune_matmul_gen:MatmulGen.VecMisdivisionRejectedPreCompile Passed
+     #531 tune_matmul_gen:MatmulGen.SearchSpaceEnumerationSanity Passed
+     #532 tune_matmul_gen_live:MatmulGenLive.MatmulGoldenPass . Passed (1.24s)
+   Grid enumeration count: exactly 16 (2 BMxBN pairs x 2 BK x 2 warps x 2
+   stages), total==16 asserted.
+   Rejection count: exactly 4 deliberately-invalid configs rejected
+   pre-compile with reasons (smem budget / register budget / vector-width
+   misdivision / search-space membership), count==4 asserted.
+   Search-space sanity: 4608 combos (2*2*4*4*4*2*3*3) enumerated, 0 rejected
+   without a reason, 0 valid configs refused to emit.
+
+3) LIVE gfx1101 golden verdict (ctest -R tune_matmul_gen_live, gpu-amd):
+   config BM=BN=64 BK=16 warps=2 stages=1 vec=1 padding unroll=1,
+   shape M=N=K=64:
+     "pass": true,
+     "cosine": 1.0,
+     "max_rel_err": 0.0,
+     "pcc": 0.9999999403953552,
+   gate: OK symbol=kernscope_tune_matmul family=matmul shape=64,64,64
+   verdict=pass:true
+   (thresholds pass:true = cosine >= 0.999 AND max_rel_err <= 1e-2 AND
+   pcc >= 0.99.)
+
+4) bash scripts/ci.sh
+   -> exit 0: [PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail);
+   [PASS] ctest count guard: 532 tests >= baseline 532
+   (scripts/ci-baseline.txt); generated-code compile checks PASS.
+
+5) kernscope-tune-gen CLI happy path:
+   kernscope-tune-gen --arch gfx1101 --bm 64 --bn 64 --bk 16 --warps 2
+     --stages 1 --vec 1 --layout padded --unroll 1 --out /tmp/opencode/matmul_happy.hip
+   -> rc=0; "wrote ... (symbol kernscope_tune_matmul)".
+
+QA SCENARIO HAPPY: generator emits valid config (rc=0) + nvcc sm_80/sm_90
+compile-only (test #524) + hipcc gfx1101 genco (#525) + hipcc gfx1101 live
+run (#532) + golden verdict pass:true (cosine 1.0 / max_rel_err 0.0 /
+pcc 0.99999994). All captured above.
+
+RISKS / DEVIATIONS
+------------------
+- Lite scope (documented in header + README): synchronous loads, no cp.async
+  intrinsics — the stages dimension searches the multi-buffer smem staging
+  structure (same lite decision as todo 27).
+- XOR swizzle is the simplified CuTe Swizzle<3,3,3> idiom (col ^ (row & 3))
+  already established by todo 27, not a bit-level byte swizzle.
+- Register budget is an ESTIMATE (fragment regs + 32 overhead) per the task
+  contract ("register budget estimate").
+- Entry symbol is the fixed kernscope_tune_matmul (task contract; the runner
+  resolves kernels by this name).
