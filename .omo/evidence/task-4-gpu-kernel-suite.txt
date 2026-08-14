@@ -66,3 +66,69 @@ NOTES / DEVIATIONS
     vendored header content.
   - No external CI service wired; no devenv/CMake files touched (owned by
     parallel workers todos 2-3, landed in the working tree during this run).
+
+=================================================================
+VERIFICATION ROUND 2 (independent review fix) — 2026-08-14
+=================================================================
+ISSUE FOUND BY VERIFIER: the NVIDIA-content guard self-matched its own
+source (scripts/ci.sh lines ~113/119/121 contained text matching the
+pattern), so a committed ci.sh would [FAIL] on a clean tree. Root cause:
+the guard's own regex literal + comments/pass-message quoted the pattern,
+and git grep scans tracked files — ci.sh became tracked in a1f2361.
+
+FIX (commit e65bfaa "fix(foundation): ci.sh NVIDIA-content guard no
+longer self-matches", only scripts/ci.sh changed):
+  1. Reworded the guard's comment + pass message so no single line in the
+     file matches the pattern (the only remaining match is the regex
+     literal inside the guard command itself — unavoidable).
+  2. Added ':!scripts/ci.sh' to the content-guard pathspec, documented as
+     a self-reference false positive with the same discipline as the
+     existing ':!.omo' exclusion; comment warns to keep both exclusions
+     while the pattern is quoted in this file.
+  3. Added CI_SKIP_CONFIGURE=1 owner bootstrap escape hatch (reviewer-
+     sanctioned): scripts/configure.sh is mid-flight (FATAL: LLVMConfig
+     .cmake missing — parallel fix committing shortly); the flag skips
+     stage (a) so the rest of the gate stays reachable; stage becomes a
+     hard gate when configure.sh works.
+
+CLEAN-TREE GUARD CHECK (requirement 2)
+  git grep -I -l "Copyright.*NVIDIA" -- ':!docs/research'
+     ':!THIRD-PARTY.md' ':!docs/capture-mapping.md' ':!.omo'
+     ':!scripts/ci.sh'
+  -> NO OUTPUT (git grep exit 1) — clean tree returns nothing.
+  (The reviewer's exact form without ':!scripts/ci.sh' returns
+  scripts/ci.sh — that is precisely the self-reference the fix excludes.)
+
+NEGATIVE QA (requirement 3)
+  bash -c 'echo "// Copyright NVIDIA CUPTI header bytes" > tools/dummy.cpp
+           && git add tools/dummy.cpp && CI_SKIP_CONFIGURE=1 bash scripts/ci.sh'
+  -> exit 1 (non-zero), guard stage FIRES on the dummy:
+       [PASS] ctest -L "no-gpu|gpu-amd"
+       [PASS] check-kernscope (lit suite)
+       [SKIP] pytest tests/golden ...
+       [SKIP] generated-code compile checks ...
+       [SKIP] fixture size ...
+       [PASS] NVIDIA-header filename guard ...
+       [FAIL] NVIDIA-content guard - matches: tools/dummy.cpp
+     (the guard stage itself trips, not an earlier stage — ctest/lit PASS
+     lines precede it in the log)
+  Cleanup: git reset -q && rm -f tools/dummy.cpp -> verified gone from
+  git status --porcelain.
+
+BONUS (real NVIDIA-header file still trips the guard)
+  tools/cuda_occupancy.h containing "* Copyright (c) 2010-2024 NVIDIA
+  Corporation" staged -> exit 1 with
+       [FAIL] NVIDIA-header filename guard - vendored headers tracked:
+              tools/cuda_occupancy.h
+  (filename guard catches the real vendored header form first; cleanup
+  verified, no trace left.)
+
+HAPPY PATH AFTER FIX
+  CI_SKIP_CONFIGURE=1 bash scripts/ci.sh -> exit 0
+       [PASS] ctest -L "no-gpu|gpu-amd"     (analyze-version, 1/1)
+       [PASS] check-kernscope (lit suite)   (2/2: echo.test, hello.ll)
+       [PASS] NVIDIA-header filename guard
+       [PASS] NVIDIA-content guard
+       4 pass, 4 skip, 0 fail — gate green.
+  (TODO-3 artifacts landed: ctest + lit now run for real; configure is
+  the only mid-flight stage, skipped via the documented escape hatch.)

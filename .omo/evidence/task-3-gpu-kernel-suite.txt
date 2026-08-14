@@ -88,3 +88,43 @@ DEVIATIONS / FINDINGS (documented in-code too)
 5. Hardware features on this machine: /dev/kfd present -> gpu-amd active;
    nvcc NOT on bare PATH (comes from the devenv) -> gpu-nvidia-rental inactive
    outside the shell; gfx1101 detection wired via rocminfo when present.
+
+================================================================================
+FIX (2026-08-14): configure.sh resolves nix-store -dev outputs + fetches paths
+================================================================================
+Independent verification found: bare `bash scripts/configure.sh` exited 1 with
+"FATAL: ...-llvm-21.1.8/lib/cmake/llvm/LLVMConfig.cmake missing" because the
+auto-resolution used `.outPath` on llvmPackages_21.llvm / llvmPackages_21.mlir,
+whose `out` outputs contain only bin/ + share/ -- the CMake configs
+(lib/cmake/{llvm,mlir}) live in the -dev outputs.
+
+Fix (scripts/configure.sh only):
+1. ensure_materialized now resolves "${attr}.dev" first (fallback to the
+   default output for single-output packages such as lit), so LLVM_DIR/MLIR_DIR
+   point at the -dev store paths that actually contain LLVMConfig.cmake /
+   MLIRConfig.cmake.
+2. Fetch messages inside ensure_materialized go to stderr: stdout is captured
+   by the caller's command substitution and must carry only the resolved path
+   (a latent stdout-pollution bug, hit once the fetch branch ran).
+3. The fetch now runs `nix build --no-link <resolved-output-path>` instead of
+   `nix build --expr <drv>`: on this nix (Determinate Nix 3.21.7) `--expr <drv>`
+   realizes only the primary outputs of a multi-output derivation and silently
+   skipped the -dev output (verified: out+lib materialized, dev absent while
+   `nix path-info` reported dev as fetchable; `nix build <path>` fetched it).
+
+Re-verification (bare, no env vars; enters the devenv shell -- worker's env
+now functional):
+  bash scripts/configure.sh          -> exit 0, "Found LLVM 21.1.8
+    (LLVM_DIR=/nix/store/4768r0pa7fswbi0mdjalqc9pm56fh2vm-llvm-21.1.8-dev/lib/cmake/llvm)"
+    "Found MLIR" (2lzr6hy0s5cikj7lxwpl0qhh2idmqfc1-mlir-21.1.8-dev),
+    LLVM_EXTERNAL_LIT=...python3.14-lit-18.1.8/bin/.lit-wrapped (devenv PATH pin)
+  cmake --build build                -> exit 0 (clean under -Werror)
+  cmake --build build --target check-kernscope -> exit 0:
+    PASS: kernscope :: Other/echo.test (1 of 2)
+    PASS: kernscope :: Other/hello.ll (2 of 2)
+    Total Discovered Tests: 2 / Passed: 2 (100.00%)
+  (cd build && ctest -L no-gpu --output-on-failure) -> exit 0:
+    Test #1: analyze-version Passed; 100% tests passed, 0 failed; Label no-gpu
+  LLVM_TOOLS_BINARY_DIR -> l25n688...-llvm-21.1.8/bin (opt/FileCheck/count/not
+  present). A full clean-slate pass (rm -rf build + bare configure + build +
+  check-kernscope + ctest) was run: all four commands exit 0.
