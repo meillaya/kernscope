@@ -53,11 +53,21 @@ nixpkgs_attr() {
 ensure_materialized() {
   local attr="$1"
   local out_path
-  out_path="$(nixpkgs_attr "$attr")"
+  # Prefer the -dev output: lib/cmake/{llvm,mlir} live in the dev output, not
+  # in `out` (which holds only bin/ + share/). Fall back to the default output
+  # for single-output packages (lit).
+  out_path="$(nixpkgs_attr "${attr}.dev")"
+  if [[ -z "${out_path}" ]]; then
+    out_path="$(nixpkgs_attr "${attr}")"
+  fi
   if [[ ! -e "${out_path}" ]]; then
-    echo "[kernscope/configure] ${attr} not in store; fetching from binary cache..."
-    nix build --no-link --impure --expr \
-      "(builtins.getFlake \"/home/mei/projects/polykernel\").inputs.nixpkgs.legacyPackages.x86_64-linux.${attr}" >/dev/null
+    # stderr on purpose: stdout is captured by the caller's command
+    # substitution and must carry only the resolved store path.
+    echo "[kernscope/configure] ${attr} not in store; fetching from binary cache..." >&2
+    # Build the resolved OUTPUT PATH directly: `nix build --expr <drv>`
+    # realizes only the primary outputs of a multi-output derivation in this
+    # nix version, silently skipping e.g. the -dev output we need.
+    nix build --no-link "${out_path}" >/dev/null
   fi
   printf '%s' "${out_path}"
 }
