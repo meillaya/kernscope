@@ -1,0 +1,56 @@
+[
+  {
+    "file": "oob_clean.cu",
+    "kernel": "oob_clean_kernel",
+    "check": 1,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "oob_clean.cu",
+    "kernel": "oob_param_kernel",
+    "check": 1,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "oob_may.cu",
+    "kernel": "oob_may_kernel",
+    "check": 1,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "oob_may.cu",
+    "kernel": "oob_data_kernel",
+    "check": 1,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "smem_clean.cu",
+    "kernel": "smem_clean_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_overflow.cu",
+    "kernel": "smem_overflow_kernel",
+    "check": 2,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "smem_overflow.cu",
+    "kernel": "smem_safe_wide_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_dynamic.cu",
+    "kernel": "smem_dyn_safe_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_dynamic.cu",
+    "kernel": "smem_dyn_oob_kernel",
+    "check": 2,
+    "expected_verdict": "MAY_OOB"
+  }
+]
