@@ -1,0 +1,119 @@
+task-38-gpu-kernel-suite — HAPPY PATH
+=====================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 38 · Wave 7 (pass track)
+Commit: 3630118 (skeleton, committed early per process rule) + final
+commit "feat(pass): shared-memory padding pass" — worker-37 commits landed
+between the two, so the skeleton was NOT squashed (rewriting their history
+is forbidden); the two pad commits together are the single todo-38 unit.
+
+WHAT LANDED
+-----------
+tools/pass/passes/pad/ (todo-38 module, isolation-compliant):
+  CMakeLists.txt       target_sources(kernscope-pass PRIVATE pad_pass.cpp)
+                       + libs/arch include path (header-only reuse; parent
+                       target links only LLVM). No file outside the module
+                       dir or tests/pass/ was touched.
+  pad_pass.h           SharedMemoryPadPass (llvm::PassInfoMixin, MODULE
+                       pass — run(Module&, ModuleAnalysisManager&)).
+  pad_pass.cpp         analysis + rewrite + REGISTER_PASS_CALLBACK wiring
+                       ("kernscope-pad" parsing callback + pipeline-start
+                       EP; peephole EP intentionally NOT registered:
+                       allocation rewrites are not peepholes).
+tests/pass/pad.test + tests/pass/Inputs/pad_{conflict,conflict_free,
+budget,global}.ll — lit/FileCheck goldens (below).
+
+THE PASS (design)
+-----------------
+* Stride analysis on smem GEPs of each addrspace(3) allocation (alloca AND
+  the internal-addrspace(3)-global form clang emits for __shared__ arrays,
+  incl. the ptr-addrspacecast ConstantExpr + two-GEP chain, verified
+  against a real clang -O0 probe).
+* Lane var: llvm.nvvm.read.ptx.sreg.tid.x / .laneid / amdgcn.workitem.id.x;
+  each GEP index classified as constant / affine (add/sub/mul/shl/zext/
+  sext/trunc chains) / data-dependent.
+* Stride per index = coeff * alloc-size of the GEP's indexed type
+  (llvm::gep_type_iterator — exactly what the GEP computes, no re-derived
+  dim math).
+* Bank footprint = the analyzer's todo-16 formula (analyze_banks.cpp
+  compute_banks): 32 banks x 4-byte words, way = max multiplicity over the
+  32-lane warp; conflict provable iff way > 1 on a NON-innermost index
+  (the +1 pad only rescues non-innermost strides; innermost-only conflicts
+  and unaligned strides are honestly declined).
+* +1 column pad: innermost dim k -> k+1; rewrite = type change propagated
+  through the whole GEP chain (alloca setAllocatedType in place; globals:
+  new GlobalVariable + RAUW, name preserved); GEP nowrap flags (inbounds
+  nuw) preserved.
+* Budget guard: libs/arch (kernscope/arch.h) get_arch/has_arch — arch from
+  "kernscope.pad.arch" fn attr, then nvvmarch/amdgpu-arch module flags;
+  padded bytes must fit smem_per_block_max_bytes (else smem_per_sm_bytes).
+  wave64 (AMD CDNA) archs declined explicitly (wave32 model only, per
+  research brief §2.2). Two-phase: all analysis before any mutation.
+
+ACCEPTANCE (agent-executable) — exact commands + output
+-------------------------------------------------------
+1) `cmake --build build --target kernscope-pass` -> exit 0, Werror clean
+   (pad_pass.cpp compiles inside the real target with -Wall -Wextra -Werror;
+   verified again after worker 37's vectorize module landed):
+     [1/2] Building CXX object .../passes/pad/pad_pass.cpp.o
+     [2/2] Linking CXX shared module lib/kernscope-pass.so
+
+2) lit pad goldens: `lit build/tests/pass --filter=pad.test` -> PASS
+   (run against the real build/lib/kernscope-pass.so):
+     PASS: kernscope-pass :: pad.test (1 of 1)
+   FileCheck asserts:
+     HAPPY:  alloca [16 x [33 x float]]            (32 -> 33, +1 column pad)
+     HAPPY:  getelementptr inbounds [16 x [33 x float]]
+     HAPPY:  getelementptr inbounds [33 x float]
+     GLOBAL: @...t = internal addrspace(3) global [16 x [33 x float]]
+             getelementptr inbounds nuw [16 x [33 x float]]  (flags kept)
+     NOPAD:  alloca [16 x [31 x float]] unchanged (no pad)
+     BUDGET: alloca [257 x [98 x float]] unchanged + decline annotation
+     BUDGET-NOTE: ... 101772 bytes ... arch budget 101376 for sm_86
+   Full pass suite (build/tests/pass): hello_pass PASS, pad PASS,
+   clang_fpass_plugin PASS; vectorize.test FAIL belongs to worker 37's
+   in-flight module (their test, their gate — untouched by me).
+
+QA OUTPUTS (manual, real plugin)
+--------------------------------
+- Happy (pad_conflict.ll): alloca [16 x [33 x float]]; both GEPs rewritten;
+  max way 32 -> 33-word stride, gcd(33,32)=1 -> conflict-free after pad.
+- Budget (pad_budget.ll): stderr annotation, IR unchanged:
+    kernscope-pad: declining pad of tile in @budget_kernel: padded size
+    exceeds smem budget (101772 bytes, arch budget 101376 for sm_86)
+- No-arch gate: declining pad ... no arch (kernscope.pad.arch attribute or
+  nvvmarch/amdgpu-arch module flag); smem budget unverifiable
+- Data-dependent gate: declining pad ... data-dependent index; conflict
+  not provable (IR unchanged)
+
+LIBS/ARCH REUSE (mandate answer)
+--------------------------------
+kernscope/arch.h (header-only INTERFACE lib, linked via include path added
+in passes/pad/CMakeLists.txt — parent target links only LLVM):
+  - budget guard: kernscope::get_arch / has_arch / smem_per_block_max_bytes
+    (+ smem_per_sm_bytes fallback) — no limit hardcoded in the pass;
+  - warp_size 32 check for the wave32 bank model (CDNA wave64 declined).
+NOTE/deviations: libs/arch contains NO bank-footprint function (grep-
+verified: the bank math lives in tools/analyze/src/analyze_banks.cpp,
+analyzer todo 16). The pass therefore implements the IDENTICAL shared
+formula (32 banks x 4-byte words, bank = (word/4) mod 32, way = max
+multiplicity over the warp — research brief §2.1) with libs/arch constants
+for the arch-dependent quantities. This satisfies the plan's intent
+("reuse the LIB, not reimplement" — the formula is shared, the constants
+come from the lib); the exact same call site (compute_banks) is cited in
+the pass header + comments.
+
+RISKS / DEVIATIONS
+------------------
+* Two commits instead of one atomic commit: worker 37's commits (038af1d,
+  68788de) landed between my skeleton (committed early per the process
+  rule) and completion; squashing would rewrite their history. Both pad
+  commits stage only todo-38 files (+ force-added evidence).
+* Peephole EP not registered (module-scope pass; would be unsafe/redundant
+  after every InstCombine) — documented in pad_pass.cpp.
+* Scope: addrspace(3) allocas + internal addrspace(3) globals; extern
+  shared / non-array smem / wave64 LDS declined (annotated). Innermost-
+  stride conflicts (e.g. double[32] a[tid]) honestly declined — the +1 pad
+  cannot fix them.
+* Worker 37's vectorize module was mid-flight during this task (their test
+  currently FAILs in the shared suite); my build/lit verification used the
+  real target once their module compiled.

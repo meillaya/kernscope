@@ -1,0 +1,41 @@
+task-38-gpu-kernel-suite — NEGATIVE PATH
+========================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 38 · Wave 7 (pass track)
+Commit: final commit "feat(pass): shared-memory padding pass" (see happy-path
+evidence for the commit split rationale — worker-37 commits interleave).
+
+SCENARIO: conflict-free fixture -> pass declines -> IR identical.
+
+FIXTURE
+-------
+tests/pass/Inputs/pad_conflict_free.ll: 16x31 float tile, column-wise
+access t[threadIdx.x][0]; row index strides 31 words per lane;
+gcd(31, 32) = 1 -> the 32 lanes touch 32 distinct banks -> max way 1
+(the pass's own bank-footprint formula, same as analyzer todo 16). No
+provable conflict, so the applicability gate declines.
+
+EXACT COMMANDS + OUTPUT
+-----------------------
+$ opt -load-pass-plugin=build/lib/kernscope-pass.so -passes=kernscope-pad \
+    -S tests/pass/Inputs/pad_conflict_free.ll -o /tmp/pad_cf_out.ll
+  -> exit 0
+$ llvm-diff tests/pass/Inputs/pad_conflict_free.ll /tmp/pad_cf_out.ll
+  -> exit 0, NO output (modules identical; the decline is silent by
+     design — no stderr bytes on the clean path)
+$ wc -c stderr -> 0 bytes
+
+Lit golden (pad.test, NOPAD prefix): alloca [16 x [31 x float]] asserted
+unchanged, no [16 x [32 x float]] anywhere -> lit PASS.
+
+WHY DECLINED (asserted)
+-----------------------
+way = 1: no provable bank conflict (the gate requires the conflict to be
+provable — a data-dependent index would also decline, with annotation:
+"data-dependent index; conflict not provable", QA-verified separately).
+
+RISKS / NOTES
+-------------
+- Silent decline on the clean path is intentional (no annotation noise on
+  already-conflict-free kernels); budget/no-arch/data-dependent declines
+  DO annotate stderr deterministically (asserted in pad.test BUDGET-NOTE
+  and the manual QA).

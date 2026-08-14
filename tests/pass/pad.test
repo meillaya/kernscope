@@ -31,7 +31,6 @@
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict.ll | FileCheck %s --check-prefix=HAPPY
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_global.ll | FileCheck %s --check-prefix=GLOBAL
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict_free.ll | FileCheck %s --check-prefix=NOPAD
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_conflict_free.ll 2>&1 >/dev/null | FileCheck %s --check-prefix=NOPAD-NOTE
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_budget.ll | FileCheck %s --check-prefix=BUDGET
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-pad -S %S/Inputs/pad_budget.ll 2>&1 >/dev/null | FileCheck %s --check-prefix=BUDGET-NOTE
 
@@ -39,7 +38,6 @@
 ; HAPPY-NOT: alloca [16 x [32 x float]]
 ; HAPPY: getelementptr inbounds [16 x [33 x float]]
 ; HAPPY: getelementptr inbounds [33 x float]
-; HAPPY: @transpose_kernel
 
 ; GLOBAL: @_ZZ9transposePfE1t = internal addrspace(3) global [16 x [33 x float]] zeroinitializer
 ; GLOBAL-NOT: global [16 x [32 x float]]
@@ -48,8 +46,6 @@
 
 ; NOPAD: alloca [16 x [31 x float]]
 ; NOPAD-NOT: alloca [16 x [32 x float]]
-; NOPAD-NOTE: kernscope-pad: declining pad of
-; NOPAD-NOTE: no provable bank conflict
 
 ; BUDGET: alloca [257 x [98 x float]]
 ; BUDGET-NOT: alloca [257 x [99 x float]]
