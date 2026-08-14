@@ -117,3 +117,76 @@ else()
   message(STATUS "tools/tune: live FlashAttention gates skipped (hipcc or "
                  "kernscope_templates_hip_runner not available)")
 endif()
+
+# --- todo 25: matmul template generator -------------------------------------
+# Single-source portable tiled-GEMM generator (bf16 in, fp32 accumulate, bf16
+# out). Library API in include/kernscope/tune/matmul_gen.h; validated
+# pre-compile against libs/arch (smem budget, register budget, warp/block
+# divisibility, vector-width tiling). CLI in src/matmul_gen_cli.cpp emits the
+# generated source for one (arch, config) to a file (kernscope-tune-gen).
+add_library(kernscope_matmul_gen STATIC
+  src/matmul_gen.cpp
+)
+target_include_directories(kernscope_matmul_gen PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(kernscope_matmul_gen PUBLIC cxx_std_20)
+add_library(kernscope::matmul_gen ALIAS kernscope_matmul_gen)
+target_link_libraries(kernscope_matmul_gen PUBLIC
+  kernscope::arch
+)
+
+# The CLI is a host tool (the generated source is what nvcc/hipcc compile).
+add_executable(kernscope-tune-gen
+  src/matmul_gen_cli.cpp
+)
+target_link_libraries(kernscope-tune-gen PRIVATE
+  kernscope::matmul_gen)
+target_compile_features(kernscope-tune-gen PRIVATE cxx_std_20)
+
+# --- no-gpu pre-compile gates ------------------------------------------------
+# Grid-enumeration count (16), invalid-config rejection counts (register
+# budget, smem over-budget with reason naming the budget + arch, vector-width
+# divisibility), nvcc sm_80/sm_90 compile-only gates, hipcc gfx1101 --genco
+# compile-only gate. Shares the flash test's KERNSCOPE_TUNE_TEST_DEFS path
+# injection (nvcc/hipcc/python/runner paths).
+add_executable(tune-matmul-gen-test tests/matmul_gen_test.cpp)
+target_link_libraries(tune-matmul-gen-test PRIVATE
+  kernscope::matmul_gen
+  kernscope::arch
+  GTest::gtest_main
+)
+target_compile_definitions(tune-matmul-gen-test PRIVATE
+  ${KERNSCOPE_TUNE_TEST_DEFS})
+gtest_discover_tests(tune-matmul-gen-test
+  TEST_PREFIX "tune_matmul_gen:"
+  PROPERTIES LABELS "no-gpu"
+)
+
+# --- gpu-amd LIVE gates ------------------------------------------------------
+# The generated tiled-matmul kernel runs on this machine (gfx1101) through the
+# kernscope_templates_hip_runner + run_hip_gate.py and must earn a
+# kernscope_golden matmul verdict pass:true on M=N=K=64. Only built when
+# hipcc + ROCm headers were found AND the kernels/templates runner target
+# exists.
+if(KERNSCOPE_TUNE_HAVE_HIP AND TARGET kernscope_templates_hip_runner)
+  add_executable(tune-matmul-gen-live-test tests/matmul_gen_test.cpp)
+  target_link_libraries(tune-matmul-gen-live-test PRIVATE
+    kernscope::matmul_gen
+    kernscope::arch
+    GTest::gtest_main
+  )
+  target_compile_definitions(tune-matmul-gen-live-test PRIVATE
+    ${KERNSCOPE_TUNE_TEST_DEFS}
+    KERNSCOPE_TUNE_LIVE=1
+    KERNSCOPE_TUNE_RUNNER="$<TARGET_FILE:kernscope_templates_hip_runner>"
+  )
+  # The runner binary + the gate script must exist before ctest runs.
+  add_dependencies(tune-matmul-gen-live-test kernscope_templates_hip_runner)
+  gtest_discover_tests(tune-matmul-gen-live-test
+    TEST_PREFIX "tune_matmul_gen_live:"
+    PROPERTIES LABELS "gpu-amd"
+  )
+else()
+  message(STATUS "tools/tune: live matmul gates skipped (hipcc or "
+                 "kernscope_templates_hip_runner not available)")
+endif()
