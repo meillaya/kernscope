@@ -191,6 +191,38 @@ TEST(VerifyCore, O2ReconstructionAndDegradedVerdict) {
   }
 }
 
+// --- 3b. -O2: the SCEV/lattice-assisted queryRange helper reconstructs a
+// bounded range for the unrolled (constant-offset) index -------------------
+TEST(VerifyCore, O2ReconstructionViaQueryRange) {
+  IngestionOptions iopts;
+  iopts.opt_level = 2;
+  VerifierOptions vopts;
+  vopts.ingestion_opt_level = 2;
+  Analyzed a = run_analyze("o2_unrolled.cu", vopts, iopts);
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = find_kernel(a, "reconstruct_kernel");
+  ASSERT_NE(k, nullptr);
+  llvm::GetElementPtrInst* gep = nullptr;
+  for (llvm::BasicBlock& bb : *k->function) {
+    for (llvm::Instruction& i : bb) {
+      if (auto* g = llvm::dyn_cast<llvm::GetElementPtrInst>(&i)) {
+        gep = g;
+        break;
+      }
+    }
+    if (gep) {
+      break;
+    }
+  }
+  ASSERT_NE(gep, nullptr);
+  VerifierContext ctx{*a.module, *const_cast<KernelInfo*>(k), a.state->engine()};
+  ctx.state = a.state.get();
+  auto r = ctx.queryRange(gep);
+  ASSERT_TRUE(r.has_value());
+  EXPECT_FALSE(r->isFullSet());
+  EXPECT_FALSE(r->isEmptySet());
+}
+
 // --- 4. budget-exceeded synthetic case: < 5s + budget diagnostic ----------
 TEST(VerifyCore, BudgetExceededTerminates) {
   auto context = std::make_shared<llvm::LLVMContext>();
