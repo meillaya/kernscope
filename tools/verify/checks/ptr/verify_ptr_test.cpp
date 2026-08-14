@@ -548,6 +548,68 @@ TEST(VerifyPtr, LegalGenericMediatedChainNotFlagged) {
   }
 }
 
+// --- class-7 detail: MAY_UNINIT_READ carries evidence path ----------------
+TEST(VerifyPtr, UninitReadHasEvidencePath) {
+  const Analyzed a = runAnalyze("ptr_uninit.cu", IngestionOptions());
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = findKernel(a, "uninit_read_kernel");
+  ASSERT_NE(k, nullptr);
+  const std::optional<Verdict> v =
+      pluginVerdict(a, k->name, CheckClass::kUninitRead);
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(v->verdict, ptr::kVerdictMayUninitRead);
+  EXPECT_GT(v->payload.getInt("bad"), 0);
+  const Json* findings = v->payload.find("findings");
+  ASSERT_NE(findings, nullptr);
+  ASSERT_FALSE(findings->array.empty());
+  EXPECT_EQ(findings->array.front().getString("kind"),
+            "MAY_UNINIT_READ");
+  // The diagnostic carries an evidence path (eBPF analog).
+  bool path_seen = false;
+  for (const Diagnostic& d : a.state->diagnostics()) {
+    if (d.class_id == CheckClass::kUninitRead &&
+        d.function.find("uninit_read_kernel") != std::string::npos) {
+      EXPECT_FALSE(d.path.empty())
+          << "MAY_UNINIT_READ must carry an evidence path";
+      path_seen = !d.path.empty();
+    }
+  }
+  EXPECT_TRUE(path_seen);
+}
+
+// --- class-7 detail: write -> __syncthreads -> cross-index read stays SAFE
+// The phase boundary promotes any-thread writes to all-thread readable, so
+// the read of s[255 - t] after the barrier is NOT flagged (the QA guard for
+// the classic false positive).
+TEST(VerifyPtr, PhaseCleanKernelStaysSafe) {
+  const Analyzed a = runAnalyze("ptr_uninit.cu", IngestionOptions());
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = findKernel(a, "uninit_phase_clean_kernel");
+  ASSERT_NE(k, nullptr);
+  const std::optional<Verdict> v =
+      pluginVerdict(a, k->name, CheckClass::kUninitRead);
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(v->verdict, ptr::kVerdictSafe);
+  for (const Diagnostic& d : a.state->diagnostics()) {
+    if (d.class_id == CheckClass::kUninitRead &&
+        d.function.find("uninit_phase_clean_kernel") != std::string::npos) {
+      EXPECT_NE(d.severity, Severity::Warning);
+    }
+  }
+}
+
+// --- class-7 detail: alloca read-before-write flagged ----------------------
+TEST(VerifyPtr, AllocaReadBeforeWriteFlagged) {
+  const Analyzed a = runAnalyze("ptr_uninit.cu", IngestionOptions());
+  ASSERT_NE(a.state, nullptr);
+  const KernelInfo* k = findKernel(a, "uninit_alloca_kernel");
+  ASSERT_NE(k, nullptr);
+  const std::optional<Verdict> v =
+      pluginVerdict(a, k->name, CheckClass::kUninitRead);
+  ASSERT_TRUE(v.has_value());
+  EXPECT_EQ(v->verdict, ptr::kVerdictMayUninitRead);
+}
+
 // --- registry contract -----------------------------------------------------
 TEST(VerifyPtr, PluginRegisteredWithClasses578) {
   bool found = false;

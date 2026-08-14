@@ -32,6 +32,7 @@
 
 #include <kernscope/verify/check_plugin.h>
 
+#include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/Function.h>
@@ -370,6 +371,337 @@ void emit_cast_verdict(VerifierContext& ctx,
   out.push_back(std::move(d));
 }
 
+// ---------------------------------------------------------------------------
+// Class 7: uninitialized reads (MAY_UNINIT_READ, Warning).
+//
+// Must/may-initialized lattice dataflow over the kernel body (GPUVerify-style
+// must-init, at per-allocation granularity):
+//   * initial states: kernel parameters (and their pointees) and
+//     __device__/__constant__ globals are INITIALIZED on entry (host-side
+//     setup before launch); allocas and __shared__ globals start
+//     UNINITIALIZED;
+//   * per object, two bits flow: must_written (every reaching path wrote it)
+//     and may_written (some path wrote it);
+//   * a load is flagged MAY_UNINIT_READ iff must_written is false at that
+//     point (some path reaches the read without a write) — with an evidence
+//     path; a store sets both bits;
+//   * __syncthreads() is a PHASE BOUNDARY: at a barrier, every shared-memory
+//     object written by ANY thread before the barrier (may_written) becomes
+//     readable by ALL threads after it (must_written := may_written for
+//     addrspace(3) objects only — local memory stays per-thread private).
+//
+// DOCUMENTED SCOPE (kernel-boundary + granularity assumptions, also in
+// checks/ptr/README.md):
+//   * The analysis NEVER reasons across kernel launches: a kernel's shared
+//     memory is assumed uninitialized at entry regardless of any prior
+//     kernel (CUDA gives no such guarantee without explicit host-side
+//     memset/cudaMemset tracking, out of scope).
+//   * Per-allocation granularity: writing ANY element marks the whole object
+//     written (span-precision is future work); cross-thread index patterns
+//     within one phase are the race module's (class 4) domain.
+//   * Only the kernel body is scanned; reads through pointers whose base
+//     cannot be resolved (inttoptr, unknown calls) are not claimed on.
+// ---------------------------------------------------------------------------
+
+// One class-7 finding.
+struct UninitFinding {
+  SourceLoc loc;
+  std::string instruction;
+  std::string base;
+  bool must_written = false;
+  std::string detail;
+};
+
+// Per-object flow state.
+struct InitBits {
+  bool must = false;
+  bool may = false;
+  bool operator!=(const InitBits& o) const {
+    return must != o.must || may != o.may;
+  }
+};
+
+// The kernel's tracked memory objects (allocation base -> initial bits).
+using ObjMap = llvm::DenseMap<const llvm::Value*, InitBits>;
+
+// Resolves the TRACKED memory object an access pointer is rooted in, plus
+// its initial bits. std::nullopt when the object is not tracked.
+std::optional<std::pair<const llvm::Value*, InitBits>> track_object(
+    const llvm::Value* ptr, const llvm::Module& m) {
+  const AllocationInfo alloc = resolveAllocation(ptr, m);
+  InitBits init;
+  switch (alloc.root) {
+    case AllocationInfo::Root::Local:
+      init = {false, false};  // alloca: uninitialized.
+      break;
+    case AllocationInfo::Root::SharedArray:
+    case AllocationInfo::Root::SharedDynamic:
+      init = {false, false};  // smem: uninitialized at kernel entry.
+      break;
+    case AllocationInfo::Root::DeviceGlobal:
+      init = {true, true};  // device/constant globals: initialized by host.
+      break;
+    case AllocationInfo::Root::KernelParam:
+      init = {true, true};  // param pointees: host-provided.
+      break;
+    case AllocationInfo::Root::Unknown:
+      return std::nullopt;
+  }
+  // The object key is the BASE value of the allocation.
+  const llvm::Value* base = ptr;
+  while (true) {
+    if (const auto* bc = llvm::dyn_cast<llvm::BitCastInst>(base)) {
+      base = bc->getOperand(0);
+    } else if (const auto* ac = llvm::dyn_cast<llvm::AddrSpaceCastInst>(base)) {
+      base = ac->getOperand(0);
+    } else if (const auto* gep = llvm::dyn_cast<llvm::GEPOperator>(base)) {
+      base = gep->getPointerOperand();
+    } else if (const auto* ce = llvm::dyn_cast<llvm::ConstantExpr>(base)) {
+      const unsigned op = ce->getOpcode();
+      if (op == llvm::Instruction::BitCast ||
+          op == llvm::Instruction::AddrSpaceCast ||
+          op == llvm::Instruction::GetElementPtr) {
+        base = ce->getOperand(0);
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+  return std::make_pair(base, init);
+}
+
+// Maps an object to the basic blocks where it is read before any write
+// (the evidence path of a finding).
+struct UninitResult {
+  std::vector<UninitFinding> findings;
+  size_t analyzed_accesses = 0;  ///< loads/stores resolved to tracked objects.
+};
+
+// Runs the class-7 dataflow on one kernel.
+UninitResult analyze_uninit(llvm::Function& F, VerifierContext& ctx) {
+  UninitResult result;
+  ObjMap entry_objects;
+  // Initial states: allocas + smem globals UNINITIALIZED; device/constant
+  // globals + kernel params INITIALIZED (host-side setup before launch).
+  for (llvm::BasicBlock& bb : F) {
+    for (Instruction& i : bb) {
+      if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(&i)) {
+        entry_objects[alloca] = {false, false};
+      }
+    }
+  }
+  for (llvm::GlobalVariable& g : ctx.module.globals()) {
+    if (g.getAddressSpace() == 3) {
+      entry_objects[&g] = {false, false};
+    } else if (g.getAddressSpace() == 1 || g.getAddressSpace() == 4) {
+      entry_objects[&g] = {true, true};
+    }
+  }
+  for (llvm::Argument& a : F.args()) {
+    if (a.getType()->isPointerTy()) {
+      entry_objects[&a] = {true, true};
+    }
+  }
+
+  // Collect access sites per block (load/store with a resolvable object).
+  struct AccessSite {
+    llvm::LoadInst* load = nullptr;
+    llvm::StoreInst* store = nullptr;
+    const llvm::Value* obj = nullptr;
+  };
+  llvm::DenseMap<const llvm::BasicBlock*, llvm::SmallVector<AccessSite, 8>>
+      sites;
+  for (llvm::BasicBlock& bb : F) {
+    for (Instruction& i : bb) {
+      llvm::Value* ptr = nullptr;
+      llvm::StoreInst* store = nullptr;
+      llvm::LoadInst* load = nullptr;
+      if ((load = llvm::dyn_cast<llvm::LoadInst>(&i)) != nullptr) {
+        ptr = load->getPointerOperand();
+      } else if ((store = llvm::dyn_cast<llvm::StoreInst>(&i)) != nullptr) {
+        ptr = store->getPointerOperand();
+      } else {
+        continue;
+      }
+      const auto obj = track_object(ptr, ctx.module);
+      if (!obj) {
+        continue;
+      }
+      ++result.analyzed_accesses;
+      sites[&bb].push_back({load, store, obj->first});
+    }
+  }
+
+  // RPO dataflow: in-state per block = {must,may} per object; join at
+  // merges: must = AND, may = OR. Transfer is INSTRUCTION-ORDER sensitive
+  // within each block (store -> written; barrier -> promote smem; the
+  // reporting pass re-walks the same order against the converged in-state).
+  std::vector<const llvm::BasicBlock*> rpo;
+  for (const llvm::BasicBlock* bb :
+       llvm::ReversePostOrderTraversal<const llvm::Function*>(&F)) {
+    rpo.push_back(bb);
+  }
+  auto transfer = [&](const ObjMap& in, const llvm::BasicBlock* bb) {
+    ObjMap out = in;
+    for (const Instruction& i : *bb) {
+      if (const auto* store = llvm::dyn_cast<llvm::StoreInst>(&i)) {
+        const auto obj = track_object(store->getPointerOperand(), ctx.module);
+        if (obj) {
+          out[obj->first] = {true, true};
+        }
+      } else if (auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
+        const llvm::Function* cf = ci->getCalledFunction();
+        if (cf == nullptr || !cf->isIntrinsic()) {
+          continue;
+        }
+        const llvm::StringRef n = cf->getName();
+        if (!n.starts_with("llvm.nvvm.barrier") &&
+            n != "llvm.amdgcn.s.barrier") {
+          continue;
+        }
+        for (auto& [obj, bits] : out) {
+          unsigned as = 0;
+          if (const auto* gv =
+                  llvm::dyn_cast<const llvm::GlobalVariable>(obj)) {
+            as = gv->getAddressSpace();
+          } else if (const auto* alloca =
+                         llvm::dyn_cast<const llvm::AllocaInst>(obj)) {
+            as = alloca->getAddressSpace();
+          }
+          if (as == 3 && !bits.must && bits.may) {
+            bits.must = true;
+          }
+        }
+      }
+    }
+    return out;
+  };
+  llvm::DenseMap<const llvm::BasicBlock*, ObjMap> in_state;
+  bool changed = true;
+  int iterations = 0;
+  const int kMaxIterations = 32;
+  while (changed && iterations++ < kMaxIterations) {
+    changed = false;
+    for (const llvm::BasicBlock* bb : rpo) {
+      ObjMap in = entry_objects;
+      for (const llvm::BasicBlock* p : llvm::predecessors(bb)) {
+        const auto it = in_state.find(p);
+        if (it == in_state.end()) {
+          continue;  // first-iteration ordering.
+        }
+        for (const auto& [obj, bits] : it->second) {
+          InitBits& cur = in[obj];
+          if (cur.must != bits.must || cur.may != bits.may) {
+            cur.must = cur.must && bits.must;
+            cur.may = cur.may || bits.may;
+            changed = true;
+          }
+        }
+      }
+      ObjMap out = transfer(in, bb);
+      auto it = in_state.find(bb);
+      if (it == in_state.end()) {
+        in_state[bb] = std::move(out);
+        changed = true;
+      } else if (it->second != out) {
+        it->second = std::move(out);
+        changed = true;
+      }
+    }
+  }
+
+  // Reporting pass: recompute each block's IN state (join of predecessor
+  // OUT states) and re-walk in instruction order; a load whose object is
+  // not must-written at that point is a MAY_UNINIT_READ with an evidence
+  // path.
+  for (const llvm::BasicBlock* bb : rpo) {
+    ObjMap cur = entry_objects;
+    for (const llvm::BasicBlock* p : llvm::predecessors(bb)) {
+      const auto it = in_state.find(p);
+      if (it == in_state.end()) {
+        continue;
+      }
+      for (const auto& [obj, bits] : it->second) {
+        InitBits& c = cur[obj];
+        c.must = c.must && bits.must;
+        c.may = c.may || bits.may;
+      }
+    }
+    for (const Instruction& i : *bb) {
+      if (const auto* store = llvm::dyn_cast<llvm::StoreInst>(&i)) {
+        const auto obj = track_object(store->getPointerOperand(), ctx.module);
+        if (obj) {
+          cur[obj->first] = {true, true};
+        }
+        continue;
+      }
+      if (auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
+        const llvm::Function* cf = ci->getCalledFunction();
+        if (cf != nullptr && cf->isIntrinsic()) {
+          const llvm::StringRef n = cf->getName();
+          if (n.starts_with("llvm.nvvm.barrier") ||
+              n == "llvm.amdgcn.s.barrier") {
+            for (auto& [obj, bits] : cur) {
+              unsigned as = 0;
+              if (const auto* gv =
+                      llvm::dyn_cast<const llvm::GlobalVariable>(obj)) {
+                as = gv->getAddressSpace();
+              } else if (const auto* alloca =
+                             llvm::dyn_cast<const llvm::AllocaInst>(obj)) {
+                as = alloca->getAddressSpace();
+              }
+              if (as == 3 && !bits.must && bits.may) {
+                bits.must = true;
+              }
+            }
+          }
+        }
+        continue;
+      }
+      const auto* load = llvm::dyn_cast<llvm::LoadInst>(&i);
+      if (load == nullptr) {
+        continue;
+      }
+      const auto obj = track_object(load->getPointerOperand(), ctx.module);
+      if (!obj) {
+        continue;
+      }
+      const auto cur_it = cur.find(obj->first);
+      if (cur_it == cur.end() || cur_it->second.must) {
+        continue;
+      }
+      UninitFinding f;
+      f.loc = loc_of(load);
+      f.instruction = short_instruction(*load);
+      std::string name;
+      llvm::raw_string_ostream os(name);
+      obj->first->printAsOperand(os, false);
+      os.flush();
+      f.base = name;
+      f.must_written = false;
+      f.detail = "read reaches an object that no path has written: "
+                 "may-analysis — uninitialized read (must-write=false)";
+      result.findings.push_back(std::move(f));
+    }
+  }
+  return result;
+}
+
+const char* uninit_kind_name() { return "MAY_UNINIT_READ"; }
+
+// JSON rendering of one class-7 finding.
+std::string uninit_finding_json(const UninitFinding& f) {
+  std::string out = "{\"op\":\"load\"";
+  out += ",\"line\":" + std::to_string(f.loc.line);
+  out += ",\"alloc\":\"" + jsonEscape(f.base) + "\"";
+  out += ",\"kind\":\"" + std::string(uninit_kind_name()) + "\"";
+  out += ",\"must_written\":false";
+  out += ",\"note\":\"" + jsonEscape(f.detail) + "\"}";
+  return out;
+}
+
 }  // namespace
 
 class PointerDisciplineCheckPlugin : public CheckPlugin {
@@ -518,7 +850,51 @@ class PointerDisciplineCheckPlugin : public CheckPlugin {
     }
     emit_cast_verdict(ctx, casts, total_casts, out);
 
-    // class 7 lands in a follow-up commit.
+    // --- class 7: uninitialized reads --------------------------------------
+    const UninitResult uninit = analyze_uninit(F, ctx);
+    if (uninit.analyzed_accesses > 0) {
+      const bool safe = uninit.findings.empty();
+      Diagnostic d;
+      d.severity = safe ? Severity::Info : Severity::Warning;
+      d.class_id = CheckClass::kUninitRead;
+      d.class_name = check_class_name(d.class_id);
+      d.function = fn;
+      if (!uninit.findings.empty()) {
+        d.loc = uninit.findings.front().loc;
+        d.instruction = uninit.findings.front().instruction;
+      }
+      std::string findings_json = "[";
+      for (size_t k = 0; k < uninit.findings.size(); ++k) {
+        if (k) {
+          findings_json += ",";
+        }
+        findings_json += uninit_finding_json(uninit.findings[k]);
+      }
+      findings_json += "]";
+      d.message = "uninitialized-read check: " +
+                  std::to_string(uninit.analyzed_accesses) +
+                  " memory access(es), " +
+                  std::to_string(uninit.findings.size()) +
+                  " read(s) reaching unwritten memory; "
+                  "verdict_json: {\"check\":" +
+                  std::to_string(CheckClass::kUninitRead) + ",\"kernel\":\"" +
+                  fn + "\",\"verdict\":\"" +
+                  (safe ? kVerdictSafe : kVerdictMayUninitRead) +
+                  "\",\"accesses\":" +
+                  std::to_string(uninit.analyzed_accesses) + ",\"bad\":" +
+                  std::to_string(uninit.findings.size()) + ",\"findings\":" +
+                  findings_json + "}";
+      if (!safe) {
+        d.path.push_back("read site: " + uninit.findings.front().instruction);
+        d.path.push_back(
+            "kernel-boundary assumption: shared memory and allocas are "
+            "uninitialized at kernel entry — no cross-kernel initialization "
+            "is analyzed (CUDA gives no guarantee without host-side "
+            "cudaMemset tracking)");
+      }
+      out.push_back(std::move(d));
+    }
+
     return out;
   }
 };

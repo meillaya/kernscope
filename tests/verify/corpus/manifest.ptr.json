@@ -40,5 +40,29 @@
     "kernel": "cast_legal_kernel",
     "check": 8,
     "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_clean.cu",
+    "kernel": "ptr_clean_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_read_kernel",
+    "check": 7,
+    "expected_verdict": "MAY_UNINIT_READ"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_alloca_kernel",
+    "check": 7,
+    "expected_verdict": "MAY_UNINIT_READ"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_phase_clean_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
   }
 ]
