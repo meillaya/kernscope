@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "description": "PTX corpus for libs/ptxparse (wave-2 todo 9). Every kernel statistic is asserted EXACTLY by libs/ptxparse/tests/ptxparse_test.cpp. parse_only=true marks hand-written fixtures that are never assembled (the tcgen05 fixture per the FIXTURE GENERATION RULE: nvcc 12.6 cannot target sm_100); parse_only=false marks nvcc 12.6 -ptx generated fixtures (mma_sm80: nvcc -arch=sm_80 -ptx; wgmma_sm90: nvcc -arch=sm_90a -ptx).",
+  "fixtures": [
+    {
+      "file": "minimal_kernel.ptx",
+      "description": "Hand-written trivial kernel: mov from %tid.x, bar.sync 0, ret.",
+      "parse_only": true,
+      "kernels": [
+        {
+          "name": "minimal_kernel",
+          "entry": true,
+          "instruction_count": 3,
+          "cfg_edge_count": 0,
+          "bar_sync_count": 1,
+          "shared_access_count": 0,
+          "global_access_count": 0,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 0,
+          "tensor_classes": []
+        }
+      ]
+    },
+    {
+      "file": "divergent_branch.ptx",
+      "description": "Hand-written predicated branch on a threadIdx-derived value (lane parity): @%p1 bra with explicit fallthrough label; 4 blocks, 4 CFG edges.",
+      "parse_only": true,
+      "kernels": [
+        {
+          "name": "divergent_branch",
+          "entry": true,
+          "instruction_count": 10,
+          "cfg_edge_count": 4,
+          "bar_sync_count": 0,
+          "shared_access_count": 0,
+          "global_access_count": 1,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 0,
+          "tensor_classes": []
+        }
+      ]
+    },
+    {
+      "file": "strided_smem.ptx",
+      "description": "Hand-written shared-memory stride pattern (bank-conflict stride of 68 words, cf. brief §3): one ld.shared + one st.shared, .shared .align 4 declaration.",
+      "parse_only": true,
+      "kernels": [
+        {
+          "name": "strided_smem",
+          "entry": true,
+          "instruction_count": 10,
+          "cfg_edge_count": 0,
+          "bar_sync_count": 0,
+          "shared_access_count": 2,
+          "global_access_count": 0,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 0,
+          "tensor_classes": []
+        }
+      ]
+    },
+    {
+      "file": "mma_sm80.ptx",
+      "description": "nvcc 12.6 -arch=sm_80 -ptx from a tiny .cu with mma.sync.aligned.m16n8k16 inline asm (generator source: mma_sm80.cu, committed under tests/ptxparse/README.md provenance note).",
+      "parse_only": false,
+      "kernels": [
+        {
+          "name": "mma_sm80",
+          "entry": true,
+          "instruction_count": 13,
+          "cfg_edge_count": 0,
+          "bar_sync_count": 0,
+          "shared_access_count": 0,
+          "global_access_count": 1,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 1,
+          "tensor_classes": ["mma.sync"]
+        }
+      ]
+    },
+    {
+      "file": "wgmma_sm90.ptx",
+      "description": "nvcc 12.6 -arch=sm_90a -ptx from a tiny .cu with wgmma.mma_async.m64n64k16 inline asm plus wgmma.commit_group / wgmma.wait_group.sync.aligned.",
+      "parse_only": false,
+      "kernels": [
+        {
+          "name": "wgmma_sm90",
+          "entry": true,
+          "instruction_count": 20,
+          "cfg_edge_count": 0,
+          "bar_sync_count": 0,
+          "shared_access_count": 0,
+          "global_access_count": 3,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 3,
+          "tensor_classes": [
+            "wgmma.mma_async",
+            "wgmma.commit_group",
+            "wgmma.wait_group"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "tcgen05_sm100.ptx",
+      "description": "HAND-WRITTEN per PTX ISA 8.6+ syntax (FIXTURE GENERATION RULE): nvcc 12.6 cannot target sm_100 (Blackwell needs CUDA >= 12.8), so this corpus is parse-only - never assembled, never ptxas-validated. Exercises tcgen05.alloc/mma/ld/st/commit/wait/dealloc with cta_group::, kind::, shared::cta and mbarrier::complete_tx::bytes suffixes. Every tensor op carries parse_only=true.",
+      "parse_only": true,
+      "kernels": [
+        {
+          "name": "tcgen05_sm100",
+          "entry": true,
+          "instruction_count": 10,
+          "cfg_edge_count": 0,
+          "bar_sync_count": 0,
+          "shared_access_count": 0,
+          "global_access_count": 0,
+          "local_access_count": 0,
+          "const_access_count": 0,
+          "tensor_ops": 7,
+          "tensor_classes": [
+            "tcgen05",
+            "tcgen05.mma",
+            "tcgen05",
+            "tcgen05",
+            "tcgen05",
+            "tcgen05",
+            "tcgen05"
+          ]
+        }
+      ]
+    }
+  ]
+}

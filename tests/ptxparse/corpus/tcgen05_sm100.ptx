@@ -1,0 +1,30 @@
+.version 8.6
+.target sm_100a
+.address_size 64
+
+// HAND-WRITTEN per PTX ISA 8.6+ syntax (FIXTURE GENERATION RULE): nvcc 12.6
+// cannot target sm_100 (Blackwell needs CUDA >= 12.8), so this fixture is
+// parse-only corpus - never assembled, never ptxas-validated. Exercises the
+// tcgen05.* 5th-gen tensor-core family: alloc / mma / ld / st / commit /
+// wait / dealloc with cta_group::, kind::, shared::cta and
+// mbarrier::complete_tx::bytes namespace suffixes.
+.visible .entry tcgen05_sm100(
+	.param .u64 smem_ptr,
+	.param .u32 desc
+)
+{
+	.reg .b64 	%rd<4>;
+	.reg .b32 	%r<8>;
+	.reg .b32 	%t<4>;
+	.shared .align 16 .b8 tmem_buf[16384];
+	ld.param.u64 	%rd1, [smem_ptr];
+	cvta.to.shared.u64 %rd2, tmem_buf;
+	tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%rd2], 32;
+	tcgen05.mma.cta_group::1.kind::f16 [%t0], %r1, %r2, %r3, 0;
+	tcgen05.ld.sync.aligned.32x32b.x32.b32 [%t0], [%rd2], 32;
+	tcgen05.st.sync.aligned.32x32b.x32.b32 [%rd1], [%t0], 32;
+	tcgen05.commit.cta_group::1.mbarrier::complete_tx::bytes [%rd3];
+	tcgen05.wait::ld.sync.aligned;
+	tcgen05.dealloc;
+	ret;
+}

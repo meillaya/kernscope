@@ -1,0 +1,27 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written divergent-branch kernel: a predicated branch on a
+// threadIdx-derived value (lane parity) with an explicit fallthrough label.
+.visible .entry divergent_branch(
+	.param .u64 p
+)
+{
+	.reg .b32 	%r<4>;
+	.reg .u64 	%rd<2>;
+	.reg .pred 	%p<2>;
+	ld.param.u64 	%rd1, [p];
+	mov.u32 		%r1, %tid.x;
+	and.b32 		%r2, %r1, 31;
+	setp.lt.u32 	%p1, %r2, 16;
+	@%p1 bra 		$L_taken;
+$L_else:
+	mov.u32 		%r3, 1;
+	bra 			$L_done;
+$L_taken:
+	mov.u32 		%r3, 2;
+$L_done:
+	st.global.b32 	[%rd1], %r3;
+	ret;
+}
