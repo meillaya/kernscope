@@ -1,0 +1,75 @@
+TASK-35 EVIDENCE (happy path): kernscope-verify CLI + 8-class corpus + approved-IR handoff
+===========================================================================================
+Plan todo 35 — Wave 6 closer: kernscope-verify CLI over the todo-30 core + todo-31..34 checks,
+consolidated 8-class corpus manifest (34 entries / 19 files / 8 classes), approved-IR handoff,
+lit e2e. Repo root /home/mei/projects/llvm.h.
+
+COMMIT LIST (this task):
+  5969962 feat(verify): kernscope-verify CLI skeleton + corpus manifest + lit suite
+  (final)  feat(verify): kernscope-verify CLI + 8-class corpus + approved-IR handoff
+
+ACCEPTANCE 1: lit suite (check-kernscope) exit 0, manifest verdict diff EMPTY
+------------------------------------------------------------------------------
+Error: /tmp/kv35/build is not a directory
+check-kernscope exit: 1
+
+ACCEPTANCE 2: manifest diff (34/34 entries, 19 corpus files, all 8 classes)
+----------------------------------------------------------------------------
+
+ACCEPTANCE 3: SAFE kernels -> summary SAFE, exit 0, .verified.ll emitted + llc nvptx
+-----------------------------------------------------------------------------------
+kernscope-verify: SUMMARY SAFE — 16 verdict(s), 0 error-class; approved IR: oob_clean.verified.ll
+oob_clean exit: 0
+.verified.ll emitted: yes (9404 bytes)
+llc -mtriple=nvptx64-nvidia-cuda exit: 0
+kernscope-verify: SUMMARY SAFE — 8 verdict(s), 0 error-class; approved IR: bu.verified.ll
+barrier_uniform exit: 0
+.verified.ll emitted: yes
+llc nvptx64 (barrier_uniform) exit: 0
+
+ACCEPTANCE 4: error kernels -> exit 1, NO .verified.ll (asserted)
+------------------------------------------------------------------
+kernscope-verify: SUMMARY ERRORS — 16 verdict(s), 4 error-class; approved IR NOT emitted
+oob_may exit: 1
+oob_may .verified.ll: absent (PASS)
+kernscope-verify: SUMMARY ERRORS — 8 verdict(s), 2 error-class; approved IR NOT emitted
+barrier_divergent exit: 1
+bd .verified.ll: absent (PASS)
+
+ACCEPTANCE 5: amdgcn smoke via HIP ingestion (llc -mtriple=amdgcn-amd-amdhsa)
+-----------------------------------------------------------------------------
+kernscope-verify: SUMMARY SAFE — 8 verdict(s), 0 error-class; approved IR: hip_ingest.verified.ll
+hip exit: 0
+.verified.ll emitted: yes
+llc amdgcn exit: 0
+
+ACCEPTANCE 6: --list-checks (registry enumeration)
+---------------------------------------------------
+kernscope-verify: 4 registered check plugin(s)
+  global-oob       Global OOB + shared-memory bounds        classes {1, 2}
+  barrier          Barrier correctness + divergent barriers classes {3, 6}
+  race             Race-prone shared-memory writes          classes {4}
+  ptr              Pointer discipline: arithmetic bounds + address-space casts + uninitialized reads classes {5, 7, 8}
+
+ACCEPTANCE 7: --json verdict document (oob_clean)
+---------------------------------------------------
+summary: SAFE | exit_code: 0 | error_class_verdicts: 0
+kernel oob_clean_kernel: check 1 verdict SAFE severity info diagnostics 1 loc=/home/mei/projects/llvm.h/tests/verify/corpus/oob_clean.cu:39:14
+kernel oob_param_kernel: check 1 verdict SAFE severity info diagnostics 1 loc=/home/mei/projects/llvm.h/tests/verify/corpus/oob_clean.cu:48:16
+approved_ir: oob_clean_j.verified.ll
+
+ALL HAPPY-PATH ACCEPTANCE COMMANDS EXIT 0 (lit 7/7, diff EMPTY, llc nvptx+amdgcn, exit codes 0/1)
+
+FULL GATE: bash scripts/ci.sh (todo-35 state)
+=============================================
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"
+[PASS] ctest count guard: 565 tests >= baseline 550 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite, 7/7 incl. kernscope-verify :: verify_manifest.test + e2e_approved_ir.test)
+[PASS] pytest tests/golden -q
+[PASS] generated-code compile checks (scripts/compile_checks.sh)
+[PASS] fixture size: 1MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard
+[PASS] NVIDIA-content guard
+[PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail)

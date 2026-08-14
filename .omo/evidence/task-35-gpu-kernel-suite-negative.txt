@@ -1,0 +1,40 @@
+TASK-35 EVIDENCE (failure path): manifest corruption -> lit suite FAILS NAMING THE KERNEL
+==========================================================================================
+
+STEP 1: corrupt ONE expected verdict in tests/verify/manifest.json
+        (race_writewrite_kernel check 4: MAY_RACE -> SAFE)
+---------------------------------------------------------------------------
+BEFORE: race_writewrite.cu race_writewrite_kernel check 4 expected_verdict = MAY_RACE
+AFTER : race_writewrite.cu race_writewrite_kernel check 4 expected_verdict = SAFE   <-- corrupted
+
+STEP 2: run the check-kernscope lit suite (must FAIL naming the kernel)
+------------------------------------------------------------------------
+check-kernscope exit: 1 (expected non-zero)
+--- failure text (from the lit log) ---
+FAIL: kernscope-verify :: verify_manifest.test (7 of 7)
+******************** TEST 'kernscope-verify :: verify_manifest.test' FAILED ********************
+Exit Code: 1
+
+Command Output (stdout):
+--- driver FAIL lines ---
+FAIL: kernscope-verify :: verify_manifest.test (7 of 7)
+FAIL: race_writewrite.cu race_writewrite_kernel check 4: expected SAFE, got MAY_RACE
+manifest diff: 1 MISMATCH(ES) / 34 entries (34 checked across 19 corpus files)
+
+STEP 3: restore tests/verify/manifest.json (git checkout)
+---------------------------------------------------------
+RESTORED: race_writewrite.cu race_writewrite_kernel check 4 expected_verdict = MAY_RACE
+
+STEP 4: suite green again after restore
+---------------------------------------
+PASS: kernscope :: analyze/amd.test (3 of 7)
+PASS: kernscope :: analyze/golden.test (4 of 7)
+PASS: kernscope :: analyze/corpus.test (5 of 7)
+PASS: kernscope-verify :: e2e_approved_ir.test (6 of 7)
+PASS: kernscope-verify :: verify_manifest.test (7 of 7)
+
+Testing Time: 18.67s
+
+Total Discovered Tests: 7
+  Passed: 7 (100.00%)
+check-kernscope (restored) exit: 0
