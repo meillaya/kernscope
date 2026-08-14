@@ -1,0 +1,52 @@
+; vectorize.test — kernscope-vectorize: scalar global load/store chain ->
+; vector load/store rewrite (todo 37, Wave 7).
+;
+; The pass rewrites chains of scalar addrspace(1) (NVPTX global) loads and
+; stores into <2 x T> / <4 x T> accesses when contiguity (SCEV: pointer
+; differences fold to the element size) and alignment (known base alignment
+; + SCEV min trailing zeros of the chain head offset >= the vector width)
+; are provable, and no intervening memory op may alias the merged
+; locations (AAResults). v1 scope: global only — addrspace(3) is left
+; untouched.
+;
+; Fixtures (tests/pass/Inputs/vectorize/):
+;   * strided_contig_loop.ll — strided-contiguous loop: 4 consecutive
+;     float loads + 4 consecutive float stores at a 16-float stride ->
+;     16-byte head alignment provable -> one <4 x float> load + one
+;     <4 x float> store. GOLDEN (exact width asserted).
+;   * misaligned.ll          — same shape, 4-float stride -> head only
+;     4-byte aligned -> no width legal -> byte-identical (llvm-diff).
+;   * addrspace3.ll          — contiguous + aligned but shared memory ->
+;     out of v1 scope -> byte-identical (llvm-diff).
+;
+; The rewrite-count report hook (todo 42): opt -kernscope-vectorize-report
+; prints "kernscope-vectorize: <fn>: vectorized N loads, M stores (K
+; chains)" to stderr (asserted below).
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-vectorize,verify' -S %S/Inputs/vectorize/strided_contig_loop.ll -o %t.vec
+; RUN: FileCheck %s --check-prefix=VEC --input-file %t.vec
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-vectorize -S %S/Inputs/vectorize/misaligned.ll -o %t.mis
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/vectorize/misaligned.ll %t.mis
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-vectorize -S %S/Inputs/vectorize/addrspace3.ll -o %t.as3
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/vectorize/addrspace3.ll %t.as3
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-vectorize -kernscope-vectorize-report -S %S/Inputs/vectorize/strided_contig_loop.ll -o %t.rep 2>&1 | FileCheck %s --check-prefix=REPORT
+
+; GOLDEN: the 4 scalar loads are one 16-byte <4 x float> load at the head
+; pointer %p0, fed to 4 extracts; the 4 scalar stores are one <4 x float>
+; store at %q0. align 16 is asserted (the rewritten access carries the
+; proven alignment explicitly).
+; VEC: %[[VLOAD:.*]] = load <4 x float>, ptr addrspace(1) %p0, align 16
+; VEC: %[[E0:.*]] = extractelement <4 x float> %[[VLOAD]], i32 0
+; VEC: %[[E1:.*]] = extractelement <4 x float> %[[VLOAD]], i32 1
+; VEC: %[[E2:.*]] = extractelement <4 x float> %[[VLOAD]], i32 2
+; VEC: %[[E3:.*]] = extractelement <4 x float> %[[VLOAD]], i32 3
+; VEC: store <4 x float> %{{.*}}, ptr addrspace(1) %q0, align 16
+; VEC-NOT: load float, ptr addrspace(1)
+; VEC-NOT: store float, ptr addrspace(1)
+
+; REPORT: kernscope-vectorize: {{.*}}: vectorized 4 loads, 4 stores (2 chains)

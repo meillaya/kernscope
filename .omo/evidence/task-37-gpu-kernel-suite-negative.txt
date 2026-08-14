@@ -1,0 +1,36 @@
+task-37-gpu-kernel-suite — NEGATIVE PATH (misaligned fixture unchanged)
+======================================================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 37 · Wave 7 (pass track)
+
+SCENARIO
+--------
+misaligned.ll: contiguous 4-float chains a[i..i+3] / b[i..i+3] at a stride
+of ONE float per iteration. The chain head a + i has byte offset
+4*sext({0,+,1}) — only 2 provable trailing zeros -> 4-byte alignment.
+<4 x float> needs 16 bytes and <2 x float> needs 8, so NO vector width is
+legal: the pass must leave the IR byte-identical.
+
+ASSERTIONS (executed)
+---------------------
+1. gtest (MisalignedChainUntouched): rewrite counts all zero:
+   loads=0 stores=0 chains=0  -> ctest vectorize_rewrite PASSED.
+
+2. llvm-diff byte-identical (the lit assertion):
+   $ opt -load-pass-plugin=kernscope-pass.so -passes=kernscope-vectorize \
+         -S misaligned.ll -o mis.ll
+   $ llvm-diff misaligned.ll mis.ll   ; echo $?
+   (no output — no differences) -> exit 0 = BYTE-IDENTICAL
+
+   Also covered by the same fixture in the lit suite (vectorize.test
+   RUN line: llvm-diff %S/Inputs/vectorize/misaligned.ll %t.mis).
+
+3. addrspace(3) negative (same assertion, out-of-scope address space):
+   llvm-diff addrspace3.ll <pass output> -> exit 0, byte-identical.
+   gtest Addrspace3Untouched: 0/0/0 PASSED.
+
+RESULT
+------
+Both negatives confirmed: no rewrite, IR byte-identical (llvm-diff exit 0
+twice), unit counts 0/0/0. The alignment guard is doing its job — the
+pass never widens an access whose head alignment cannot be proven
+>= the vector width.

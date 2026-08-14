@@ -1,0 +1,110 @@
+task-37-gpu-kernel-suite — HAPPY PATH
+=====================================
+Date: 2026-08-14 · Plan: .omo/plans/gpu-kernel-suite.md todo 37 · Wave 7 (pass track)
+Commit: feat(pass): vectorized load/store rewrite pass
+
+WHAT LANDED
+-----------
+tools/pass/passes/vectorize/                  (todo-37 module dir — the ONLY
+                                              dir created/modified besides my
+                                              tests + evidence)
+  CMakeLists.txt                              target_sources(kernscope-pass
+                                              PRIVATE src/vectorize.cpp) +
+                                              gtest target
+                                              vectorize-rewrite-test
+                                              (add_test vectorize_rewrite,
+                                              LABELS no-gpu — the
+                                              verify-checks/oob pattern)
+  include/kernscope/pass/vectorize.h          VectorizeLoadStorePass
+                                              (PassInfoMixin) + VectorizeStats
+                                              + vectorizeFunction() core
+  src/vectorize.cpp                           chain collection, SCEV
+                                              contiguity/alignment proofs,
+                                              AAResults intervening-op guard,
+                                              rewrite, report hook,
+                                              REGISTER_PASS_CALLBACK
+  tests/vectorize_rewrite_test.cpp            gtest: rewrite counts asserted
+                                              on the 3 committed fixtures
+tests/pass/vectorize.test                     lit suite (auto-discovered by
+                                              check-kernscope; no shared file
+                                              edits)
+tests/pass/Inputs/vectorize/                  strided_contig_loop.ll (happy),
+                                              misaligned.ll + addrspace3.ll
+                                              (negatives)
+
+THE TRANSFORM
+-------------
+Scalar global load/store chains -> vector loads/stores (width 2 or 4,
+4..16 bytes total), NVPTX IR in -> NVPTX IR out, when ALL provable:
+  * contiguity:  SCEV difference of consecutive chain addresses folds to a
+                 constant == element size (works inside loops where the
+                 chain base is an induction expression).
+  * alignment:   chain head aligned to the vector byte width =
+                 min(getKnownAlignment(underlying object),
+                     2^SCEV.getMinTrailingZeros(head offset SCEV)). The
+                 strided-contiguous loop (a + 16*i elements/iter) has
+                 {0,+,64}-byte offsets -> 16B provable -> <4 x float>.
+  * address space: v1 = addrspace(1) (NVPTX global) ONLY; addrspace(3)
+                 (shared) flagged future work.
+  * aliasing:    chains grouped per getUnderlyingObject; a rewrite happens
+                 only when no intervening memory instruction (call/store/
+                 load/atomic/fence) may alias ANY merged location
+                 (AAResults getModRefInfo) — the plan's MUST-NOT guard.
+  * element types: scalar int/float 8/16/32/64 bits; simple (non-volatile,
+                 non-atomic) accesses only.
+Rewritten loads: load <w x T> at the head + extractelement per element;
+rewritten stores: insertelement chain + store <w x T> at the last store.
+Explicit align = w*e on the vector access.
+
+REPORT HOOK (todo 42)
+---------------------
+opt -kernscope-vectorize-report prints to stderr per function with
+rewrites: "kernscope-vectorize: <fn>: vectorized N loads, M stores
+(K chains)" (captured with opt ... 2>&1; alternatively the
+VectorizeStats struct returned by vectorizeFunction() is the exact
+contract — same struct the unit test asserts). Verified:
+  $ opt -load-pass-plugin=... -passes=kernscope-vectorize \
+        -kernscope-vectorize-report -S strided_contig_loop.ll -o /dev/null 2>&1
+  kernscope-vectorize: strided_contig: vectorized 4 loads, 4 stores (2 chains)
+
+ACCEPTANCE (all executed)
+-------------------------
+1. gtest (rewrite counts on 3 fixtures; plugin sources compiled directly
+   into the test, PassBuilder-wired FunctionAnalysisManager — the
+   verify-checks/oob pattern):
+   $ ctest --test-dir build -R vectorize_rewrite --output-on-failure
+   1/1 Test #566: vectorize_rewrite ................   Passed    0.01 sec
+   100% tests passed, 0 tests failed out of 1
+   (3 gtest cases: StridedContiguousLoop -> loads=4 stores=4 chains=2;
+    MisalignedChainUntouched -> 0/0/0; Addrspace3Untouched -> 0/0/0)
+
+2. lit (kernscope-pass :: vectorize.test; FileCheck goldens assert the
+   exact width <4 x float> + align 16 + extract/insertelement shapes;
+   both negatives asserted byte-identical via llvm-diff; report line
+   FileChecked):
+   $ lit -v vectorize.test        (site cfg plugin path swapped to a
+   PASS: kernscope-pass :: vectorize.test (1 of 1)      scratch-built .so —
+   see "interlock" below)
+   Testing Time: 0.17s — Passed: 1 (100.00%)
+
+3. Golden IR excerpt (opt -passes=kernscope-vectorize, verify pass on):
+   %kernscope.vload = load <4 x float>, ptr addrspace(1) %p0, align 16
+   %kernscope.vext  = extractelement <4 x float> %kernscope.vload, i32 0
+   ... (i32 1..3)
+   %kernscope.vins  = insertelement <4 x float> poison, float %v, i32 0
+   ...
+   store <4 x float> %kernscope.vins6, ptr addrspace(1) %q0, align 16
+   No scalar load/store remains in the loop (VEC-NOT asserted).
+
+INTERLOCK NOTE (parallel workers)
+---------------------------------
+tools/pass/passes/pad/pad_pass.cpp (todo-38 worker, uncommitted WIP) is
+added to the shared kernscope-pass target by their own CMakeLists and is
+currently in a broken state, so `cmake --build build --target
+kernscope-pass` was NOT runnable at the time of this commit. My module
+compiles Werror-clean standalone (its own target vectorize-rewrite-test
+builds both of my TUs), and the full opt/lit acceptance was executed
+against a scratch plugin .so built from the todo-36 core sources + my
+pass (no repo files touched). Once the todo-38 worker lands, the exact
+same `cmake --build build --target kernscope-pass` + check-kernscope
+acceptance runs untouched.
