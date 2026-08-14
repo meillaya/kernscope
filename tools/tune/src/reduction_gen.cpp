@@ -136,7 +136,7 @@ std::string generate_source(const ReductionConfig &cfg,
          "  // same row -> coalesced.\n"
          "  float acc = 0.0f;\n"
          "  for (int r = lane_grp; r < rows; r += tpc)\n"
-         "    acc += ks_bf16_to_float(x[r * cols + c]);\n";
+         "    acc += ks_bf16_to_float(x[r * cols + blockIdx.x * kVec + c]);\n";
 
   if (strided) {
     out << "\n"

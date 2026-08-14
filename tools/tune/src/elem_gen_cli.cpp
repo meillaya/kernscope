@@ -34,7 +34,9 @@ void usage(const char *argv0) {
                "usage: %s --kernel <family> --arch <key> --block <N> "
                "--vec <N> [--mode onepass|twopass|strided|tree] "
                "--shape R,C --out <file>\n"
-               "  family: bias_gelu | softmax | layernorm | reduction\n",
+               "  family: bias_gelu (mode unused) | softmax (onepass|twopass)\n"
+               "        | layernorm (onepass|twopass) | reduction "
+               "(strided|tree)\n",
                argv0);
 }
 
@@ -137,6 +139,11 @@ int main(int argc, char **argv) {
     kernscope::tune::SoftmaxConfig cfg;
     cfg.block = block;
     cfg.vec_width = vec;
+    if (!mode.empty() && mode != "onepass" && mode != "twopass") {
+      std::fprintf(stderr, "kernscope-tune-elem-gen: softmax --mode must be "
+                           "onepass or twopass (got '%s')\n", mode.c_str());
+      return 1;
+    }
     cfg.mode = mode == "twopass" ? kernscope::tune::ElemMode::kTwoPass
                                  : kernscope::tune::ElemMode::kOnePass;
     const auto vd = kernscope::tune::validate_config(cfg, prob);
@@ -151,6 +158,11 @@ int main(int argc, char **argv) {
     kernscope::tune::LayerNormConfig cfg;
     cfg.block = block;
     cfg.vec_width = vec;
+    if (!mode.empty() && mode != "onepass" && mode != "twopass") {
+      std::fprintf(stderr, "kernscope-tune-elem-gen: layernorm --mode must be "
+                           "onepass or twopass (got '%s')\n", mode.c_str());
+      return 1;
+    }
     cfg.mode = mode == "twopass" ? kernscope::tune::ElemMode::kTwoPass
                                  : kernscope::tune::ElemMode::kOnePass;
     const auto vd = kernscope::tune::validate_config(cfg, prob);
@@ -165,6 +177,11 @@ int main(int argc, char **argv) {
     kernscope::tune::ReductionConfig cfg;
     cfg.block = block;
     cfg.vec_width = vec;
+    if (!mode.empty() && mode != "strided" && mode != "tree") {
+      std::fprintf(stderr, "kernscope-tune-elem-gen: reduction --mode must be "
+                           "strided or tree (got '%s')\n", mode.c_str());
+      return 1;
+    }
     cfg.mode = mode == "tree" ? kernscope::tune::ElemMode::kTree
                               : kernscope::tune::ElemMode::kStrided;
     const auto vd = kernscope::tune::validate_config(cfg, prob);
