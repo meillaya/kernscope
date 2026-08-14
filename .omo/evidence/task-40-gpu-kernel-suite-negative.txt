@@ -1,0 +1,9 @@
+=== kernscope-promote QA (negative: cross-iteration write) — todo 40 ===
+fixture: tests/pass/Inputs/promote/write_negative.ll — loop reads g[i], stores g[k] (same global), reads g[i] again
+--- pass stderr (decline annotation) ---
+kernscope-promote: declining promotion of g in @wneg_kernel: possibly-alias write to the tile range
+--- llvm-diff (IR must be unchanged) ---
+llvm-diff exit: 0
+--- budget guard sanity (same mechanism as acceptance) ---
+kernscope-promote: declining promotion of g in @budget_kernel: exceeds smem budget (409600 bytes, arch budget 101376 for sm_86)
+budget llvm-diff exit: 0

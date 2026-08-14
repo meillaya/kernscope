@@ -1,0 +1,66 @@
+=== kernscope-promote QA (happy path) — todo 40 ===
+cmd: opt -load-pass-plugin=build/lib/kernscope-pass.so -passes=kernscope-promote,verify -S tests/pass/Inputs/promote/reduce_loop.ll
+; ModuleID = 'tests/pass/Inputs/promote/reduce_loop.ll'
+source_filename = "tests/pass/Inputs/promote/reduce_loop.ll"
+target datalayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64"
+target triple = "nvptx64-nvidia-cuda"
+
+define void @reduce_kernel(ptr addrspace(1) %g, ptr addrspace(1) noalias %out) #0 {
+entry:
+  %kernscope.tile = alloca [128 x float], align 4, addrspace(3)
+  %kernscope.coop.tid = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+  %kernscope.coop.ntid = call i32 @llvm.nvvm.read.ptx.sreg.ntid.x()
+  %kernscope.coop.tid64 = zext i32 %kernscope.coop.tid to i64
+  %kernscope.coop.ntid64 = zext i32 %kernscope.coop.ntid to i64
+  br label %kernscope.coop.cond
+
+kernscope.coop.cond:                              ; preds = %entry, %kernscope.coop.body
+  %kernscope.coop.idx = phi i64 [ %kernscope.coop.tid64, %entry ], [ %kernscope.coop.next, %kernscope.coop.body ]
+  %kernscope.coop.cmp = icmp ult i64 %kernscope.coop.idx, 128
+  br i1 %kernscope.coop.cmp, label %kernscope.coop.body, label %kernscope.coop.exit
+
+kernscope.coop.body:                              ; preds = %kernscope.coop.cond
+  %kernscope.coop.gptr = getelementptr float, ptr addrspace(1) %g, i64 %kernscope.coop.idx
+  %kernscope.coop.val = load float, ptr addrspace(1) %kernscope.coop.gptr, align 4
+  %kernscope.coop.sptr = getelementptr inbounds [128 x float], ptr addrspace(3) %kernscope.tile, i64 0, i64 %kernscope.coop.idx
+  store float %kernscope.coop.val, ptr addrspace(3) %kernscope.coop.sptr, align 4
+  %kernscope.coop.next = add i64 %kernscope.coop.idx, %kernscope.coop.ntid64
+  br label %kernscope.coop.cond
+
+kernscope.coop.exit:                              ; preds = %kernscope.coop.cond
+  call void @llvm.nvvm.barrier0()
+  br label %loop
+
+loop:                                             ; preds = %kernscope.coop.exit, %loop
+  %i = phi i64 [ 0, %kernscope.coop.exit ], [ %inc, %loop ]
+  %acc = phi float [ 0.000000e+00, %kernscope.coop.exit ], [ %sum, %loop ]
+  %kernscope.sptr = getelementptr inbounds [128 x float], ptr addrspace(3) %kernscope.tile, i64 0, i64 %i
+  %v = load float, ptr addrspace(3) %kernscope.sptr, align 4
+  %sum = fadd float %acc, %v
+  %inc = add i64 %i, 1
+  %cmp = icmp ult i64 %inc, 128
+  br i1 %cmp, label %loop, label %exit
+
+exit:                                             ; preds = %loop
+  %r = phi float [ %sum, %loop ]
+  store float %r, ptr addrspace(1) %out, align 4
+  ret void
+}
+
+; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare noundef range(i32 0, 1024) i32 @llvm.nvvm.read.ptx.sreg.tid.x() #1
+
+; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare noundef range(i32 1, 1025) i32 @llvm.nvvm.read.ptx.sreg.ntid.x() #1
+
+; Unknown intrinsic
+declare void @llvm.nvvm.barrier0()
+
+attributes #0 = { "kernscope.promote.arch"="sm_86" }
+attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+verify exit: 0 (no verifier diagnostics above)
+=== pipeline interplay: kernscope-promote,kernscope-vectorize,verify ===
+pipeline output vs promote-only output: 
+IDENTICAL (vectorize left the promoted tile untouched)
+=== lit promote.test result ===
+PASS: kernscope-pass :: promote.test (1 of 1)
