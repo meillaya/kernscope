@@ -1,0 +1,27 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written bank-conflict fixture: a 68-word shared-memory stride
+// (the fused_attention column-major pattern; brief §2: bank = (word/4) mod
+// 32). 68 % 32 == 4 -> banks {0,4,8,...,28} -> 8 distinct banks, each hit
+// by 4 lanes -> 4-way conflict (owner's golden class).
+.visible .entry bank_conflict(
+	.param .u64 p
+)
+{
+	.reg .b64 	%rd<3>;
+	.reg .f32 	%f<3>;
+	.reg .b32 	%r<4>;
+	.shared .align 4 .b32 sdata[4352];
+	ld.param.u64 	%rd1, [p];
+	cvta.to.shared.u64 	%rd2, sdata;
+	mov.u32 		%r1, %tid.x;
+	mul.lo.s32 		%r2, %r1, 68;    // stride 68 words
+	shl.b32 		%r3, %r2, 2;      // * 4 bytes
+	add.s64 		%rd3, %rd2, %r3;
+	ld.shared.f32 	%f1, [%rd3];
+	add.f32 		%f2, %f1, 1.0;
+	st.shared.f32 	[%rd3], %f2;
+	ret;
+}

@@ -96,8 +96,14 @@ gtest_discover_tests(analyze-coalesce-test
 )
 
 # --- TODO 16: shared-memory bank conflicts ----------------------------------
-# (test executable added when tests/analyze_banks_test.cpp lands with the
-# todo-16 commit)
+add_executable(analyze-banks-test tests/analyze_banks_test.cpp)
+target_link_libraries(analyze-banks-test PRIVATE kernscope::analyze
+  GTest::gtest_main)
+target_compile_definitions(analyze-banks-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-banks-test
+  TEST_PREFIX "analyze_banks:"
+  PROPERTIES LABELS "no-gpu"
+)
 
 # --- TODO 17: warp divergence + barrier usage -------------------------------
 # (test executable added when tests/analyze_divergence_test.cpp lands with the
