@@ -1,0 +1,37 @@
+
+kernscope todo 5 — QA evidence (negative path): clang CUDA version-check gate
+==============================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 5 of gpu-kernel-suite plan)
+
+PURPOSE
+  Document why --no-cuda-version-check is MANDATORY in the clang-21 <-> CUDA-12.6
+  header gate (scripts/smoke_toolchain.sh stage a, tests/fixtures/clang_cuda_smoke.cu).
+
+SCENARIO
+  Same synthetic CUDA root as the positive gate; clang 21.1.8 (unwrapped);
+  smoke kernel with __syncthreads + <<<4, 256, 0, 0>>> launch syntax.
+  WITHOUT --no-cuda-version-check, clang rejects the 12.6 toolkit for any GPU
+  arch whose supported CUDA range excludes 12.6. sm_35 (max CUDA 11.8) makes
+  the failure deterministic; note the default arch sm_52 only warns
+  ("CUDA version 12.6 is only partially supported") because 12.6 is inside
+  sm_52's allowed range — the hard error is arch-dependent.
+
+COMMAND + EXACT OUTPUT
+  $ clang -x cuda --cuda-path=$SYNTH -nocudalib --cuda-device-only \
+        --cuda-gpu-arch=sm_35 -emit-llvm -c tests/fixtures/clang_cuda_smoke.cu
+  clang: warning: CUDA version 12.6 is only partially supported [-Wunknown-cuda-version]
+  clang: error: GPU arch sm_35 is supported by CUDA versions between 7.0 and 11.8
+         (inclusive), but installation at /tmp/opencode/synth_cuda is 12.6; use
+         '--cuda-path' to specify a different CUDA install, pass a different GPU
+         arch with '--cuda-gpu-arch', or pass '--no-cuda-version-check'
+  -> exit=1
+
+  With --no-cuda-version-check the same command compiles:
+  -> 0 errors, exit=0
+
+CONCLUSION
+  The flag is mandatory: without it the gate fails on the version check for
+  arches with max supported CUDA < 12.6 (clang 21's latest fully supported
+  CUDA predates 12.6). The flag opts into parsing the newer 12.6 headers,
+  which is exactly what the kernscope corpus needs.

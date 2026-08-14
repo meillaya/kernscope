@@ -1,0 +1,102 @@
+
+kernscope todo 5 — golden fixtures + toolchain smoke gates — QA evidence (happy path)
+===================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 5 of gpu-kernel-suite plan)
+Commit: feat(foundation): golden fixtures (fused_attention.ptx + expected JSON, layernorm_fused HIP app) + toolchain smoke gates
+
+FILES CREATED
+  tests/fixtures/fused_attention.cu          engineered kernel (4 owner classes)
+  tests/fixtures/fused_attention.ptx         nvcc -arch=sm_86 -lineinfo --maxrregcount=112 -ptx
+  tests/fixtures/expected_fused_attention.json  numeric expected analyzer report
+  tests/fixtures/manifest.json               schema_version 1, pins golden combo
+  tests/fixtures/validate_manifest.py        manifest assertion helper (todo-owned)
+  tests/fixtures/clang_cuda_smoke.cu         clang<->CUDA header gate kernel
+  tests/fixtures/hip_smoke.cpp               hipcc gfx1101 compile+run smoke
+  tests/fixtures/layernorm_fused/layernorm.hip      HIP fused layer-norm kernel+host
+  tests/fixtures/layernorm_fused/CMakeLists.txt    standalone hipcc CMake target
+  tests/fixtures/layernorm_fused/generate_golden.py  NumPy bf16 RNE golden generator
+  tests/fixtures/layernorm_fused/golden_inputs.npz / golden_outputs.npz  (committed)
+  tests/fixtures/layernorm_fused/check_layernorm.py  golden comparator (todo-owned)
+  tests/fixtures/README.md                   fixture docs + fallback + occupancy math
+  scripts/smoke_toolchain.sh                 [PASS]/[FAIL] toolchain gate (executable)
+
+PTXAS -v REGISTER COUNT (STOP-THE-LINE GATE)
+  nvcc -arch=sm_86 -lineinfo --maxrregcount=112 -Xptxas -v -cubin ... 2>&1
+  -> ptxas info : Used 102 registers, used 1 barriers, 388 bytes cmem[0]
+  -> 0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+  -> 102 IN [97,112] -> occupancy EXACTLY 0.375 (9 blocks x 2 warps / 48 max warps),
+     limiter "registers"  [iteration history: 87 regs (initial) -> 70 regs (8-wide
+     score unroll) -> 102 regs (full r-loop unroll, register-resident acc[64])]
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. test -f tests/fixtures/fused_attention.ptx
+     -> PASS (136725 bytes, .version 8.5 / .target sm_86, 2 bar.sync, no demoted
+        smem arrays; dynamic .extern .shared smem[] 66 KiB opt-in)
+  2. python3 tests/fixtures/validate_manifest.py
+     -> [PASS] validate_manifest: manifest.json pins the golden combo (occupancy
+        0.375, limiter registers, 102 regs in [97,112])   exit=0
+  3. bash scripts/smoke_toolchain.sh
+     -> [PASS] a. clang-21 <-> CUDA-12.6 headers: host+device -emit-llvm, __syncthreads -> llvm.nvvm.barrier*
+        [PASS] b. nvcc/ptxas: GPU-less compile, ptxas -v reports 102 regs (97-112 pin)
+        [PASS] b. nvcc/ptxas: committed fused_attention.ptx present
+        [PASS] c. hipcc gfx1101 compile+run: [PASS] hip_smoke: gfx1101 kernel produced correct output
+        [PASS] d. rocminfo reports gfx1101 (RDNA3) present
+        == smoke summary: 5 passed, 0 failed ==   exit=0
+  4. python3 tests/fixtures/layernorm_fused/check_layernorm.py
+     -> [INFO] running layernorm_app (M=1024, N=128, bf16 in/out, fp32 accumulate)
+        [INFO] cosine=0.999999 max_rel_err=3.889e-03 pcc=0.999999
+        [PASS] check_layernorm: device output matches golden (cosine >= 0.999,
+        max_rel_err <= 1e-2, pcc >= 0.99)   exit=0   (real gfx1101 GPU, RX 7800 XT)
+  5. du -sm tests/fixtures | cut -f1
+     -> 2  (limit 64 MB)
+
+OCCUPANCY MATH PIN (docs/research/gpu-static-analyzer-research.md S1.2)
+  sm_86: 65536 regs/SM, 48 max warps/SM, 16 max blocks/SM; 256-reg/warp granule
+    regs 96   -> per-warp 3072 -> 10 blocks -> 20/48 = 0.4167
+    regs 97-104 -> per-warp 3328 -> 9 blocks -> 18/48 = 0.375
+    regs 105-112 -> per-warp 3584 -> 9 blocks -> 18/48 = 0.375
+    regs 113  -> per-warp 3840 -> 8 blocks -> 16/48 = 0.333
+  102 regs lands exactly on the 0.375 plateau; 0 spills.
+
+NOTES / DEVIATIONS FROM THE BRIEF
+  1. The nix CUDA packages split the toolkit: cudart lacks bin/, nvvm/libdevice
+     and nvcc-internal crt/ headers; cuda_curand is absent. clang 21's detector
+     requires include/ + bin/ + nvvm/libdevice and its runtime wrapper
+     force-includes curand_mtgp32_kernel.h. The gate stages a synthetic
+     single-root CUDA layout + a minimal test-owned curand shim (no NVIDIA
+     header vendored). Documented in tests/fixtures/README.md.
+  2. The nix clang wrapper bakes host-only flags (-mtls-dialect=gnu2 etc.) that
+     nvptx64 rejects -> the gate uses the UNWRAPPED clang 21.1.8 binary.
+  3. clang 21 with -emit-llvm runs fatbinary on the device .bc (elf mismatch)
+     -> the gate splits into --cuda-host-only (launch syntax) +
+     --cuda-device-only (__syncthreads -> llvm.nvvm.barrier*); clang 21 lowers
+     __syncthreads to llvm.nvvm.barrier.cta.sync.aligned.all (new intrinsic name).
+  4. clang 21 emits the legacy cudaConfigureCall stub when no CUDA>=9 SDK
+     version is visible on the host target; the declaration is nvcc-internal,
+     so clang_cuda_smoke.cu declares it and uses <<<4, 256, 0, 0>>>.
+  5. fused_attention.cu uses dynamic shared memory (66 KiB extern __shared__)
+     because the 66 KiB tile set exceeds the 48 KiB static limit (real
+     flash-attention pattern; nvcc would otherwise demote the arrays).
+  6. bf16 RNE in layernorm.hip is a manual bit-exact implementation, verified
+     0 mismatches over 100008 random + special values vs ml_dtypes.bfloat16.
+  7. Fixture size: 2 MB total (ptx 137 KB, npz pair 788 KB, hip source small).
+
+FULL QA-HAPPY LOG
+  >>> bash scripts/smoke_toolchain.sh (full output)
+  [PASS] a. clang-21 <-> CUDA-12.6 headers: host+device -emit-llvm, __syncthreads -> llvm.nvvm.barrier*
+  [PASS] b. nvcc/ptxas: GPU-less compile, ptxas -v reports 102 regs (97-112 pin)
+  [PASS] b. nvcc/ptxas: committed fused_attention.ptx present
+  [PASS] c. hipcc gfx1101 compile+run: [PASS] hip_smoke: gfx1101 kernel produced correct output
+  [PASS] d. rocminfo reports gfx1101 (RDNA3) present
+  == smoke summary: 5 passed, 0 failed ==
+  >>> exit=0
+  >>> python3 tests/fixtures/validate_manifest.py
+  [PASS] validate_manifest: manifest.json pins the golden combo (occupancy 0.375, limiter registers, 102 regs in [97,112])
+  >>> exit=0
+  >>> python3 tests/fixtures/layernorm_fused/check_layernorm.py
+  [INFO] check_layernorm: building: .../clr-7.2.3/bin/hipcc --offload-arch=gfx1101 -std=c++17 -O3 layernorm.hip -o layernorm_app
+  [INFO] check_layernorm: running layernorm_app (M=1024, N=128, bf16 in/out, fp32 accumulate)
+  [INFO] check_layernorm: cosine=0.999999 max_rel_err=3.889e-03 pcc=0.999999
+  [PASS] check_layernorm: device output matches golden (cosine >= 0.999, max_rel_err <= 1e-2, pcc >= 0.99)
+  >>> exit=0
