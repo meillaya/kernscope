@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "arch": "sm_86",
+  "block_size": 64,
+  "warps_per_block": 2,
+  "max_warps_per_sm": 48,
+  "max_blocks_per_sm": 16,
+  "registers_per_thread": 102,
+  "register_granule_bytes": 256,
+  "registers_allocated_per_warp": 3328,
+  "occupancy_expected": 0.375,
+  "occupancy_numerator_blocks": 9,
+  "occupancy_denominator_warps": 48,
+  "limiter": "registers",
+  "registers_min": 97,
+  "registers_max": 112,
+  "warning_ids": ["bank_conflict", "divergent_inner_loop", "coalescing"],
+  "suggestion_ids": ["tile_k_32", "split_accumulator", "hoist_predicate"],
+  "ptxas_v_report": "ptxas info    : Used 102 registers, used 1 barriers, 388 bytes cmem[0]",
+  "spill_stores": 0,
+  "spill_loads": 0
+}

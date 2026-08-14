@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "report_type": "static_analyzer",
+  "kernel": {
+    "name": "fused_attention",
+    "source_file": "fused_attention.cu",
+    "ptx_file": "fused_attention.ptx",
+    "ptx_version": "8.5",
+    "arch": "sm_86",
+    "block_size": 64,
+    "warps_per_block": 2,
+    "dynamic_shared_bytes": 67584,
+    "opt_in_shared_bytes": 67584
+  },
+  "metrics": {
+    "registers_per_thread": 102,
+    "registers_allocated_per_warp": 3328,
+    "spill_stores": 0,
+    "spill_loads": 0,
+    "local_stack_bytes": 0,
+    "blocks_per_sm": 9,
+    "warps_resident_per_sm": 18,
+    "max_warps_per_sm": 48,
+    "max_blocks_per_sm": 16,
+    "occupancy": 0.375,
+    "limiter": "registers",
+    "shared_memory_bytes": 67584,
+    "instruction_mix": {
+      "fma_rn_f32": 1024,
+      "mul_f32": 33,
+      "add_f32": 23,
+      "ex2_approx_f32": 1,
+      "ld_global": 20,
+      "ld_global_vectorized": 0,
+      "ld_shared": 520,
+      "st_global": 64,
+      "st_shared": 16,
+      "ld_local": 0,
+      "st_local": 0,
+      "setp": 77,
+      "predicated_bra": 78,
+      "bar_sync": 2
+    }
+  },
+  "warnings": [
+    {
+      "id": "bank_conflict",
+      "severity": "warning",
+      "evidence": {
+        "access": "sK[tid][j] / sV[tid][k] column-major shared loads",
+        "stride_words": 68,
+        "banks_per_sm": 32,
+        "distinct_banks": 8,
+        "way": 4,
+        "stride_mod_32": 4
+      }
+    },
+    {
+      "id": "divergent_inner_loop",
+      "severity": "warning",
+      "evidence": {
+        "predicate": "lane % 8 == j % 8",
+        "predicate_derived_from": "threadIdx.x",
+        "loop": "score j-loop",
+        "loop_depth": 2,
+        "setp_count": 77,
+        "predicated_branch_count": 78
+      }
+    },
+    {
+      "id": "coalescing",
+      "severity": "warning",
+      "evidence": {
+        "access": "Q tile staging stride-2 global loads",
+        "bytes_used_per_warp": 128,
+        "bytes_transferred_per_warp": 256,
+        "efficiency": 0.5,
+        "vectorized_ld_global": 0
+      }
+    }
+  ],
+  "suggestions": [
+    {
+      "id": "tile_k_32",
+      "severity": "suggestion",
+      "evidence": {
+        "current_tile_k": 64,
+        "suggested_tile_k": 32,
+        "shared_bytes_current": 67584,
+        "shared_bytes_suggested": 33792
+      }
+    },
+    {
+      "id": "split_accumulator",
+      "severity": "suggestion",
+      "evidence": {
+        "accumulator_elements": 64,
+        "accumulator_bytes": 256,
+        "suggested_fragment_elements": 16,
+        "registers_per_thread": 102
+      }
+    },
+    {
+      "id": "hoist_predicate",
+      "severity": "suggestion",
+      "evidence": {
+        "predicate_depends_on": ["lane"],
+        "loop_invariant_in": "score j-loop",
+        "current_branch_sites": 8,
+        "suggested_branch_sites": 1
+      }
+    }
+  ]
+}
