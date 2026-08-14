@@ -1,0 +1,30 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written divergence fixture: a branch whose condition is UNIFORM
+// across the warp (kernel parameter / constant), plus a loop. Produces ZERO
+// divergence warnings (uniform-control fixture, todo-17 acceptance).
+.visible .entry uniform_control(
+	.param .u64 p,
+	.param .u32 n
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<8>;
+	.reg .b64 	%rd<2>;
+	.reg .f32 	%f<2>;
+	ld.param.u64 	%rd1, [p];
+	ld.param.u32 	%r1, [n];     // kernel parameter (uniform)
+	setp.gt.u32 	%p1, %r1, 0;  // uniform condition
+	@%p1 bra 		$L_taken;
+	mov.u32 		%r2, 0;
+	bra 			$L_join;
+$L_taken:
+	mov.u32 		%r2, 1;
+$L_join:
+	mov.f32 		%f1, 0f3F800000;
+	cvta.to.global.u64 	%rd2, %rd1;
+	st.global.f32 	[%rd2], %f1;
+	ret;
+}

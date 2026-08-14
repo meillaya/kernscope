@@ -1,0 +1,45 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written divergence fixture: a predicated branch whose condition is
+// derived from threadIdx.x (lane & 7), placed INSIDE a nested loop
+// (outer loop depth 1, inner loop depth 2). Modeled on the fused_attention
+// score j-loop -> the owner's "divergent branch inside inner loop" class
+// (loop_depth 2, predicate_derived_from threadIdx.x).
+.visible .entry divergent_inner_loop(
+	.param .u64 p
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<8>;
+	.reg .b64 	%rd<2>;
+	.reg .f32 	%f<4>;
+	ld.param.u64 	%rd1, [p];
+	mov.u32 		%r1, %tid.x;
+	and.b32 		%r2, %r1, 7;    // tid-derived value
+	mov.u32 		%r3, 0;
+$L_outer:
+	setp.lt.u32 	%p1, %r3, 4;    // outer loop (depth 1)
+	@!%p1 bra 		$L_done;
+	mov.u32 		%r4, 0;
+$L_inner:
+	setp.lt.u32 	%p2, %r4, 4;    // inner loop (depth 2)
+	@!%p2 bra 		$L_outer_next;
+	setp.ne.s32 	%p3, %r2, 0;    // DIVERGENT predicate (tid-derived)
+	@%p3 bra 		$L_taken;
+	mov.f32 		%f1, 0f3F800000;
+	bra 			$L_join;
+$L_taken:
+	mov.f32 		%f1, 0f40000000;
+$L_join:
+	add.f32 		%f2, %f1, %f1;
+	st.global.f32 	[%rd1], %f2;
+	add.s32 		%r4, %r4, 1;
+	bra 			$L_inner;
+$L_outer_next:
+	add.s32 		%r3, %r3, 1;
+	bra 			$L_outer;
+$L_done:
+	ret;
+}

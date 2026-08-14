@@ -1,0 +1,28 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written divergence fixture (QA negative): a branch whose condition is
+// DATA-DEPENDENT (a value loaded from global memory) -> the module must
+// classify it "possibly-divergent" (three-valued), never claim convergent
+// and never claim definitively divergent.
+.visible .entry data_dependent_branch(
+	.param .u64 p
+)
+{
+	.reg .pred 	%p<2>;
+	.reg .b32 	%r<8>;
+	.reg .b64 	%rd<3>;
+	ld.param.u64 	%rd1, [p];
+	cvta.to.global.u64 	%rd2, %rd1;
+	ld.global.u32 	%r1, [%rd2];    // data-dependent value
+	setp.gt.u32 	%p1, %r1, 0;    // possibly-divergent condition
+	@%p1 bra 		$L_taken;
+	mov.u32 		%r2, 0;
+	bra 			$L_join;
+$L_taken:
+	mov.u32 		%r2, 1;
+$L_join:
+	st.global.u32 	[%rd2], %r2;
+	ret;
+}

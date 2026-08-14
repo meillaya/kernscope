@@ -106,8 +106,14 @@ gtest_discover_tests(analyze-banks-test
 )
 
 # --- TODO 17: warp divergence + barrier usage -------------------------------
-# (test executable added when tests/analyze_divergence_test.cpp lands with the
-# todo-17 commit)
+add_executable(analyze-div-test tests/analyze_divergence_test.cpp)
+target_link_libraries(analyze-div-test PRIVATE kernscope::analyze
+  GTest::gtest_main)
+target_compile_definitions(analyze-div-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-div-test
+  TEST_PREFIX "analyze_div:"
+  PROPERTIES LABELS "no-gpu"
+)
 
 # --- TODO 18: instruction mix + tensor core + latency -----------------------
 # (test executable added when tests/analyze_mix_test.cpp lands with the
