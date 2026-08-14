@@ -1,0 +1,16 @@
+; rle.test — kernscope-rle: GPU barrier-aware redundant load elimination
+; (todo 39, Wave 7).
+;
+; SKELETON smoke: the pass is registered and runs without error. The golden
+; fixtures (reload elimination, barrier rules, volatile/atomic negative)
+; land with the feature commit.
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-rle -S %s | FileCheck %s --check-prefix=SMOKE
+
+; SMOKE: @smoke
+
+define void @smoke() {
+  ret void
+}
