@@ -116,5 +116,11 @@ gtest_discover_tests(analyze-div-test
 )
 
 # --- TODO 18: instruction mix + tensor core + latency -----------------------
-# (test executable added when tests/analyze_mix_test.cpp lands with the
-# todo-18 commit)
+add_executable(analyze-mix-test tests/analyze_mix_test.cpp)
+target_link_libraries(analyze-mix-test PRIVATE kernscope::analyze
+  GTest::gtest_main)
+target_compile_definitions(analyze-mix-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-mix-test
+  TEST_PREFIX "analyze_mix:"
+  PROPERTIES LABELS "no-gpu"
+)
