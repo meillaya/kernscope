@@ -1,0 +1,13 @@
+; tile.test — kernscope-tile: arch-derived loop tiling (todo 41, Wave 7).
+;
+; Skeleton stage: the pass is registered (textual name kernscope-tile)
+; and runs cleanly on a kernel with no loops, changing nothing.
+; The full golden fixtures (tile_nest.ll, remainder.ll, decline_small.ll,
+; dependence.ll, pipeline.ll) land with the analysis + rewrite increment.
+;
+; Design: tools/pass/passes/tile/include/kernscope/pass/tile.h.
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-tile,verify' -S %S/Inputs/tile/trivial.ll -o %t.triv
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/tile/trivial.ll %t.triv
