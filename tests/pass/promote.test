@@ -1,0 +1,14 @@
+; promote.test — kernscope-promote: global-to-shared memory promotion
+; (cooperative block load) (todo 40, Wave 7).
+;
+; Skeleton stage: the pass is registered (textual name kernscope-promote)
+; and runs cleanly on a kernel with no global reads, changing nothing.
+; The full golden fixtures (reduce_loop.ll, budget.ll, write_negative.ll)
+; land with the analysis + rewrite increment.
+;
+; Design: tools/pass/passes/promote/include/kernscope/pass/promote.h.
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-promote,verify' -S %S/Inputs/promote/trivial.ll -o %t.triv
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/promote/trivial.ll %t.triv
