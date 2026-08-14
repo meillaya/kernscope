@@ -1,0 +1,28 @@
+kernscope-pass loop tiling pass (todo 41) — QA negative evidence
+date: 2026-08-14T23:57:24Z
+scenario: trip count 3 with tile size 32 (pinned via kernscope.tile.size attr)
+
+== fixture: tests/pass/Inputs/tile/decline_small.ll (N=3, TS=32) ==
+== expected: decline annotation, IR unchanged ==
+
+-- pass stderr --
+kernscope-tile: declining tiling of loop @loop in @small_kernel: trip count < tile size; tiling pointless (3 < 32)
+
+-- llvm-diff vs input (no output = identical) --
+llvm-diff: IDENTICAL
+
+-- remaining textual diff after opt round-trip (cosmetic only: comment
+   header, ModuleID, ; preds annotations, attribute-group indirection;
+   llvm-diff above is the semantic identity criterion) --
+1,3c1
+< ; decline_small.ll — kernscope-tile decline fixture: trip count 3 with
+< ; tile size 32 (pinned) -> N < TS, tiling pointless; IR unchanged.
+< 
+---
+> ; ModuleID = 'tests/pass/Inputs/tile/decline_small.ll'
+7c5
+< define void @small_kernel(ptr addrspace(1) %g, ptr addrspace(1) noalias %out) "kernscope.tile.arch"="sm_86" "kernscope.tile.size"="32" {
+
+-- lit assertion of the decline annotation (tile.test SMALL prefix) --
+SMALL FileCheck annotation: PASS
+llvm-diff (lit path): IDENTICAL

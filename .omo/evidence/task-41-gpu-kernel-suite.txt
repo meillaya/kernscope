@@ -1,0 +1,29 @@
+kernscope-pass loop tiling pass (todo 41) — happy evidence
+date: 2026-08-14T23:56:50Z
+commit: 3d43e8e
+
+== (a) pass-tile lit: tiled nest + remainder FileCheck-EXACT ==
+TILE golden: PASS
+REM golden: PASS
+DER (arch-derived tile 128) golden: PASS
+
+== (b) decline fixtures (asserted + IR unchanged) ==
+kernscope-tile: declining tiling of loop @loop in @small_kernel: trip count < tile size; tiling pointless (3 < 32)
+decline_small llvm-diff: IDENTICAL
+kernscope-tile: declining tiling of loop @loop in @dep_kernel: cross-iteration memory dependence (LAI)
+dependence llvm-diff: IDENTICAL
+
+== (c) tile->promote->vectorize PIPELINE gate ==
+pipeline opt exit: 0
+PIPELINE golden: PASS
+coop-load markers present: 18
+barrier0 calls: 2
+
+== (d) build (Werror clean) ==
+cmake --build build --target kernscope-pass: exit 0
+errors/warnings in build log: 0
+
+== (e) full tests/pass suite (8 tests) ==
+
+Total Discovered Tests: 8
+  Passed: 8 (100.00%)
