@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kernscope.local/schemas/report.schema.json",
+  "title": "kernscope kernel report",
+  "description": "Structured report emitted by the kernscope tools (analyzer, profiler, ...): a kernel identity, a flat machine-readable numeric metrics map, the main occupancy limiter, and warning/suggestion findings. Every measured quantity is a machine-readable field; renderers never emit prose-only reports. Evidence values are strings so numeric fields stay simple and machine-readable. The special evidence key \"text\" carries the one-line human summary used by the text renderer.",
+  "type": "object",
+  "required": ["kernel", "metrics", "limiter", "warnings", "suggestions"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this report envelope (not the JSON Schema draft)."
+    },
+    "report_type": {
+      "type": "string",
+      "description": "Tool that produced the report, e.g. static_analyzer or profiler."
+    },
+    "kernel": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Kernel identity, e.g. fused_attention.ptx or layernorm_fused."
+        },
+        "source_file": { "type": "string" },
+        "arch": { "type": "string" },
+        "block_size": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Flat numeric metrics (occupancy, registers_per_thread, ...). No prose allowed here: every metric is a machine-readable number.",
+      "additionalProperties": { "type": "number" }
+    },
+    "limiter": {
+      "type": "string",
+      "description": "Main occupancy limiter as a human string, e.g. \"112 registers/thread\" (the numeric register count lives in metrics.registers_per_thread)."
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["id", "severity", "evidence"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable machine-readable finding identifier, e.g. bank_conflict."
+        },
+        "severity": {
+          "type": "string",
+          "description": "Severity bucket, e.g. warning or suggestion."
+        },
+        "evidence": {
+          "type": "object",
+          "description": "Key/value evidence for the finding. The special key \"text\" is the one-line human summary used by the text renderer; all other keys are machine-readable fields.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
