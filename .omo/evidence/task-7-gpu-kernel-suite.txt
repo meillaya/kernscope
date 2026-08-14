@@ -1,0 +1,104 @@
+kernscope todo 7 — report engine (text + JSON schema + self-contained HTML) — QA evidence (happy path)
+=========================================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 7 of gpu-kernel-suite plan)
+Commit: feat(report): report engine with text/JSON/HTML renderers and schema validation
+
+FILES CREATED
+  libs/report/CMakeLists.txt              kernscope_report lib + gtest + fixture/negative/check_html ctest wiring (all LABELS no-gpu)
+  libs/report/include/kernscope/report.h  KernelReport{Finding} model + validate/to_text/to_json/to_html API; SchemaViolation
+  libs/report/src/report.cpp              text (owner Section A format), JSON (schema-validated), self-contained HTML (inline
+                                          CSS/JS, embedded JSON payload, zero network requests; polykernel/tt-flow convention)
+  libs/report/tests/report_test.cpp       gtest: (a) exact text golden, (b) JSON vs schema, (c) HTML payload round-trip +
+                                          schema, (d) negative rejections (missing severity/id, NaN metric)
+  libs/report/tests/fixture_main.cpp      sample report generator -> build/test_reports/{sample.html,sample.json}
+  libs/report/tests/negative_main.cpp     negative-path demo: exit 42 + message when severity missing (asserted code)
+  tests/report/check_html.py              python3 html.parser extraction of the embedded JSON payload, compared to expected
+                                          input JSON (exit 0 match; reused by todo 56); expected defaults to sibling .json
+  tests/report/validate_json.py           minimal draft-2020-12 subset validator ($ref/type/required/properties/
+                                          additionalProperties/items/enum/const) - jsonschema pip NOT in devenv python
+  docs/schema/report.schema.json          committed JSON Schema draft 2020-12: required kernel.name, metrics (object of
+                                          numbers), limiter, warnings[], suggestions[] (findings: id/severity/evidence)
+  CMakeLists.txt                          add_subdirectory(libs/report) (superbuild wiring, no other change)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build
+     -> ninja: no work to do. exit=0   (full tree incl. sibling todo-6 arch + todo-8 db targets)
+  2. (cd build && ctest -R report --output-on-failure)
+     -> 12/12 tests passed: report:ReportText.OwnerExampleGolden, report:ReportText.EmptyFindingsRenderNone,
+        report:ReportJson.ValidatesAgainstSchema, report:ReportJson.NumericMetricsAreMachineReadable,
+        report:ReportHtml.EmbedsExtractablePayloadEqualToModel, report:ReportHtml.EscapesScriptClosersInPayload,
+        report:ReportRejection.MissingSeverityThrowsSchemaViolation, report:ReportRejection.MissingFindingIdThrows,
+        report:ReportRejection.NonFiniteMetricThrows, report-fixture, report-html-check, report-negative
+        "100% tests passed, 0 tests failed out of 12"  exit=0
+  3. python3 tests/report/check_html.py build/test_reports/sample.html
+     -> check_html: build/test_reports/sample.html embedded payload matches build/test_reports/sample.json  exit=0
+     (two-arg form with explicit expected.json also exits 0)
+  4. text golden: to_text() output byte-identical to docs/research/owner-examples.md Section A:
+        Kernel: fused_attention.ptx
+        Occupancy: 37.5%
+        Main limiter: 112 registers/thread
+        Warnings:
+          - shared memory stride likely causes 4-way bank conflicts
+          - divergent branch inside inner loop
+          - global loads not 128B coalesced
+        Suggested:
+          - tile K dimension by 32
+          - split accumulator fragment
+          - move predicate outside loop
+  5. python3 tests/report/validate_json.py build/test_reports/sample.json docs/schema/report.schema.json
+     -> validate_json: ... valid against ...  exit=0   (schema round-trips the committed validator)
+
+QA SCENARIOS
+  happy: ctest -R report PASS (12/12) + HTML check PASS (both acceptance forms) — logs above.
+  failure: see task-7-gpu-kernel-suite-negative.txt (missing severity -> exit 42 + message naming the field).
+
+MODEL / SCHEMA DESIGN (machine-readable by construction)
+  KernelReport { kernel_name; metrics map<string,double> (flat numeric - NO prose); limiter string;
+                 warnings/suggestions vector<Finding> }; Finding { id; severity; evidence map<string,string> }.
+  Evidence values are strings so numeric fields stay machine-readable while the model stays simple; the special
+  evidence key "text" is the one-line human summary the TEXT renderer prints (owner bullets), falling back to id.
+  JSON envelope: schema_version/report_type/kernel{name}/metrics{...}/limiter/warnings[]/suggestions[].
+  HTML: <script id="report-data" type="application/json"> payload; "</" escaped as "<\/" (valid JSON escape,
+  decoded by JSON.parse/json.loads); 0 http(s) references; JS renders via textContent only (no innerHTML).
+  All renderers validate first and throw SchemaViolation - never a silent render.
+
+NOTES / DEVIATIONS FROM THE BRIEF
+  1. CMake 4.3.4 (nixpkgs) BUG WORKAROUND: after any pkg_check_modules call, variable-sourced
+     target_include_directories() is silently DROPPED from the generated Ninja INCLUDES (minimal-repro-verified:
+     plain set() var, $CACHE{} var, hardcoded path all vanish; hardcoded survives only without pkg_check_modules).
+     The gtest -I therefore travels via target_compile_options as "-isystem<path>" (documented in
+     libs/report/CMakeLists.txt). IMPORTED_TARGET mode also drops includes, so plain pkg_check_modules vars are used.
+     This is the SAME root cause that initially broke the sibling todo-6 arch-test (GTest::gtest_main target
+     unresolvable - no GTestConfig.cmake in CMAKE_PREFIX_PATH).
+  2. jsonschema pip is NOT in the devenv python (probed: import fails) -> committed minimal draft-2020-12 subset
+     validator tests/report/validate_json.py (deterministic, no pip dependency; reused by the gtest via subprocess).
+  3. gtest 1.17.0 headers trip -Wcharacter-conversion under clang-21 -Wextra -> gtest include dir is -isystem
+     (third-party headers must not fail the -Werror gate).
+  4. [[nodiscard]] was REMOVED from the three renderer declarations: gtest's EXPECT_THROW macro discards the
+     expression result inside its unreachable-code suppression, so nodiscard would fail the -Werror build.
+  5. ctest -R is a case-sensitive regex; gtest suite names are CamelCase (ReportText...) so gtest_discover_tests
+     uses TEST_PREFIX "report:" -> every discovered case matches `ctest -R report`.
+  6. CMake -D values are already string literals; re-stringifying them with a STR() helper double-quotes the path
+     (verified bug: files were written into a directory literally named "/home/...") -> macros are used directly.
+  7. The HTML header comment must NOT contain the literal report-data script tag (a naive string-search extractor
+     would match it); the comment documents the convention without the exact tag text.
+  8. The embedded payload sits between the tags with zero surrounding whitespace so extraction is byte-exact
+     (to_json's trailing newline is part of the payload; check_html.py's json.loads is whitespace-tolerant anyway).
+  9. Evidence format follows the established convention (todo 1-5 files); appended, never overwritten.
+  10. Sibling workers (todos 6/8) were mid-flight in the same tree during this todo (libs/arch + libs/db modified
+      at 04:33, after my 04:31 files); the shared build dir briefly failed on their in-flight arch-test target.
+      Final `cmake --build build` exit=0 with the tree as-is; I did not modify their files.
+
+FULL QA-HAPPY LOG
+  >>> cmake --build build
+  ninja: no work to do.
+  >>> exit=0
+  >>> (cd build && ctest -R report --output-on-failure)
+  12/12 Test #22: report:ReportHtml.EmbedsExtractablePayloadEqualToModel ... Passed
+  (all 12 report tests listed above Passed)
+  100% tests passed, 0 tests failed out of 12
+  >>> exit=0
+  >>> python3 tests/report/check_html.py build/test_reports/sample.html
+  check_html: build/test_reports/sample.html embedded payload matches build/test_reports/sample.json
+  >>> exit=0

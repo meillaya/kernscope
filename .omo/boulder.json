@@ -8,7 +8,7 @@
       "plan_name": "gpu-kernel-suite",
       "status": "active",
       "started_at": "2026-08-14T04:11:50.633Z",
-      "updated_at": "2026-08-14T08:20:47.352Z",
+      "updated_at": "2026-08-14T08:36:12.210Z",
       "session_ids": [
         "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
       ],
@@ -52,6 +52,17 @@
           "updated_at": "2026-08-14T08:20:47.352Z",
           "ended_at": "2026-08-14T08:20:47.352Z",
           "elapsed_ms": 212114
+        },
+        "todo:6": {
+          "task_key": "todo:6",
+          "task_label": "6",
+          "task_title": "libs/arch: architecture-model DB (NVIDIA sm_75..sm_120 + AMD gfx90a/gfx942/gfx1101) with ISA-resolved constants",
+          "session_id": "opencode:ses_000a3ad03ffe7aKTp2VAspJnsF",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "updated_at": "2026-08-14T08:36:12.210Z",
+          "started_at": "2026-08-14T08:36:12.210Z",
+          "status": "running"
         }
       }
     }
@@ -59,7 +70,7 @@
   "active_plan": "/home/mei/projects/llvm.h/.omo/plans/gpu-kernel-suite.md",
   "started_at": "2026-08-14T04:11:50.633Z",
   "status": "active",
-  "updated_at": "2026-08-14T08:20:47.352Z",
+  "updated_at": "2026-08-14T08:36:12.210Z",
   "session_ids": [
     "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
   ],
@@ -103,6 +114,17 @@
       "updated_at": "2026-08-14T08:20:47.352Z",
       "ended_at": "2026-08-14T08:20:47.352Z",
       "elapsed_ms": 212114
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "libs/arch: architecture-model DB (NVIDIA sm_75..sm_120 + AMD gfx90a/gfx942/gfx1101) with ISA-resolved constants",
+      "session_id": "opencode:ses_000a3ad03ffe7aKTp2VAspJnsF",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-08-14T08:36:12.210Z",
+      "started_at": "2026-08-14T08:36:12.210Z",
+      "status": "running"
     }
   },
   "agent": "atlas"

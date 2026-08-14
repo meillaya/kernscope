@@ -1,0 +1,49 @@
+kernscope todo 7 — QA evidence (negative path): schema-violating finding is rejected, never silently rendered
+===============================================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 7 of gpu-kernel-suite plan)
+Commit: feat(report): report engine with text/JSON/HTML renderers and schema validation
+
+PURPOSE
+  A Finding missing a required field (severity) must make the renderer return
+  a schema-violation error with an asserted exit code + message that names the
+  missing field — never a silent render (plan todo-7 QA failure scenario,
+  mirroring polykernel's --inject-failed-correctness discipline).
+
+SCENARIO
+  Model = owner-example report with one extra warning that OMITS severity:
+    {id: "bank_conflict", severity: "", evidence: {text: "shared memory stride"}}
+  Demanded behavior: to_json() throws SchemaViolation; the demo tool
+  libs/report/tests/negative_main.cpp asserts it and exits with the asserted
+  code 42. The ctest test "report-negative" is registered WILL_FAIL TRUE, so
+  the suite passes exactly when the renderer refuses to emit the invalid
+  report (exit non-zero); the tool itself returns 1 if the renderer silently
+  rendered, 2 if the message does not name the field.
+
+COMMAND + EXACT OUTPUT
+  $ ./libs/report/kernscope-report-negative
+  SCHEMA_VIOLATION: report schema violation: finding [bank_conflict] in warnings is missing required field 'severity'
+  OK: renderer rejected the finding; exit code 42 (asserted)
+  $ echo $?
+  42
+
+  The message names BOTH the offending finding (bank_conflict) and the missing
+  field (severity).
+
+  ctest view (the WILL_FAIL test passes exactly because the tool exits 42):
+  $ (cd build && ctest -R report-negative -V)
+  Test #13: report-negative ................... Passed    0.00 sec
+  100% tests passed, 0 tests failed out of 1
+
+GTEST-LEVEL ASSERTIONS (same scenario, in-suite)
+  report:ReportRejection.MissingSeverityThrowsSchemaViolation
+    -> EXPECT_THROW(to_text/to_json/to_html, SchemaViolation) all pass
+    -> exception message contains "severity" and "bank_conflict"
+  report:ReportRejection.MissingFindingIdThrows       -> validate()=false, message names "id"
+  report:ReportRejection.NonFiniteMetricThrows        -> NaN occupancy rejected, message names "finite"
+  All 9 gtest cases + 3 harness tests pass in `ctest -R report` (12/12).
+
+CONCLUSION
+  Renderers validate the model against the committed schema BEFORE emitting;
+  a schema-violating model produces SchemaViolation with a field-naming
+  message and asserted exit code 42 — no silent render, no partial JSON/HTML.
