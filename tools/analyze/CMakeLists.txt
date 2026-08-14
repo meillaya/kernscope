@@ -76,8 +76,14 @@ gtest_discover_tests(analyze-regs-test
 )
 
 # --- TODO 14: occupancy limits + main limiter -------------------------------
-# (test executable added when tests/analyze_occupancy_test.cpp lands with the
-# todo-14 commit)
+add_executable(analyze-occ-test tests/analyze_occupancy_test.cpp)
+target_link_libraries(analyze-occ-test PRIVATE kernscope::analyze
+  GTest::gtest_main)
+target_compile_definitions(analyze-occ-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-occ-test
+  TEST_PREFIX "analyze_occ:"
+  PROPERTIES LABELS "no-gpu"
+)
 
 # --- TODO 15: global memory coalescing --------------------------------------
 # (test executable added when tests/analyze_coalescing_test.cpp lands with the
