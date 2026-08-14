@@ -1,0 +1,74 @@
+TASK 24 EVIDENCE (NEGATIVE PATH) — unsupported intrinsic fails the compile gate, never a silent skip
+======================================================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Scenario: template with an intrinsic unsupported on gfx1101 must FAIL the
+hipcc compile gate NAMING the arch — the failure must be the compile gate,
+not a silent skip.
+
+SAMPLE (temporary file, REMOVED before commit — never tracked):
+kernels/templates/reference/neg_pipeline.hip using __pipeline_memcpy_async /
+__pipeline_commit (CUDA cp.async builtins; RDNA3 gfx1101 has no cp.async and
+the HIP headers declare no such intrinsic).
+
+PROCEDURE
+---------
+1. Registered temporarily: kernscope_add_hip_kernel(neg_pipeline
+   SOURCES reference/neg_pipeline.hip) appended to kernels/templates/CMakeLists.txt.
+2. cmake --build build  (regenerates; the genco target is lazy — no work until
+   the gate test runs: "ninja: no work to do", BUILD_RC=0 — the gate is a
+   ctest test, NOT a silent skip).
+3. ctest --test-dir build -R "neg_pipeline" --output-on-failure
+
+RESULT (exact output)
+---------------------
+Test project /home/mei/projects/llvm.h/build
+    Start 477: kernscope.templates.neg_pipeline.hip.genco
+1/1 Test #477: kernscope.templates.neg_pipeline.hip.genco ...***Failed    0.68 sec
+[1/1] hipcc --genco gfx1101 compile gate: neg_pipeline/reference/neg_pipeline.hip
+FAILED: [code=1] kernels/templates/hip/neg_pipeline.hsaco
+cd .../build/kernels/templates && /nix/store/...-clr-7.2.3/bin/hipcc --genco
+    --offload-arch=gfx1101 -gline-tables-only -D__HIP_PLATFORM_AMD__=1 \
+    -I.../clr-7.2.3/include -I.../kernels/templates/include \
+    .../reference/neg_pipeline.hip -o .../neg_pipeline.hsaco
+/home/mei/projects/llvm.h/kernels/templates/reference/neg_pipeline.hip:16:5: error:
+    use of undeclared identifier '__pipeline_memcpy_async'
+   16 |     __pipeline_memcpy_async(&out[i], &a[i], sizeof(float));
+      |     ^~~~~~~~~~~~~~~~~~~~~~~
+/home/mei/projects/llvm.h/kernels/templates/reference/neg_pipeline.hip:17:5: error:
+    use of undeclared identifier '__pipeline_commit'
+   17 |     __pipeline_commit();
+      |     ^~~~~~~~~~~~~~~~~
+2 errors generated when compiling for gfx1101.
+failed to execute:.../hipClang/bin/clang++ --offload-arch=gfx1101 -O3
+    --cuda-device-only -gline-tables-only ...
+ninja: build stopped: subcommand failed.
+0% tests passed, 1 tests failed out of 1
+The following tests FAILED:
+	477 - kernscope.templates.neg_pipeline.hip.genco (Failed) no-gpu
+Errors while running CTest
+CTEST_RC=8
+
+ASSERTIONS
+----------
+* The failing test IS the compile gate (kernscope.templates.neg_pipeline.hip.genco),
+  not a skip: ctest reports ***Failed with exit 8 and the hipcc command ran.
+* The gate command names the arch: `hipcc --genco --offload-arch=gfx1101 ...`
+  and the compiler error itself says "2 errors generated when compiling for
+  gfx1101" (hipcc appends the target to the diagnostic).
+* No runtime/silent behavior: the unsupported intrinsic is caught at COMPILE
+  time by the gate, exactly as the plan requires ("compile gate fails naming
+  the arch (assert the failure is the compile gate, not a silent skip)").
+* Same discipline holds for the nvcc gates: an equivalent CUDA-side gate
+  failure would surface identically (the gate tests build their targets and
+  inherit the compiler's exit code + diagnostics).
+
+CLEANUP (verified)
+------------------
+* kernels/templates/reference/neg_pipeline.hip deleted; the temporary
+  kernscope_add_hip_kernel(neg_pipeline ...) line removed from
+  kernels/templates/CMakeLists.txt.
+* cmake --build build: BUILD_RC=0, "ninja: no work to do".
+* ctest -L "no-gpu|gpu-amd" -N -> Total Tests: 515 (restored, baseline 515).
+* ctest -R "neg_pipeline" -N -> Total Tests: 0 (no residue).
+* git status confirms no neg_* files tracked.

@@ -1,0 +1,140 @@
+TASK 24 EVIDENCE (HAPPY PATH) — portable CUDA/HIP kernel template infra + compile gates
+========================================================================================
+Date: 2026-08-14
+Repo: /home/mei/projects/llvm.h
+Commit: feat(templates): portable CUDA/HIP kernel template infra with compile gates
+
+ENVIRONMENT (devenv shell)
+--------------------------
+nvcc 12.6 (V12.6.85, compile-only sm_80/sm_90 — no NVIDIA GPU)
+hipcc 7.2 (7.2.53211-9999, LIVE on gfx1101 = AMD Radeon RX 7800 XT)
+cmake 4.3.4 / Ninja / clang 21.1.8 / python3 3.14.7
+
+FILES CREATED
+-------------
+kernels/templates/CMakeLists.txt
+  kernscope_add_cuda_kernel(name SOURCES...): nvcc COMPILE-ONLY gates
+    -arch=sm_80 -lineinfo and -arch=sm_90 -lineinfo (-x cu -std=c++20),
+    one ctest test per arch, LABELS no-gpu.
+  kernscope_add_hip_kernel(name SOURCES... [RUN_SYMBOL/GOLDEN_FAMILY/
+  GOLDEN_SHAPE/GRID/BLOCK]): hipcc --genco --offload-arch=gfx1101
+  -gline-tables-only compile gate (LABELS no-gpu); with the RUN_* args also
+  the LIVE gate (LABELS gpu-amd): run on this machine + golden verdict
+  pass:true. gpuruntime hsaco pattern followed (libs/gpuruntime/CMakeLists.txt).
+kernels/templates/include/kernscope/kernel_traits.h
+  the ONLY platform-dependent part: #if defined(__HIP_PLATFORM_AMD__) ->
+  hip_runtime.h + hip_bfloat16.h / ks_bf16 = hip_bfloat16; #else ->
+  cuda_runtime.h + cuda_bf16.h / ks_bf16 = __nv_bfloat16; + fp32 conversion
+  helpers (bf16 RNE in, fp32 accumulate, bf16 out — todo-23 contract).
+kernels/templates/reference/elementwise_add.hip
+  kernscope_templates_elementwise_add(a, b, out, n): out[i]=a[i]+b[i] fp32.
+kernels/templates/reference/matmul_skeleton.hip
+  kernscope_templates_matmul_skeleton(a, b, out, m, n, k): tiled C=A@B,
+  16x16 smem tile (+1 padding), fp32 accumulate, bounds-checked, bf16 in/out.
+kernels/templates/tools/hip_template_runner.cpp
+  generic live runner via kernscope::gpuruntime (Module::load / Kernel::create
+  / launch / memcpy / events pattern of todo 21): --hsaco --kernel --grid W[xH]
+  --block X[xY] [--in bin]... --out bin --out-size [--int i32]...; kernel
+  param contract (const T* input..., T* output, int32 scalar...), device
+  pointers passed BY VALUE (uintptr), driver-API convention.
+kernels/templates/tests/run_hip_gate.py
+  live gate pipeline: golden gen (canonical CLI, cwd tests/golden) -> npz
+  tensors to raw bins -> runner -> golden check; exit 0 iff pass:true; every
+  failure loud (no silent skip).
+kernels/templates/README.md
+  convention doc: guard, kernel_traits, the two CMake functions + flags,
+  runner CLI, golden mapping, how todos 25-27 instantiate it.
+scripts/compile_checks.sh (NEW — activates ci.sh stage (e) hook)
+CMakeLists.txt (root): add_subdirectory(kernels/templates) after libs/bench
+scripts/ci.sh: stage (e) comment updated (hook active since todo 24)
+scripts/ci-baseline.txt: 508 -> 515 (7 new ctest tests)
+
+TOOLCHAIN FACTS PINNED (verified empirically, documented in README)
+-------------------------------------------------------------------
+* nvcc 12.6 targets sm_80/sm_90 only (NOT sm_100).
+* hipcc 7.2 no longer defines __HIP_PLATFORM_AMD__ implicitly (verified via
+  -dM on host + --genco device passes) -> kernscope_add_hip_kernel passes
+  -D__HIP_PLATFORM_AMD__=1 explicitly; the guard convention is unchanged.
+* HIP 7.2 bf16 type name is hip_bfloat16 (struct); CUDA's is __nv_bfloat16.
+
+ACCEPTANCE 1: cmake --build build
+---------------------------------
+$ devenv shell -- cmake --build build ; echo rc=$?
+[..] Re-running CMake... Configuring done / Generating done
+[1/4] hipcc --genco gfx1101 compile gate: elementwise_add/reference/elementwise_add.hip
+[2/4] Building CXX object kernels/templates/.../hip_template_runner.cpp.o
+[3/4] Linking CXX executable kernels/templates/kernscope_templates_hip_runner
+rc=0
+
+ACCEPTANCE 2: the 7 registered gate tests (ctest -R kernscope\.templates)
+------------------------------------------------------------------------
+ 470 kernscope.templates.elementwise_add.cuda.sm_80      Passed   (nvcc sm_80, no-gpu)
+ 471 kernscope.templates.elementwise_add.cuda.sm_90      Passed   (nvcc sm_90, no-gpu)
+ 472 kernscope.templates.elementwise_add.hip.genco       Passed   (hipcc gfx1101, no-gpu)
+ 473 kernscope.templates.elementwise_add.hip.live        Passed   (RUN on gfx1101, gpu-amd)
+ 474 kernscope.templates.matmul_skeleton.cuda.sm_80      Passed   (nvcc sm_80, no-gpu)
+ 475 kernscope.templates.matmul_skeleton.cuda.sm_90      Passed   (nvcc sm_90, no-gpu)
+ 476 kernscope.templates.matmul_skeleton.hip.genco       Passed   (hipcc gfx1101, no-gpu)
+100% tests passed, 0 tests failed out of 7
+
+ACCEPTANCE 3: HIP LIVE GATE (gfx1101 run + golden verdict) — exact output
+-------------------------------------------------------------------------
+$ ctest --test-dir build -R "elementwise_add\.hip\.live" -V
+473: runner: backend=hip
+473: runner: input .../a.bin: 2048 bytes -> device
+473: runner: input .../b.bin: 2048 bytes -> device
+473: runner: launch kernscope_templates_elementwise_add grid=4x1 block=256x1 args=4
+473: runner: wrote 2048 bytes -> .../out.bin
+473: {
+473:   "pass": true,
+473:   "cosine": 1.0,
+473:   "max_rel_err": 0.0,
+473:   "pcc": 1.0,
+473:   "kernel": "reduction",
+473:   "shape": [2, 1024],
+473:   "dtype": "bf16",
+473:   "thresholds": {"cosine": 0.999, "max_rel_err": 0.01, "pcc": 0.99},
+473:   ...
+473: }
+473: gate: OK symbol=kernscope_templates_elementwise_add family=reduction shape=2,1024 verdict=pass:true
+1/1 Test #473: kernscope.templates.elementwise_add.hip.live ... Passed
+
+GOLDEN MAPPING (documented decision): the golden harness has six families
+(matmul/bias_gelu/softmax/layernorm/reduction/attention); there is NO plain
+add family. The elementwise-add template validates against `reduction` with
+shape 2,N: the reference y[j] = sum_i x[i,j] (axis-0 sum of a 2-row tensor)
+IS x[0] + x[1] — the elementwise add of two vectors in fp32 — hence the
+bit-exact verdict (cosine 1.0 / max_rel_err 0.0 / pcc 1.0).
+
+ACCEPTANCE 4: ctest -L "no-gpu|gpu-amd"
+---------------------------------------
+$ cd build && ctest -L "no-gpu|gpu-amd" --output-on-failure
+100% tests passed, 0 tests failed out of 515
+Label Time Summary: gpu-amd = 1.65 sec*proc (8 tests); no-gpu = 3.39 sec*proc (507 tests)
+exit 0
+
+ACCEPTANCE 5: bash scripts/ci.sh  (stage (e) now [PASS], was [SKIP])
+--------------------------------------------------------------------
+$ devenv shell -- bash scripts/ci.sh
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"
+[PASS] ctest count guard: 515 tests >= baseline 515 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)
+[PASS] pytest tests/golden -q
+[PASS] generated-code compile checks (scripts/compile_checks.sh)   <- stage (e)
+[PASS] fixture size: 1MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard
+[PASS] NVIDIA-content guard
+[PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail)
+exit 0
+
+BASELINE NOTE: scripts/ci-baseline.txt raised 508 -> 515 per the guard
+convention: exactly 7 ctest tests added (4 nvcc compile gates + 2 hipcc genco
+gates + 1 live HIP golden gate).
+
+NOT DONE (per MUST NOT): WMMA/MFMA/cp.async variants (later tracks 25-27),
+polykernel kernel sources copied (pattern only), sibling projects touched,
+libs/* modified (consumed via headers: gpuruntime API + golden CLI), NVIDIA
+headers vendored. Unrelated untracked private_key.pem/public_key.pem left
+untouched and uncommitted.

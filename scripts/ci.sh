@@ -13,8 +13,8 @@
 #   c. cmake --build build --target check-kernscope   (lit/FileCheck suite)
 #   d. pytest tests/golden -q                (NumPy bf16 golden harness,
 #                                             todo 23 / wave 4)
-#   e. generated-code compile checks         (hook placeholder — activates at
-#                                             todo 24 when the script lands)
+#   e. generated-code compile checks      (kernels/templates gates via
+#                                             scripts/compile_checks.sh, todo 24)
 #   f. committed-fixture size assertion      (tests/fixtures <= 64MB total)
 #   g. NVIDIA-header VENDORED-FILE guard     (filename + content guards)
 
@@ -111,11 +111,13 @@ else
     skip "pytest tests/golden — golden harness lands in wave 4 (todo 23)"
 fi
 
-# --- (e) generated-code compile checks (hook placeholder) -------------------
-# This gate is a placeholder until todo 24: once scripts/compile_checks.sh
-# exists (nvcc sm_80/sm_90 compile-only + hipcc gfx1101 compile-and-run of
-# generated/emitted kernels), the hook below activates and becomes a hard
-# gate. Until then it is a no-op so CI stays green pre-wave-4.
+# --- (e) generated-code compile checks --------------------------------------
+# Active since todo 24: scripts/compile_checks.sh runs the kernels/templates
+# gate suite (nvcc sm_80/sm_90 compile-only + hipcc gfx1101 compile gates +
+# the live gfx1101 run with golden verdict pass:true). The gates are also
+# ctest tests in stage (b); this stage re-runs them explicitly so a
+# generated-code regression fails HERE naming the failing gate. Hard gate the
+# moment the script exists (no skip path).
 if [ -f scripts/compile_checks.sh ]; then
     bash scripts/compile_checks.sh || fail "generated-code compile checks (scripts/compile_checks.sh)"
     pass "generated-code compile checks (scripts/compile_checks.sh)"

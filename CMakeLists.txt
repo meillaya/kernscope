@@ -57,6 +57,12 @@ add_subdirectory(libs/gpuruntime)
 # bench: nvbench/Triton-style benchmarking harness + gfx1101 roofline peak
 # microbenches (todo 22), consumed by tools/bench and the tune track.
 add_subdirectory(libs/bench)
+# kernels/templates: portable CUDA/HIP kernel template convention + compile
+# gates (todo 24). Consumes libs/gpuruntime (the live runner links
+# kernscope::gpuruntime) and tests/golden (live gate verdict); registers
+# no-gpu nvcc sm_80/sm_90 + hipcc gfx1101 compile gates and the gpu-amd live
+# HIP golden gate. Must stay after libs/gpuruntime.
+add_subdirectory(kernels/templates)
 add_subdirectory(tools/analyze)
 # kernscope-bench: the gfx1101 roofline peak measurement CLI (todo 22).
 add_subdirectory(tools/bench)
