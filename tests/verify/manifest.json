@@ -1,0 +1,206 @@
+[
+  {
+    "file": "oob_clean.cu",
+    "kernel": "oob_clean_kernel",
+    "check": 1,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "oob_clean.cu",
+    "kernel": "oob_param_kernel",
+    "check": 1,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "oob_may.cu",
+    "kernel": "oob_may_kernel",
+    "check": 1,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "oob_may.cu",
+    "kernel": "oob_data_kernel",
+    "check": 1,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "smem_clean.cu",
+    "kernel": "smem_clean_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_overflow.cu",
+    "kernel": "smem_overflow_kernel",
+    "check": 2,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "smem_overflow.cu",
+    "kernel": "smem_safe_wide_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_dynamic.cu",
+    "kernel": "smem_dyn_safe_kernel",
+    "check": 2,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "smem_dynamic.cu",
+    "kernel": "smem_dyn_oob_kernel",
+    "check": 2,
+    "expected_verdict": "MAY_OOB"
+  },
+  {
+    "file": "barrier_divergent.cu",
+    "kernel": "divergent_kernel",
+    "check": 6,
+    "expected_verdict": "DIVERGENT_BARRIER"
+  },
+  {
+    "file": "barrier_uniform.cu",
+    "kernel": "uniform_kernel",
+    "check": 3,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "barrier_mismatch.cu",
+    "kernel": "mismatch_kernel",
+    "check": 3,
+    "expected_verdict": "BARRIER_MISMATCH"
+  },
+  {
+    "file": "barrier_uniform_loop.cu",
+    "kernel": "uniform_loop_kernel",
+    "check": 3,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_writewrite.cu",
+    "kernel": "race_writewrite_kernel",
+    "check": 4,
+    "expected_verdict": "MAY_RACE"
+  },
+  {
+    "file": "race_writeread.cu",
+    "kernel": "race_writeread_kernel",
+    "check": 4,
+    "expected_verdict": "MAY_RACE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_disjoint_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_clean.cu",
+    "kernel": "race_clean_uniform_kernel",
+    "check": 4,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "race_dataindex.cu",
+    "kernel": "race_data_kernel",
+    "check": 4,
+    "expected_verdict": "UNKNOWN_RACE"
+  },
+  {
+    "file": "ptr_clean.cu",
+    "kernel": "ptr_clean_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_oob_escape_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_oob_range_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_oob.cu",
+    "kernel": "ptr_sub_unrelated_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_clean.cu",
+    "kernel": "ptr_clean_kernel",
+    "check": 8,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_cast_bad.cu",
+    "kernel": "cast_bad_kernel",
+    "check": 8,
+    "expected_verdict": "INVALID_ADDRSPACE_CAST"
+  },
+  {
+    "file": "ptr_cast_bad.cu",
+    "kernel": "cast_legal_kernel",
+    "check": 8,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_clean.cu",
+    "kernel": "ptr_clean_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_read_kernel",
+    "check": 7,
+    "expected_verdict": "MAY_UNINIT_READ"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_alloca_kernel",
+    "check": 7,
+    "expected_verdict": "MAY_UNINIT_READ"
+  },
+  {
+    "file": "ptr_uninit.cu",
+    "kernel": "uninit_phase_clean_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_escape_smem.cu",
+    "kernel": "smem_escape_kernel",
+    "check": 5,
+    "expected_verdict": "PTR_OOB"
+  },
+  {
+    "file": "ptr_escape_smem.cu",
+    "kernel": "smem_sub_same_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_param_safe.cu",
+    "kernel": "param_guarded_kernel",
+    "check": 5,
+    "expected_verdict": "SAFE"
+  },
+  {
+    "file": "ptr_param_safe.cu",
+    "kernel": "param_guarded_kernel",
+    "check": 7,
+    "expected_verdict": "SAFE"
+  }
+]

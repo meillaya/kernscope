@@ -353,7 +353,9 @@ std::optional<SmemRoot> smem_root(Value* ptr) {
   }
   if (auto* gv = llvm::dyn_cast<GlobalVariable>(v)) {
     if (gv->getAddressSpace() == 3) {
-      return SmemRoot{gv, gv->getInitializer() == nullptr};
+      // Dynamic smem (extern __shared__) is a zero-sized DECLARATION in the
+      // IR: hasInitializer() is false and getInitializer() would assert.
+      return SmemRoot{gv, !gv->hasInitializer()};
     }
   }
   return std::nullopt;

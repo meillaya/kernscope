@@ -1,0 +1,12 @@
+// verify_manifest.test — kernscope-verify corpus gate (todo 35).
+//
+// Runs kernscope-verify --json over EVERY corpus kernel named in the
+// consolidated tests/verify/manifest.json and diffs the emitted verdicts
+// against the manifest's expected_verdict entries (live read at test time;
+// anti-self-report: the CLI never sees the manifest). Any mismatch FAILS
+// naming the kernel.
+//
+// REQUIRES: no-gpu
+//
+// RUN: %python %S/verify_manifest.py --cli %kernscope-verify \
+// RUN:     --corpus %S/corpus --manifest %S/manifest.json

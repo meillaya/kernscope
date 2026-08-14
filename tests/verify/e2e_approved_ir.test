@@ -1,0 +1,31 @@
+// e2e_approved_ir.test — approved-IR handoff e2e (todo 35).
+//
+// SAFE kernels: summary SAFE, exit 0, the verified DEVICE module is written
+// to <out>.verified.ll, and llc compiles it for a GPU backend:
+//   * CUDA path (oob_clean, barrier_uniform): llc -mtriple=nvptx64-nvidia-cuda
+//     (the store's llvm-21 has the NVPTX backend registered).
+//   * HIP path (hip_ingest fixture): llc -mtriple=amdgcn-amd-amdhsa — the
+//     genuine amdgcn smoke. CUDA-derived IR carries NVPTX intrinsics
+//     (llvm.nvvm.read.ptx.sreg.*) that the AMDGPU backend cannot select, so
+//     the amdgcn codegen is exercised through the HIP ingestion path (the
+//     same -mtriple invocation, on IR the backend can lower).
+// Error kernels (oob_may MAY_OOB, barrier_divergent DIVERGENT_BARRIER):
+// exit 1 and NO .verified.ll is emitted — the "MUST NOT emit approved IR on
+// error-class verdicts" contract, asserted here.
+//
+// REQUIRES: no-gpu
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %kernscope-verify %S/corpus/oob_clean.cu --json --out %t/oob_clean
+// RUN: test -f %t/oob_clean.verified.ll
+// RUN: llc -mtriple=nvptx64-nvidia-cuda %t/oob_clean.verified.ll -o /dev/null
+// RUN: %kernscope-verify %S/corpus/barrier_uniform.cu --out %t/barrier_uniform
+// RUN: test -f %t/barrier_uniform.verified.ll
+// RUN: llc -mtriple=nvptx64-nvidia-cuda %t/barrier_uniform.verified.ll -o /dev/null
+// RUN: %kernscope-verify %{kernscope_source_dir}/tools/verify/tests/fixtures/hip_ingest.hip --out %t/hip_ingest
+// RUN: test -f %t/hip_ingest.verified.ll
+// RUN: llc -mtriple=amdgcn-amd-amdhsa %t/hip_ingest.verified.ll -o /dev/null
+// RUN: not %kernscope-verify %S/corpus/oob_may.cu --out %t/oob_may
+// RUN: not test -f %t/oob_may.verified.ll
+// RUN: not %kernscope-verify %S/corpus/barrier_divergent.cu --out %t/bd
+// RUN: not test -f %t/bd.verified.ll
