@@ -1,0 +1,7 @@
+build/
+*.o
+*.so
+*.kcap/
+caches
+.devenv*
+.codegraph

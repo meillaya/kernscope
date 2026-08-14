@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "active_work_id": "gpu-kernel-suite-ed6b7767",
+  "works": {
+    "gpu-kernel-suite-ed6b7767": {
+      "work_id": "gpu-kernel-suite-ed6b7767",
+      "active_plan": "/home/mei/projects/llvm.h/.omo/plans/gpu-kernel-suite.md",
+      "plan_name": "gpu-kernel-suite",
+      "status": "active",
+      "started_at": "2026-08-14T04:11:50.633Z",
+      "updated_at": "2026-08-14T04:11:50.633Z",
+      "session_ids": [
+        "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
+      ],
+      "session_origins": {
+        "opencode:ses_002ed12d6ffe9UenisQWpUtLaL": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {}
+    }
+  },
+  "active_plan": "/home/mei/projects/llvm.h/.omo/plans/gpu-kernel-suite.md",
+  "started_at": "2026-08-14T04:11:50.633Z",
+  "status": "active",
+  "updated_at": "2026-08-14T04:11:50.633Z",
+  "session_ids": [
+    "opencode:ses_002ed12d6ffe9UenisQWpUtLaL"
+  ],
+  "session_origins": {
+    "opencode:ses_002ed12d6ffe9UenisQWpUtLaL": "direct"
+  },
+  "plan_name": "gpu-kernel-suite",
+  "task_sessions": {},
+  "agent": "atlas"
+}
