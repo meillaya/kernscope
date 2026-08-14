@@ -42,10 +42,13 @@ def main() -> int:
     ap.add_argument("--hsaco", required=True, help="hipcc --genco output")
     ap.add_argument("--runner", required=True, help="hip_template_runner binary")
     ap.add_argument("--symbol", required=True, help="kernel symbol in the hsaco")
-    ap.add_argument("--family", required=True, choices=("reduction", "matmul"))
+    ap.add_argument("--family", required=True, choices=("reduction", "matmul", "attention"))
     ap.add_argument("--shape", required=True, help="comma list, e.g. 2,1024")
     ap.add_argument("--grid", required=True, help="W or WxH")
     ap.add_argument("--block", required=True, help="X or XxY")
+    ap.add_argument("--causal", action="store_true",
+                    help="attention family: causal-masked golden reference "
+                         "(todo-27 sanctioned extension)")
     args = ap.parse_args()
 
     root = os.path.abspath(args.root)
@@ -70,12 +73,14 @@ def main() -> int:
     shape = tuple(int(x) for x in args.shape.split(","))
     ref_npz = os.path.join(work, "ref.npz")
 
-    # 1. golden inputs (canonical invocation: cwd == tests/golden).
-    gen = subprocess.run(
-        [sys.executable, "-m", "kernscope_golden", "gen",
-         "--kernel", args.family, "--shape", args.shape, "--out", ref_npz],
-        cwd=golden_dir, capture_output=True, text=True,
-    )
+    # 1. golden inputs (canonical invocation: cwd == tests/golden). The
+    #    --causal flag (attention family, todo 27) flows into both gen and
+    #    check so the reference and the verdict use the same masked softmax.
+    gen_cmd = [sys.executable, "-m", "kernscope_golden", "gen",
+               "--kernel", args.family, "--shape", args.shape, "--out", ref_npz]
+    if args.causal:
+        gen_cmd.append("--causal")
+    gen = subprocess.run(gen_cmd, cwd=golden_dir, capture_output=True, text=True)
     if gen.returncode != 0:
         return _fail(f"golden gen failed (rc={gen.returncode}):\n{gen.stderr}")
     print(f"gate: golden inputs -> {ref_npz}")
@@ -98,7 +103,7 @@ def main() -> int:
             fh.write(b.tobytes())
         in_args = ["--in", a_bin, "--in", b_bin]
         int_args = ["--int", str(shape[1])]  # n
-    else:  # matmul
+    elif args.family == "matmul":
         if len(shape) != 3:
             return _fail(f"matmul family requires shape M,N,K (got {shape})")
         m, _n, k = shape
@@ -109,6 +114,20 @@ def main() -> int:
             fh.write(arrays["b"].tobytes())
         in_args = ["--in", a_bin, "--in", b_bin]
         int_args = ["--int", str(m), "--int", str(_n), "--int", str(k)]
+    else:  # attention (todo 27: FlashAttention-lite live gate)
+        if len(shape) != 3:
+            return _fail(f"attention family requires shape Nq,Nk,d (got {shape})")
+        nq, nk, d = shape
+        q_bin, k_bin, v_bin = (
+            os.path.join(work, "q.bin"),
+            os.path.join(work, "k.bin"),
+            os.path.join(work, "v.bin"),
+        )
+        for path, key in ((q_bin, "q"), (k_bin, "k"), (v_bin, "v")):
+            with open(path, "wb") as fh:
+                fh.write(arrays[key].tobytes())
+        in_args = ["--in", q_bin, "--in", k_bin, "--in", v_bin]
+        int_args = ["--int", str(nq), "--int", str(nk), "--int", str(d)]
 
     # 3. run the kernel (gpuruntime module/kernel/launch/memcpy path).
     out_bin = os.path.join(work, "out.bin")
@@ -125,12 +144,12 @@ def main() -> int:
         return _fail(f"kernel run failed (rc={run.returncode})")
 
     # 4. golden check (canonical invocation: cwd == tests/golden).
-    check = subprocess.run(
-        [sys.executable, "-m", "kernscope_golden", "check",
-         "--kernel", args.family, "--bin", out_bin,
-         "--shape", args.shape, "--inputs", ref_npz],
-        cwd=golden_dir, capture_output=True, text=True,
-    )
+    check_cmd = [sys.executable, "-m", "kernscope_golden", "check",
+                 "--kernel", args.family, "--bin", out_bin,
+                 "--shape", args.shape, "--inputs", ref_npz]
+    if args.causal:
+        check_cmd.append("--causal")
+    check = subprocess.run(check_cmd, cwd=golden_dir, capture_output=True, text=True)
     print(check.stdout, end="")
     if check.returncode != 0:
         if check.stderr:

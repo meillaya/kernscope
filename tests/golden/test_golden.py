@@ -190,6 +190,55 @@ def test_wrong_size_bin_exits_2(capsys, tmp_path):
     assert "does not match --shape" in err
 
 
+def test_attention_causal_masks_future_positions():
+    """Causal attention gives zero WEIGHT to future positions (todo 27).
+
+    Black-box property: the causal output row i is unaffected by the VALUES of
+    V at positions j > i (their softmax weight is exactly 0), and IS affected
+    once a position it attends to changes.
+    """
+    shape = (8, 8, 16)
+    inputs = kinputs.generate_inputs("attention", shape)
+    q, k, v = inputs["q"], inputs["k"], inputs["v"]
+
+    v_perturbed = v.copy()
+    v_perturbed[7] = _BF16(0.0)  # V[7] is masked for rows 0..6, attended by row 7
+
+    ref_orig = refs.attention(q, k, v, causal=True)
+    ref_pert = refs.attention(q, k, v_perturbed, causal=True)
+
+    # Row i attends only to j <= i: perturbing V[7] (j = 7 > i) must not
+    # change any row i < 7.
+    for i in range(7):
+        assert np.array_equal(ref_orig[i], ref_pert[i]), \
+            f"row {i} output changed when only V[7] (j>i) changed"
+    # Sanity: row 7 attends to j = 7, so perturbing V[7] DOES change its
+    # output — proving the test has signal (the mask is not all-zero).
+    assert not np.array_equal(ref_orig[7], ref_pert[7])
+    assert ref_orig.dtype == _BF16
+
+
+def test_attention_causal_matches_cli_roundtrip(capsys, tmp_path):
+    """gen --causal + check --causal round-trip the causal reference."""
+    shape = (8, 8, 16)
+    npz = tmp_path / "causal.npz"
+    rc = main(["gen", "--kernel", "attention", "--shape", "8,8,16",
+               "--out", str(npz), "--causal"])
+    capsys.readouterr()  # discard the gen JSON
+    assert rc == 0
+    arrays = kinputs.load_npz(str(npz), "attention")
+    causal_ref = refs.attention(arrays["q"], arrays["k"], arrays["v"], causal=True)
+    assert np.array_equal(arrays["expected"], causal_ref)
+
+    binpath = tmp_path / "causal.bin"
+    binpath.write_bytes(arrays["expected"].tobytes())
+    rc = main(["check", "--kernel", "attention", "--bin", str(binpath),
+               "--shape", "8,8,16", "--inputs", str(npz), "--causal"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["pass"] is True
+
+
 def test_all_six_families_registered():
     """The canonical family list matches the tuner template contract."""
     assert tuple(refs.FAMILIES) == (

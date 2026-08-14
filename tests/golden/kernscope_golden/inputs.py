@@ -26,6 +26,7 @@ from __future__ import annotations
 import ml_dtypes
 import numpy as np
 
+from .refs import attention as _attention
 from .refs import bf16, FAMILIES, REFERENCES
 
 _BF16 = ml_dtypes.bfloat16
@@ -105,22 +106,28 @@ def generate_inputs(family: str, shape: tuple, seed: int = DEFAULT_SEED) -> dict
     return inputs
 
 
-def reference_output(family: str, inputs: dict) -> np.ndarray:
-    """Reference (expected) output array (bf16) for `family` + inputs."""
+def reference_output(family: str, inputs: dict, causal: bool = False) -> np.ndarray:
+    """Reference (expected) output array (bf16) for `family` + inputs.
+
+    causal=True routes the attention family through the causal-masked
+    reference (refs.attention(..., causal=True)); ignored for other families.
+    """
     _check_family(family)
+    if family == "attention" and causal:
+        return _attention(inputs["q"], inputs["k"], inputs["v"], causal=True)
     return REFERENCES[family](inputs)
 
-
-def save_npz(path: str, family: str, inputs: dict) -> dict:
+def save_npz(path: str, family: str, inputs: dict, causal: bool = False) -> dict:
     """Persist inputs (+ computed reference output) to an .npz for replay.
 
     The npz contains every input tensor plus 'expected' (the reference bf16
     output), so a later `check --inputs` run reproduces the exact reference
-    without regenerating random state.
+    without regenerating random state. causal=True computes the causal-masked
+    attention reference (the todo-27 sanctioned extension).
     """
     _check_family(family)
     arrays = dict(inputs)
-    arrays["expected"] = reference_output(family, inputs)
+    arrays["expected"] = reference_output(family, inputs, causal=causal)
     np.savez_compressed(path, **arrays)
     return arrays
 

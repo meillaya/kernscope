@@ -93,7 +93,7 @@ def _cmd_check(args) -> int:
         inputs = load_npz(args.inputs, args.kernel)
     else:
         inputs = generate_inputs(args.kernel, shape, seed=args.seed)
-    ref = reference_output(args.kernel, inputs)
+    ref = reference_output(args.kernel, inputs, causal=args.causal)
     actual = _read_bin(args.bin, output_shape(args.kernel, shape), args.dtype)
 
     v = metrics.verdict(actual, ref)
@@ -134,7 +134,7 @@ def _cmd_gen(args) -> int:
             f"shape components (got {len(shape)} from --shape {shape})"
         )
     inputs = generate_inputs(args.kernel, shape, seed=args.seed)
-    arrays = save_npz(args.out, args.kernel, inputs)
+    arrays = save_npz(args.out, args.kernel, inputs, causal=args.causal)
     print(
         json.dumps(
             {
@@ -142,6 +142,7 @@ def _cmd_gen(args) -> int:
                 "kernel": args.kernel,
                 "shape": list(shape),
                 "seed": args.seed,
+                "causal": args.causal,
                 "out": os.path.abspath(args.out),
                 "arrays": sorted(arrays),
             },
@@ -167,6 +168,8 @@ def _parser() -> argparse.ArgumentParser:
     ck.add_argument("--inputs", default=None, metavar="ref.npz",
                     help="reuse inputs from a gen-produced .npz (else seeded generation)")
     ck.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    ck.add_argument("--causal", action="store_true",
+                    help="attention family: causal-masked reference (todo 27)")
     ck.add_argument("--out", default=None, metavar="verdict.json",
                     help="also write the verdict JSON to a file")
     ck.set_defaults(func=_cmd_check)
@@ -176,6 +179,9 @@ def _parser() -> argparse.ArgumentParser:
     gn.add_argument("--shape", action="append", required=True, metavar="M,N,...")
     gn.add_argument("--out", required=True, metavar="ref.npz")
     gn.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    gn.add_argument("--causal", action="store_true",
+                    help="attention family: write the causal-masked reference "
+                         "(todo 27)")
     gn.set_defaults(func=_cmd_gen)
     return p
 

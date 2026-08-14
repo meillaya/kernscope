@@ -66,6 +66,11 @@ add_subdirectory(kernels/templates)
 add_subdirectory(tools/analyze)
 # kernscope-bench: the gfx1101 roofline peak measurement CLI (todo 22).
 add_subdirectory(tools/bench)
+# tools/tune: the C2 autotuner (todos 25-28). Todo 27 (this commit) adds the
+# FlashAttention-lite template generator (kernscope_flash_gen) + its test
+# executables; todos 25/26 append the matmul/elementwise generators here.
+# Consumes libs/arch + libs/roofline and the kernels/templates live runner.
+add_subdirectory(tools/tune)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
 # come after tools/ so the kernscope-analyze target it DEPENDS on exists.

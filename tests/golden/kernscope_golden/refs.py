@@ -110,19 +110,32 @@ def reduction(x: np.ndarray) -> np.ndarray:
     return bf16(np.sum(f32(x), axis=0))
 
 
-def attention(q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
+def attention(q: np.ndarray, k: np.ndarray, v: np.ndarray,
+              causal: bool = False) -> np.ndarray:
     """FlashAttention-lite forward: O = softmax(Q K^T / sqrt(d)) V.
 
     Q [Nq, d], K [Nk, d], V [Nk, d] -> O [Nq, d]. bf16 inputs, fp32
     accumulate (scores, exp/softmax, and the p@v matmul all in fp32),
     bf16 output. Includes the standard 1/sqrt(d) scaling (see module
     docstring for the convention citation).
+
+    causal=True applies the standard causal mask BEFORE the softmax: row i
+    may attend only to columns j <= i (masked entries are -inf, so their
+    softmax weight is exactly 0). This is the SANCTIONED todo-27 extension
+    for the FlashAttention-lite causal variant: the same mask semantics as
+    the generated kernel's baked kCausal flag (j_global > i_global -> -inf).
     """
     qf = f32(q)
     kf = f32(k)
     vf = f32(v)
     d = qf.shape[-1]
     scores = np.matmul(qf, kf.T) / math.sqrt(d)
+    if causal:
+        # Mask future positions: row i attends to columns j <= i (self-attention
+        # semantics, matching the kernel's gj > gi test for Nq == Nk).
+        rows = np.arange(scores.shape[0])[:, None]
+        cols = np.arange(scores.shape[1])[None, :]
+        scores = np.where(cols > rows, -np.inf, scores)
     shifted = scores - np.max(scores, axis=-1, keepdims=True)
     e = np.exp(shifted)
     p = e / np.sum(e, axis=-1, keepdims=True)
