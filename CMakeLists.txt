@@ -47,6 +47,9 @@ add_subdirectory(libs/report)
 add_subdirectory(libs/roofline)
 add_subdirectory(libs/amdparse)
 add_subdirectory(libs/ptxparse)
+# occupancy depends on libs/arch (ISA-resolved constants) and is consumed by
+# tools/analyze (todo 14) / tools/tune (todo 28) / tools/profile (todo 50).
+add_subdirectory(libs/occupancy)
 add_subdirectory(tools/analyze)
 
 # lit/FileCheck regression suite (defines the check-kernscope target). Must
