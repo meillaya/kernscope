@@ -1,0 +1,64 @@
+TASK 11 (gpu-kernel-suite) - OCCUPANCY ENGINE - EVIDENCE: NEGATIVE PATH
+=======================================================================
+Date: 2026-08-14  |  Repo: /home/mei/projects/llvm.h  |  Mode: FAILURE (QA)
+Worker: implementation worker (todo 11)
+
+SCENARIO
+--------
+Force the RDNA3 (gfx1101) VGPR allocation granule to 16 in the architecture
+DB (the "don't hardcode 16" trap of brief §10.4 L551-553) and confirm the
+pinned golden FAILS with a message citing docs/research/rdna3-constants.md.
+Then REVERT the tamper and confirm the suite is green again.
+
+TAMPER (test-local only, reverted after capture)
+------------------------------------------------
+libs/arch/include/kernscope/arch.h kGfx1101 row:
+    .reg_granule        24  ->  16
+    .vgpr_granule_wave64 12  ->  8
+(reverted via `cp /tmp/opencode/arch.h.bak` afterwards; diff against the
+original confirmed byte-identical.)
+
+EXACT FAILURE OUTPUT (gtest, tampered DB, rebuild + occupancy-test)
+-------------------------------------------------------------------
+$ cmake --build build && ./libs/occupancy/occupancy-test \
+    --gtest_filter="occupancy.Rdna3Granule16TamperDiverges"
+[ RUN      ] occupancy.Rdna3Granule16TamperDiverges
+.../libs/occupancy/tests/occupancy_test.cpp:485: Failure
+Expected equality of these values:
+    Which is: 26
+gfx1101 97 VGPRs x 32 threads -> 24 blocks/CU with the PINNED granule 24
+(floor(1536/align24(97)) = 12 waves/SIMD x 2 SIMDs): docs/research/
+rdna3-constants.md (RDNA3 ISA §3.3.2.1; LLVM AMDGPUBaseInfo.cpp L1371-1380;
+evidence (e) step series)
+.../libs/occupancy/tests/occupancy_test.cpp:490: Failure
+Expected: (pinned_occ.blocks_per_sm) != (tampered_occ.blocks_per_sm),
+actual: 26 vs 26
+tampering gfx1101 VGPR granule to 16 must change occupancy: docs/research/
+rdna3-constants.md pins 24 (wave32)/12 (wave64) from RDNA3 ISA §3.3.2.1
+(brief §10.4 L551-553: "don't hardcode 16")
+[  FAILED  ] occupancy.Rdna3Granule16TamperDiverges (0 ms)
+[  PASSED  ] 0 tests.  [  FAILED  ] 1 test.
+
+The tampered granule-16 model predicts 26 blocks (floor(1536/align16(97)=112)
+= 13 waves/SIMD x 2 SIMDs) where the pinned granule-24 model gives 24; the
+pinned golden assertion fails with the rdna3-constants.md citation exactly as
+required. A second test, occupancy.AmdRdna3LlvWaveFormulaSweep, also fails
+under the tamper (the LLVM-documented 12 waves/SIMD at 97 VGPRs vs the
+tampered engine's 13):
+
+$ (cd build && ctest -R occupancy)   [tampered DB]
+99% tests passed, 2 tests failed out of 373
+The following tests FAILED:
+  72 - occupancy:occupancy.AmdRdna3LlvWaveFormulaSweep (Failed) no-gpu
+  76 - occupancy:occupancy.Rdna3Granule16TamperDiverges (Failed) no-gpu
+
+REVERT + RESTORE (green again)
+------------------------------
+$ cp /tmp/opencode/arch.h.bak libs/arch/include/kernscope/arch.h
+$ diff /tmp/opencode/arch.h.bak libs/arch/include/kernscope/arch.h  # empty
+$ cmake --build build && (cd build && ctest -R occupancy)
+100% tests passed, 0 tests failed out of 373
+
+(also re-ran: full ctest 437/437 + bash scripts/ci.sh green after revert;
+git status shows NO modifications to libs/arch -- the tamper never left the
+working tree.)

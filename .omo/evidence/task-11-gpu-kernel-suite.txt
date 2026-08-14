@@ -1,0 +1,186 @@
+TASK 11 (gpu-kernel-suite) - OCCUPANCY ENGINE (libs/occupancy) - EVIDENCE
+=========================================================================
+Date: 2026-08-14  |  Repo: /home/mei/projects/llvm.h  |  Mode: HAPPY PATH
+Worker: implementation worker (todo 11)
+Phases: WORKING: todo11-occupancy - explore/verify oracle APIs (cuda_occupancy.h
+        sub-partition model vs CPG guide formula -> 360-case agreement grid)
+        WORKING: todo11-occupancy - implement (header/src/CMake/wiring)
+        WORKING: todo11-occupancy - build+test (373/373, full suite 437/437)
+        WORKING: todo11-occupancy - ci.sh gate (8 pass 2 skip 0 fail)
+        WORKING: todo11-occupancy - QA negative (granule=16 tamper)
+
+FILES CREATED
+--------------
+  libs/occupancy/CMakeLists.txt
+      Library `kernscope_occupancy` (static, C++20, -Wall -Wextra -Werror
+      inherited globally), links `kernscope::arch` PUBLIC. gtest suite
+      `occupancy-test` with gtest_discover_tests TEST_PREFIX "occupancy:" +
+      LABELS no-gpu (pure host-side math). NVIDIA oracle wiring: the include
+      path is read from the CUDA_HOME env var at CONFIGURE time
+      ($ENV{CUDA_HOME}/include) and passed via -isystem (third-party NVIDIA
+      header must not trip the -Werror gate); if the header is absent at
+      configure time the test compiles with KERNSCOPE_NO_CUDA_OCCUPANCY and
+      the oracle gtests GTEST_SKIP() instead of failing the build. cuda_occ-
+      upancy.h is NEVER committed (consumed from the nix store; ci.sh
+      vendored-header guard verified clean below).
+  libs/occupancy/include/kernscope/occupancy.h
+      Public API: Limiter enum (registers|shared|threads|blocks) +
+      limiter_name(); OccupancyResult {blocks_per_sm, warps_resident,
+      max_warps_per_sm, occupancy (double 0..1), limiter}; compute_occupancy
+      (4-arg) + SGPR-aware 5-arg overload. Header documents the llvm-calc-
+      occupancy absence (LLVM 21) and the oracle choice.
+  libs/occupancy/src/occupancy.cpp
+      Engine: NVIDIA path (regs_per_warp = round-up(regs_per_thread x 32) to
+      the 256-register warp granule [brief §1.2 L95-96]; blocks_by_regs =
+      floor(65536 / (regs_per_warp x warps_per_block)) [brief §1.2 L101-102];
+      smem/threads/blocks limits; min wins) + AMD path (VGPR waves/SIMD via
+      libs/arch waves_per_simd_from_vgprs [CDNA granule 8, RDNA3 granule 24
+      wave32/12 wave64 per rdna3-constants.md], SGPR pool ~800/SIMD granule 16
+      [brief §1.3 L117-121, CDNA only], LDS 64 KB/CU with 512-byte granule
+      [brief §1.3 L123-127], threads + workgroup slots; CU-level min).
+      Deterministic tie-break (registers > shared > threads > blocks) matching
+      the polykernel register-first convention.
+  libs/occupancy/tests/occupancy_test.cpp
+      373 gtests (see ACCEPTANCE 2). 360-case NVIDIA oracle grid vs
+      cudaOccMaxActiveBlocksPerMultiprocessor (parameterized; every case a
+      distinct ctest entry, human-readable names sm_XX_rNNN_sN_bN); the two
+      PINNED GOLDENS; sub-partition divergence pinned+documented; AMD CDNA
+      occ.sh threshold sweep + RDNA3 LLVM-formula sweep; LDS/SGPR/thread-cap
+      limiters; polykernel sm_80/sm_90 cross-check; RDNA3 granule-16 tamper
+      negative golden.
+  CMakeLists.txt: add_subdirectory(libs/occupancy) wired into the superbuild
+      (after libs/arch/ptxparse; consumed by tools/analyze/tune/profile).
+
+ACCEPTANCE COMMANDS (run inside `devenv shell`) + EXACT RESULTS
+----------------------------------------------------------------
+1) cmake --build build
+   Result: exit 0 (last lines: "[9/10] Building CXX object
+   libs/occupancy/CMakeFiles/occupancy-test.dir/tests/occupancy_test.cpp.o",
+   "[10/10] Linking CXX executable libs/occupancy/occupancy-test",
+   "ninja: no work to do."). Configure line of note:
+   "occupancy: NVIDIA oracle ENABLED (cuda_occupancy.h from
+   /nix/store/an6sdsdk5b1apdvlq80687rkymzqm73r-cuda12.6-cuda_cudart-12.6.77/
+   include)".
+
+2) (cd build && ctest -R occupancy --output-on-failure)
+   Result: exit 0 -- "100% tests passed, 0 tests failed out of 373"
+   Breakdown: 360 NVIDIA-oracle grid cases (5 archs sm_75/80/86/89/90 x regs
+   {16,32,64,128,160,255} x smem {0,1024,32768,65536} x block {128,256,512},
+   smem <= libs/arch smem_per_block_max_bytes) + 13 hand-pinned/AMD/negative
+   tests. Every grid case independently verified pre-commit with a native
+   cuda_occupancy.h probe (the engine's CPG-guide formula == cuda_occupancy.h
+   on all 360; the ONLY systematic divergence is cuda_occupancy.h's per-16K-
+   sub-partition regs floor, pinned and documented in
+   NvidiaOracleSubpartitionDivergence below).
+
+3) PINNED GOLDENS (both asserted with 1e-9 tolerance, limiter "registers"):
+   - occupancy.PinnedGoldenSm86_375:
+       compute_occupancy(sm_86, regs=112, smem=0, block=64)
+         blocks_per_sm == 9     warps_resident == 18    max_warps == 48
+         occupancy  == 0.375 (18/48; 9x2 warps)         limiter "registers"
+   - occupancy.PinnedGoldenSm90_025:
+       compute_occupancy(sm_90, regs=128, smem=0, block=256)
+         blocks_per_sm == 2     warps_resident == 16    max_warps == 64
+         occupancy  == 0.25 (16/64; brief §1.2 worked example)
+         limiter "registers"
+   gtest output: "[       OK ] occupancy.PinnedGoldenSm86_375",
+   "[       OK ] occupancy.PinnedGoldenSm90_025" (all in the 373).
+
+4) NvidiaOracleSubpartitionDivergence (documented, never silent): the engine
+   (CPG guide formula, pinned by the task) gives 9 blocks for (sm_86, 112
+   regs, 64 thr) -> 0.375; cuda_occupancy.h's sub-partition model gives 8
+   (numWarpsPerSubPartition = floor(16384/3584) = 4 -> 4x4/2 = 8, [TURING]
+   §3.5.1 via brief §1.2 L91-99). Both asserted with the doc message; the
+   360-case grid uses only the agreement set.
+
+5) AMD oracle (see "AMD ORACLE USED" below):
+   - occupancy.AmdCdnaOccShThresholdSweep: gfx90a+gfx942 full VGPR sweep
+     (64-thr single-wave64 blocks): vgpr 64/72/80/96/128/168/256/257 ->
+     waves/SIMD 8/7/6/5/4/3/2/1 -> blocks/CU 32/28/24/20/16/12/8/4,
+     occupancy 1.0/0.875/0.75/0.625/0.5/0.375/0.25/0.125, limiter registers
+     (occ.sh threshold table, brief §1.3 L113-116).
+   - occupancy.AmdRdna3LlvWaveFormulaSweep: gfx1101 (32-thr wave32 blocks):
+     vgpr 24/48/97/160/200/256/257 -> waves/SIMD 16/16/12/9/7/5/5
+     (min(max(floor(1536/align24(v)),1),16); LLVM AMDGPUBaseInfo.cpp
+     L1371-1380 via rdna3-constants.md evidence (d)) -> blocks/CU x2,
+     occupancy = blocks/32.
+   - occupancy.AmdLdsLimiterAndGranule: 32KB LDS/block -> 2 blocks shared
+     (both archs); smem 2100 B -> ceil512 = 2560 -> floor(65536/2560) = 25
+     blocks shared (pins the 512-B LDS granule; naive floor would be 31).
+   - occupancy.AmdSgprLimiter: gfx90a vgprs=16 sgprs=100 -> align16=112 ->
+     floor(800/112)=7 waves -> 28 blocks registers.
+   - occupancy.AmdThreadCap: gfx90a 2048-thr block -> 1 block, occupancy 1.0
+     (32/32 waves); gfx1101 1024-thr block -> 1 block, occupancy 1.0.
+
+6) Polykernel cross-check (oracle-only; values read from
+   /home/mei/projects/polykernel/lib/Analysis/tests/occupancy_test.cpp, no
+   code copied): sm_90 (128,32K,256)->2 blk/25%; sm_90 (32,100K,256)->2 blk/
+   25% smem; sm_90 (16,0,32)->32 blk/50% blocks; sm_90 (16,0,1024)->2 blk/
+   100%; sm_90 (31,1024,256)->8 blk/100% registers; sm_80 (128,32K,256)->
+   2 blk/25%. All match.
+
+7) Full-suite regression: (cd build && ctest) -> "100% tests passed,
+   0 tests failed out of 437" (was 64 pre-todo-11; occupancy adds 373).
+
+8) bash scripts/ci.sh -> "[PASS] kernscope CI gate green (8 pass, 2 skip,
+   0 fail)"; ctest count guard "[PASS] ctest count guard: 437 tests >=
+   baseline 64"; NVIDIA-header filename guard "[PASS]" (no vendored
+   cuda_occupancy.h tracked; only the nix-store #include is used);
+   NVIDIA-content guard "[PASS]".
+
+AMD ORACLE USED (documented choice)
+-----------------------------------
+The plan's original AMD oracle was to link libLLVM and call
+GCNSubtarget::computeOccupancy directly (brief §1.1 L56-59) or shell out to
+llvm-calc-occupancy (brief §1.1 L60-64). BOTH are impossible on this
+toolchain:
+  * llvm-calc-occupancy is ABSENT from LLVM 21.1.8 (verified: `which
+    llvm-calc-occupancy` in the devenv shell -> not found). Documented in
+    occupancy.cpp + occupancy.h comments.
+  * GCNSubtarget.h is NOT installed: the AMDGPU backend headers live in
+    llvm/lib/Target/AMDGPU/ (not under the public include tree shipped in
+    the nix store -- verified by find(1) over the LLVM dev output), and the
+    nixpkgs LLVM also ships no AMDGPU <-> GCNSubtarget export surface, so
+    the class cannot be downcast from TargetMachine.
+  => The AMD oracle is the DOCUMENTED GCNSubtarget occupancy math: the
+  ROCm/Triton occ.sh threshold table (brief §1.3 L113-116) for CDNA and
+  LLVM's getNumWavesPerEUWithNumVGPRs formula (AMDGPUBaseInfo.cpp L1371-
+  1380, quoted in rdna3-constants.md evidence (d)) for RDNA3, both of which
+  are exactly the math GCNSubtarget::getOccupancyWithNumVGPRs uses. The
+  libs/arch waves_per_simd_from_vgprs helper the engine calls is itself
+  this formula (arch_test pins it); the sweep asserts the engine reproduces
+  every documented wave count across the full VGPR range.
+
+QA SCENARIOS
+------------
+happy: (cd build && ctest -R occupancy --output-on-failure) -> 100% tests
+  passed, 0 tests failed out of 373. gtest: "[  PASSED  ] 373 tests."
+failure (negative, see task-11-gpu-kernel-suite-negative.txt): forcing the
+  RDNA3 VGPR granule to 16 in the arch DB makes occupancy.Rdna3Granule16-
+  TamperDiverges and occupancy.AmdRdna3LlvWaveFormulaSweep FAIL, the failure
+  message citing "docs/research/rdna3-constants.md" (RDNA3 ISA §3.3.2.1);
+  reverted arch.h, rebuilt, 373/373 green again.
+
+RISKS / DEVIATIONS
+------------------
+  * NVIDIA oracle model difference (documented, not hidden): the engine
+    implements the CPG-guide register formula the task pins (which the two
+    pinned goldens REQUIRE: 9 blocks -> 0.375); cuda_occupancy.h additionally
+    floors warps per 16K-register sub-partition and yields 8 blocks for the
+    same case. The 360-case oracle grid uses only cases where the models
+    agree (verified by a pre-commit native probe); the single diverging case
+    class is pinned and documented in NvidiaOracleSubpartitionDivergence.
+  * GCNSubtarget oracle substituted as documented above (headers unavailable
+    in the installed LLVM 21; llvm-calc-occupancy absent). The occ.sh table
+    is the task-sanctioned fallback oracle.
+  * AMD limiter-name mapping: the max-waves-per-SM cap is reported as
+    "threads" (task contract has no "warps" value; the two limits coincide
+    for warp-aligned blocks); ties report "registers" (register-first tie-
+    break, matching the polykernel oracle convention).
+  * gfx1101 2048-thread blocks report blocks_per_sm 0: the arch DB models
+    max_warps_per_sm 16 in wave64-equivalent units (rdna3-constants.md), so
+    the arch model caps at 32 wave32s/CU while 2048 threads need 64. This is
+    libs/arch's accounting (todo 6, MUST NOT modify); the engine faithfully
+    applies the constants and the test documents the corner.
+  * No libLLVM link required (AMDGPU backend headers unavailable); the
+    engine is self-contained on libs/arch constants.
