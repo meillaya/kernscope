@@ -1,0 +1,24 @@
+kernscope todo 15 - global coalescing analysis - QA evidence (failure path)
+============================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 15 of gpu-kernel-suite plan)
+Commit: 645f0f6 feat(analyze): global coalescing analysis with sector model
+
+SCENARIO: indirect/indexed load whose address depends on a value read from
+global memory (tests/analyze/corpus/indirect_global.ptx):
+    ld.global.u32 %r1, [%rd2];      // data-dependent index
+    mul.wide.s32  %rd3, %r1, 4;
+    add.s64       %rd4, %rd2, %rd3;
+    ld.global.f32 %f1, [%rd4];      // unresolvable per-warp pattern
+EXPECTED: severity "unknown-pattern", NOT a false "coalesced" verdict, no
+fabricated efficiency number.
+ACTUAL (gtest IndirectPatternUnknownSeverity):
+  warning id "coalescing_unknown" present with severity == "unknown-pattern"
+  PASS
+  no warning id "coalescing" (no false coalesced)  PASS
+  metrics.global_coalescing_efficiency ABSENT (never fabricated)  PASS
+  Fix history: first version reported the index-read load as a broadcast
+  (coeff 0) and let it win the min-efficiency, hiding the unresolvable
+  access; the emit logic now treats ANY unresolvable access as unknown for
+  the whole kernel (a single data-dependent address invalidates coalescing
+  claims).

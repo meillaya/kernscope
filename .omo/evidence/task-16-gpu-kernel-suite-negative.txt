@@ -1,0 +1,21 @@
+kernscope todo 16 - shared-memory bank conflict analysis - QA evidence (failure path)
+======================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 16 of gpu-kernel-suite plan)
+Commit: 02bb7a6 feat(analyze): shared-memory bank conflict analysis
+
+SCENARIO: data-dependent shared-memory index (tests/analyze/corpus/
+bank_unknown.ptx):
+    ld.shared.b32 %r2, [%rd2];    // %r2 = data-dependent index
+    shl.b32       %r3, %r2, 2;
+    add.s64       %rd3, %rd2, %r3;
+    ld.shared.f32 %f1, [%rd3];    // unresolvable bank pattern
+EXPECTED: "unknown" classification, never conflict-free, no fabricated bank
+count.
+ACTUAL (gtest DataDependentIndexUnknown):
+  no warning id "bank_conflict" (never looks conflict-free or N-way)  PASS
+  warning id "bank_conflict_unknown" with severity == "unknown-pattern" PASS
+  metrics.shared_bank_way ABSENT (never fabricated)  PASS
+  Note: an earlier revision classified the index-read broadcast as a
+  conflict-free access that masked the unknown; emit logic now prefers the
+  unknown verdict unless a REAL conflict (way > 1) resolved.

@@ -1,0 +1,42 @@
+kernscope todo 18 - instruction mix + tensor core + latency - QA evidence (happy path)
+=======================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 18 of gpu-kernel-suite plan)
+Commit: 1dd83dd feat(analyze): instruction mix + tensor-core usage + latency bottleneck estimate
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/mix.h
+  tools/analyze/src/analyze_mix.cpp       mnemonic buckets + class histogram,
+                                          tensor MAC counting (m/n/k shape
+                                          regex), per-arch latency tables +
+                                          issue-slot bottleneck classification
+  tools/analyze/tests/analyze_mix_test.cpp  gtest (5 cases)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build -> exit 0 (clean under -Wall -Wextra -Werror)
+  2. (cd build && ctest -R analyze_mix --output-on-failure)
+     -> 5/5 passed, 0 failed:
+        FusedAttentionInstructionMixExact (all 14 instruction_mix fields)
+        MmaShapeMacs          (m16n8k16 -> 2048 MACs)
+        WgmmaShapeMacs        (m64n128k16 -> 131072 MACs, 3 tensor ops)
+        MfmaShapeMacs         (32x32x8 + 16x16x16 -> 12288 MACs, 2 ops)
+        UnknownArchLatencySkip (sm_77 -> latency_unknown_arch, no numbers)
+  3. bash scripts/ci.sh -> [PASS] kernscope CI gate green (8 pass, 2 skip,
+     0 fail); count guard 468 >= 468.
+
+FUSED_ATTENTION CROSS-CHECK (vs expected_fused_attention.json instruction_mix)
+  fma_rn_f32   1024    expected 1024   PASS      mul_f32      33    exp 33   PASS
+  add_f32      23      expected 23     PASS      ex2_approx   1     exp 1    PASS
+  ld_global    20      expected 20     PASS      ld_global_vec 0   exp 0    PASS
+  ld_shared    520     expected 520    PASS      st_global    64    exp 64   PASS
+  st_shared    16      expected 16     PASS      ld_local     0     exp 0    PASS
+  st_local     0       expected 0      PASS      setp         77    exp 77   PASS
+  predicated_bra 78    expected 78     PASS      bar_sync     2     exp 2    PASS
+  tensor_macs  0, no_tensor_core_usage info (GEMM-like FMA loop)   PASS
+  latency_bottleneck present for sm_86, labeled "approximate,
+  microbenchmark-derived"                                              PASS
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_mix 5/5 + fused_attention cross-check).
+  failure: see task-18-gpu-kernel-suite-negative.txt (sm_77 -> no latency
+           table -> "unknown-arch" skip, no fabricated numbers).

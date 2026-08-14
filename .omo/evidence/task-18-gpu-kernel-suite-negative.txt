@@ -1,0 +1,15 @@
+kernscope todo 18 - instruction mix + tensor core + latency - QA evidence (failure path)
+========================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 18 of gpu-kernel-suite plan)
+Commit: 1dd83dd feat(analyze): instruction mix + tensor-core usage + latency bottleneck estimate
+
+SCENARIO: unknown-arch latency table. The brief §8.1 published tables cover
+Volta/Turing/Ampere/Ada/Hopper (sm_75/80/86/89/90/100/120). An arch NOT in
+that set (sm_77) must produce NO fabricated latency numbers.
+ACTUAL (gtest UnknownArchLatencySkip):
+  suggestion id "latency_unknown_arch" present, evidence.arch == "sm_77" PASS
+  no suggestion id "latency_bottleneck" (no fabricated classification) PASS
+  metrics.latency_classification ABSENT  PASS
+  Input: .target sm_77 kernel -> parse succeeds; the module skips latency
+  with an explicit diagnostic instead of guessing.

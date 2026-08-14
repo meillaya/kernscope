@@ -1,0 +1,17 @@
+kernscope todo 14 - occupancy limits + main limiter - QA evidence (failure path)
+================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 14 of gpu-kernel-suite plan)
+Commit: faf2a7d feat(analyze): occupancy limits + main limiter identification
+
+SCENARIO: kernel with block size exceeding the arch max threads.
+INPUT: analyze_occupancy(sm_86, regs=32, smem=0, block=2048). sm_86
+       max_threads_per_sm = 1536.
+EXPECTED: limiter == "threads", theoretical occupancy == 0, and a warning.
+ACTUAL (gtest OversizedBlockLimiterThreadsWarning):
+  report.limiter == "threads"  PASS
+  metrics.occupancy == 0.0     PASS
+  warning id "block_size_exceeds_arch_max" present (evidence names block_size
+  2048 and max_threads_per_sm 1536)  PASS
+  metrics.occupancy_is_theoretical == 1.0  PASS
+  No crash.

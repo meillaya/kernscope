@@ -1,0 +1,46 @@
+kernscope todo 17 - warp divergence + barrier usage - QA evidence (happy path)
+================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 17 of gpu-kernel-suite plan)
+Commit: 35d10ee feat(analyze): warp divergence + barrier usage analysis
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/divergence.h
+  tools/analyze/src/analyze_divergence.cpp  three-valued class dataflow,
+                                             CFG + dominators/post-dominators,
+                                             loop-depth (back-edge headers),
+                                             barrier inventory + divergence
+  tools/analyze/tests/analyze_divergence_test.cpp  gtest (5 cases)
+  tests/analyze/corpus/divergent_inner_loop.ptx  nested-loop divergent branch
+  tests/analyze/corpus/uniform_control.ptx       uniform branch (no warnings)
+  tests/analyze/corpus/data_dependent_branch.ptx data-dependent condition
+  tests/analyze/corpus/barrier_in_branch.ptx     bar.sync inside divergent region
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build -> exit 0 (clean under -Wall -Wextra -Werror)
+  2. (cd build && ctest -R analyze_div --output-on-failure)
+     -> 5/5 passed, 0 failed:
+        DivergentBranchInLoopWarning   (divergent_inner_loop, loop_depth 2,
+           predicate_derived_from threadIdx.x)
+        UniformControlNoDivergenceWarnings  (zero divergence warnings)
+        BarrierInDivergentRegionWarning (divergent_barrier)
+        FusedAttentionDivergentInnerLoop (loop_depth 2, setp_count 77,
+           predicated_branch_count 78, bar_sync 2, NO false divergent barrier)
+        DataDependentBranchPossiblyDivergent (three-valued verdict)
+  3. bash scripts/ci.sh -> [PASS] kernscope CI gate green (8 pass, 2 skip,
+     0 fail); count guard 463 >= 463.
+
+FUSED_ATTENTION CROSS-CHECK (vs expected_fused_attention.json)
+  divergent_inner_loop evidence:
+    predicate_derived_from  threadIdx.x   expected threadIdx.x  PASS
+    loop_depth              2             expected 2            PASS
+    setp_count              77            expected 77           PASS
+    predicated_branch_count 78            expected 78           PASS
+  metrics.bar_sync_count 2 (expected JSON bar_sync 2)          PASS
+  No divergent_barrier warning (the two top-level bar.sync are reached by
+  all threads)                                                  PASS
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_div 5/5 + fused_attention cross-check).
+  failure: see task-17-gpu-kernel-suite-negative.txt (data-dependent branch
+           -> possibly_divergent_branch, three-valued, never convergent).

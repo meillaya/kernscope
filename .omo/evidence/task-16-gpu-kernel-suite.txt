@@ -1,0 +1,42 @@
+kernscope todo 16 - shared-memory bank conflict analysis - QA evidence (happy path)
+====================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 16 of gpu-kernel-suite plan)
+Commit: 02bb7a6 feat(analyze): shared-memory bank conflict analysis
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/banks.h
+  tools/analyze/src/analyze_banks.cpp        affine resolver + 32-bank x 4B
+                                             footprint model (brief s2.1)
+  tools/analyze/tests/analyze_banks_test.cpp gtest (4 cases)
+  tests/analyze/corpus/bank_conflict.ptx     68-word stride (4-way golden)
+  tests/analyze/corpus/bank_padded.ptx       69-word stride (+1 pad)
+  tests/analyze/corpus/bank_unknown.ptx      data-dependent smem index
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build -> exit 0 (clean under -Wall -Wextra -Werror)
+  2. (cd build && ctest -R analyze_banks --output-on-failure)
+     -> 4/4 passed, 0 failed:
+        Stride68WordsFourWay         (way 4, stride_words 68,
+           stride_mod_32 4, distinct_banks 8, banks_per_sm 32)
+        PaddedStride69ConflictFree   (no warning, way 1, distinct 32)
+        FusedAttentionWay4CrossCheck (way 4 / stride 68 / mod 4 / 8 banks)
+        DataDependentIndexUnknown    (unknown-pattern, no fabricated count)
+  3. bash scripts/ci.sh -> [PASS] kernscope CI gate green (8 pass, 2 skip,
+     0 fail); count guard 458 >= 458.
+
+FUSED_ATTENTION CROSS-CHECK (vs expected_fused_attention.json)
+  bank_conflict warning evidence:
+    stride_words    68     expected 68     PASS
+    stride_mod_32   4      expected 4      PASS
+    distinct_banks  8      expected 8      PASS
+    way             4      expected 4      PASS
+    banks_per_sm    32     expected 32     PASS
+  (Column-major sK[tid][j] loads: mul.lo.s32 %r20,%r1,68 -> 68-word stride;
+   68 mod 32 = 4 -> banks {0,4,...,28} -> 8 distinct, 4-way.)
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_banks 4/4 + fused_attention cross-check).
+  failure: see task-16-gpu-kernel-suite-negative.txt (bank_unknown.ptx:
+           index loaded from shared memory -> "unknown-pattern" severity,
+           never conflict-free).

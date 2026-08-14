@@ -1,0 +1,46 @@
+kernscope todo 15 - global coalescing analysis - QA evidence (happy path)
+==========================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 15 of gpu-kernel-suite plan)
+Commit: 645f0f6 feat(analyze): global coalescing analysis with sector model
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/coalescing.h
+  tools/analyze/src/analyze_coalescing.cpp    PTX index-arithmetic affine
+                                               resolver (mov/cvta/ld.param/
+                                               shl/mul/add), 32B-sector model,
+                                               classification + warning
+  tools/analyze/tests/analyze_coalescing_test.cpp  gtest (4 cases)
+  tests/analyze/corpus/coalesced.ptx          unit-stride 4B load
+  tests/analyze/corpus/strided_global.ptx     stride-32B load
+  tests/analyze/corpus/indirect_global.ptx    data-dependent index load
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build -> exit 0 (clean under -Wall -Wextra -Werror)
+  2. (cd build && ctest -R analyze_coalesce --output-on-failure)
+     -> 4/4 passed, 0 failed:
+        CoalescedUnitStrideFourSectors  (4 sectors/warp, efficiency 1.0,
+           bytes_used 128, bytes_transferred 128, NO warning)
+        Stride32BThirtyTwoSectors       (32 sectors, efficiency 0.125,
+           warning present)
+        FusedAttentionEfficiency050      (coalescing warning, efficiency 0.5,
+           bytes_used 128, bytes_transferred 256, vectorized_ld_global 0)
+        IndirectPatternUnknownSeverity   (severity "unknown-pattern",
+           no false "coalesced", no fabricated efficiency metric)
+  3. bash scripts/ci.sh -> [PASS] kernscope CI gate green (8 pass, 2 skip,
+     0 fail); count guard 454 >= 454.
+
+FUSED_ATTENTION CROSS-CHECK (vs expected_fused_attention.json)
+  coalescing warning evidence:
+    bytes_used_per_warp    128      expected 128      PASS
+    bytes_transferred_per_warp 256  expected 256      PASS
+    efficiency              0.5     expected 0.5      PASS
+    vectorized_ld_global    0       expected 0        PASS
+  (Q tile staging stride-2 gathers: shl %r604,1 *4 bytes -> 8-byte per-lane
+   stride -> 8 sectors x 32B transferred for 128B used = 0.5.)
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_coalesce 4/4 + fused_attention cross-check).
+  failure: see task-15-gpu-kernel-suite-negative.txt (indirect_global.ptx:
+           index read from global memory -> "unknown-pattern" severity,
+           never a false "coalesced").

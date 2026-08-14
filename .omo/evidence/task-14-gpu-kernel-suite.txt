@@ -1,0 +1,51 @@
+kernscope todo 14 - occupancy limits + main limiter - QA evidence (happy path)
+================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 14 of gpu-kernel-suite plan)
+Commit: faf2a7d feat(analyze): occupancy limits + main limiter identification
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/occupancy.h  OccupancyInputs {block_size,
+                                                       dynamic_smem_bytes, arch_override}
+                                                       + 3 analyze_occupancy overloads
+  tools/analyze/src/analyze_occupancy.cpp              static .shared byte summation
+                                                       (type-width-correct), per-limiter
+                                                       headroom, theoretical-occupancy
+                                                       labeling, oversized-block warning
+  tools/analyze/tests/analyze_occupancy_test.cpp       gtest suite (5 cases)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build -> exit 0 (clean under -Wall -Wextra -Werror)
+  2. (cd build && ctest -R analyze_occ --output-on-failure)
+     -> 5/5 passed, 0 failed:
+        FusedAttentionGoldenOccupancy0375  (occupancy 0.375, limiter registers,
+           blocks 9, warps 18, max_warps 48, regs_allocated_per_warp 3328,
+           occupancy_is_theoretical 1.0)
+        BriefWorkedExampleSm90_025          (sm_90/128regs/256thr -> 0.25)
+        SmemLimiterBindsWithStaticShared    (32KB static .shared -> limiter shared,
+           3 blocks, occupancy 0.125)
+        OversizedBlockLimiterThreadsWarning (block 2048 -> limiter threads, occ 0)
+        UnknownBlockSizeGracefulDiagnostic
+  3. bash scripts/ci.sh -> [PASS] kernscope CI gate green (8 pass, 2 skip,
+     0 fail); count guard 450 >= 450.
+
+FUSED_ATTENTION CROSS-CHECK (todo 14 golden, vs expected_fused_attention.json)
+  field                      module      expected   result
+  metrics.occupancy          0.375       0.375      PASS (1e-9)
+  limiter                    registers   registers  PASS
+  metrics.blocks_per_sm      9           9          PASS
+  metrics.warps_resident_per_sm 18      18          PASS
+  metrics.max_warps_per_sm   48          48          PASS
+  metrics.max_blocks_per_sm  16          16          PASS
+  metrics.registers_allocated_per_warp 3328 3328    PASS
+  shared_memory_bytes        67584 (dynamic opt-in from manifest; static
+                             .shared bytes are 0 because extern smem[] is
+                             unsized) -> documented reconciliation: the
+                             pinned occupancy is the register-limited CPG
+                             formula (0.375), exactly as manifest.json and
+                             the fixture README occupancy table pin it.
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_occ 5/5 + fused_attention cross-check).
+  failure: see task-14-gpu-kernel-suite-negative.txt (block 2048 > sm_86 max
+           1536 -> limiter "threads", occupancy 0, warning present).

@@ -1,0 +1,25 @@
+kernscope todo 13 - register pressure + spill detection - QA evidence (failure path)
+=====================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 13 of gpu-kernel-suite plan)
+Commit: 478b28b feat(analyze): register pressure + spill detection
+
+SCENARIO: PTX kernel body with ZERO .reg declarations.
+EXPECTED: graceful "cannot estimate register pressure" diagnostic - no crash,
+          no fabricated register number.
+
+ACTUAL (gtest ZeroRegDeclarationsGracefulDiagnostic, inside devenv shell):
+  (cd build && ./tools/analyze/analyze-regs-test --gtest_filter=Regs.ZeroRegDeclarationsGracefulDiagnostic)
+  -> [==========] 1 test from Regs
+     [ RUN      ] Regs.ZeroRegDeclarationsGracefulDiagnostic
+     [       OK ] Regs.ZeroRegDeclarationsGracefulDiagnostic
+     [==========] 1 test from Regs (0 ms total)
+  Assertions:
+    - analyze_regs() does NOT throw (EXPECT_NO_THROW).
+    - warning finding id == "cannot_estimate_registers" present, evidence
+      text contains "cannot estimate register pressure".
+    - metrics has NO "registers_per_thread" key (no fabricated number).
+
+Input fixture (inline in test): a .visible .entry with only a ld.param + ret
+and zero .reg declarations. The parser accepts it (no register decls), and
+the module degrades to the diagnostic instead of returning a bogus count.

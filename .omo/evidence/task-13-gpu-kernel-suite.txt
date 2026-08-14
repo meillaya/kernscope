@@ -1,0 +1,61 @@
+kernscope todo 13 - register pressure + spill detection - QA evidence (happy path)
+==================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 13 of gpu-kernel-suite plan)
+Commit: 478b28b feat(analyze): register pressure + spill detection
+
+FILES CREATED
+  tools/analyze/include/kernscope/analyze/regs.h      PtxasVReport + parse_ptxas_v
+                                                       (BOTH ptxas formats), RegPressureEstimate +
+                                                       estimate_reg_pressure, analyze_regs(module),
+                                                       analyze_regs(module, ptxas_v),
+                                                       analyze_regs(AmdModule)
+  tools/analyze/src/analyze_regs.cpp                  impl (regex-per-field ptxas -v extraction;
+                                                       declared-.reg sum + .local frame proxy;
+                                                       ld.local/st.local spill census; AMD
+                                                       scratch_load/scratch_store census)
+  tools/analyze/tests/analyze_regs_test.cpp           gtest suite (8 cases, TEST_PREFIX analyze_regs:)
+  tests/analyze/corpus/spill_positive.ptx             nvcc --maxrregcount=16 huge dynamically-indexed
+                                                       accumulator kernel (512-byte .local frame,
+                                                       2 st.local + 2 ld.local)
+  tests/analyze/corpus/spill_negative.ptx             trivial hoge kernel (no .local, no spills)
+  tools/analyze/CMakeLists.txt                        kernscope_analyze lib + analyze-regs-test
+                                                       (LABELS no-gpu, gtest_discover_tests)
+  scripts/ci-baseline.txt                             64 -> 445 (8 new no-gpu tests)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build
+     -> ninja rebuilt kernscope_analyze.a + analyze-regs-test, clean under
+        -Wall -Wextra -Werror. exit=0
+  2. (cd build && ctest -R analyze_regs --output-on-failure)
+     -> 8/8 passed, 0 failed:
+        PtxasVCubinOneLiner (manifest "Used 102 registers, used 1 barriers,
+          388 bytes cmem[0]" -> 102, cmem 388)
+        PtxasVNvccDocTwoPartForm (NVCC s8.4 stack/spill + register lines)
+        PtxasVWithSpills (648 stack / 1348 spill stores / 1348 spill loads)
+        PtxasVGarbageIsNotOk
+        SpillPositiveFixtureHasSpillWarning (spill_bytes=512, stores/loads>0)
+        SpillNegativeFixtureHasNoSpillWarning (0/0, no warning)
+        FusedAttentionMatchesExpectedJson (regs 102, spill 0/0/0, stack 0)
+        ZeroRegDeclarationsGracefulDiagnostic
+  3. bash scripts/ci.sh
+     -> [PASS] kernscope CI gate green (8 pass, 2 skip, 0 fail); ctest count
+        guard 445 >= 445.
+
+FUSED_ATTENTION CROSS-CHECK
+  analyze_regs(fused_attention.ptx, manifest ptxas_v_report) ->
+  metrics.registers_per_thread == 102 (expected_fused_attention.json:
+  "registers_per_thread": 102), spill_stores==0, spill_loads==0,
+  local_stack_bytes==0. No spill warning. PASS.
+
+QA SCENARIOS
+  happy: above (ctest -R analyze_regs 8/8 + fused_attention cross-check).
+  failure: see task-13-gpu-kernel-suite-negative.txt (kernel with ZERO .reg
+           declarations -> graceful "cannot estimate register pressure"
+           warning finding, no crash, no fabricated number).
+
+[2026-08-14 final verification appended] -- all six modules (todos 13-18) are
+green together: full no-gpu|gpu-amd suite = 473/473; bash scripts/ci.sh =
+"[PASS] kernscope CI gate green (8 pass, 2 skip, 0 fail)"; clean rebuild from
+scratch (scripts/configure.sh + cmake --build build) with ZERO warnings under
+-Wall -Wextra -Werror. Evidence files written per todo (task-13..18).

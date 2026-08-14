@@ -1,0 +1,18 @@
+kernscope todo 17 - warp divergence + barrier usage - QA evidence (failure path)
+================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 17 of gpu-kernel-suite plan)
+Commit: 35d10ee feat(analyze): warp divergence + barrier usage analysis
+
+SCENARIO: branch condition derived from a memory LOAD (tests/analyze/corpus/
+data_dependent_branch.ptx):
+    ld.global.u32 %r1, [%rd2];    // data-dependent value
+    setp.gt.u32   %p1, %r1, 0;    // cannot be proven uniform OR divergent
+    @%p1 bra      $L_taken;
+EXPECTED: "possibly-divergent" (three-valued), NEVER claimed convergent.
+ACTUAL (gtest DataDependentBranchPossiblyDivergent):
+  warning id "possibly_divergent_branch" present, verdict evidence ==
+  "possibly-divergent"  PASS
+  no warning id "divergent_inner_loop" (not falsely claimed divergent) PASS
+  The module never fabricates a uniformity verdict for data-dependent
+  control flow (brief §4.2 L303-318 discipline).
