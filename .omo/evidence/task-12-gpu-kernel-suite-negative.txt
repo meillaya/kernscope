@@ -1,0 +1,59 @@
+kernscope todo 12 — QA evidence (negative path): unknown arch returns error code + "unknown arch" (never zeros)
+===============================================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 12 of gpu-kernel-suite plan)
+Commit: feat(roofline): roofline engine with per-family AI models and bound classification
+
+PURPOSE
+  Prove the negative-path contract (plan todo 12 acceptance, audited by F1):
+  requesting an UNKNOWN arch must make the engine return an error code and a
+  message containing "unknown arch" — and never report zeros as if they were
+  peaks or a roofline position. Same behavior is asserted by gtest
+  (roofline.UnknownArchReturnsErrorCodeAndMessage); this scenario runs it
+  through a standalone driver linked against the built libkernscope_roofline.a
+  so the exact code + message bytes are captured.
+
+SCENARIO
+  1. Build the library + suite: `cmake --build build` (exit 0, -Werror clean).
+  2. Compile a standalone driver (/tmp/opencode/roofline_neg_driver.cpp)
+     against libs/roofline/include + libs/arch/include and
+     build/libs/roofline/libkernscope_roofline.a with the same
+     -Wall -Wextra -Werror flags.
+  3. Request machine_peak("sm_77") and roofline_position(..., "sm_77"): both
+     must fail with code=1 (ErrorCode::kUnknownArch) and a message containing
+     "unknown arch 'sm_77'"; the position output struct is pre-seeded with
+     -1 sentinels and must stay untouched (NOT zeros pretending to be a
+     position).
+  4. Contrast: gfx1101 returns code=0 with projected==true and ZERO peaks
+     (placeholder guard — a projected flag, never a fabricated number), and
+     sm_90 (known GPU, no peaks row) fails with code=3 (kNoPeaksTabulated).
+
+EXACT OUTPUTS
+  --- compile (devenv shell):
+  clang++ -std=c++20 -Wall -Wextra -Werror -I libs/roofline/include -I libs/arch/include \
+          /tmp/opencode/roofline_neg_driver.cpp build/libs/roofline/libkernscope_roofline.a \
+          -o /tmp/opencode/roofline_neg_driver    -> COMPILED, exit 0
+
+  --- run:
+  machine_peak("sm_77") code=1 projected=0 fp32=0 matrix=0 bw=0
+    err='kernscope::roofline: unknown arch 'sm_77''
+  roofline_position(... "sm_77") code=1 ai=-1 ridge=-1 bound=memory
+    err='kernscope::roofline: unknown arch 'sm_77''
+  machine_peak("gfx1101") code=0 projected=1 fp32=0 matrix=0 bw=0
+    err=''
+  machine_peak("sm_90") code=3 err='kernscope::roofline: no machine peaks tabulated for arch
+    'sm_90' (todo-12 table covers sm_80, sm_89, gfx90a, gfx942; gfx1101 is a pending-measurement
+    placeholder)'
+  driver exit = 0
+
+ASSERTIONS SATISFIED
+  - machine_peak("sm_77")       -> code=1 (kUnknownArch); message contains
+                                   "unknown arch 'sm_77'"; no fabricated numbers.
+  - roofline_position("sm_77")  -> code=1 (kUnknownArch); message contains
+                                   "unknown arch 'sm_77'"; output struct UNTOUCHED
+                                   (ai=-1/ridge=-1 sentinels preserved — failure
+                                   never reports zeros as a position).
+  - gfx1101                     -> code=0, projected=1, all peaks 0 (todo-22
+                                   placeholder guard; querying pre-todo-22 returns
+                                   projected==true, never a fabricated number).
+  - sm_90                       -> code=3 (kNoPeaksTabulated), explicit message.

@@ -1,0 +1,68 @@
+kernscope todo 12 — roofline engine (AI models per kernel family + bound classification) — QA evidence (happy path)
+======================================================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 12 of gpu-kernel-suite plan)
+Commit: feat(roofline): roofline engine with per-family AI models and bound classification
+
+FILES CREATED
+  libs/roofline/CMakeLists.txt             kernscope_roofline lib (C++20; global -Wall -Wextra -Werror) +
+                                           roofline-test gtest suite, gtest_discover_tests LABELS "no-gpu"
+  libs/roofline/include/kernscope/roofline.h  KernelFamily (six families) + Shape + per-element FLOP
+                                           constants + MachinePeak table + ErrorCode + RooflinePosition +
+                                           compute_flops/compute_bytes_moved/arithmetic_intensity/
+                                           machine_peak/roofline_position; classification thresholds documented
+                                           (kDramLatencyNs = 400.0, Little's-law latency rule)
+  libs/roofline/src/roofline.cpp           AI formulas (brief §7 L132-135), machine-peaks table (brief §7
+                                           L127-130), ridge/ceilings/attained per Williams et al. 2009, bound
+                                           classification (compute/memory/latency), gfx1101 projected guard
+  libs/roofline/tests/roofline_test.cpp    gtest: GEMM AI(2048^3 fp16) hand-computed to 1e-9, per-family AI,
+                                           peaks pins vs brief, all 3 bound classes, gfx1101 projected guard,
+                                           unknown-arch + no-peaks-row + no-fp32-roof + invalid-input errors
+  CMakeLists.txt                           add_subdirectory(libs/roofline) after libs/arch (arch-name dep)
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build
+     -> ninja: re-ran CMake (subdirectory added), built kernscope_roofline.a + roofline-test with no
+        warnings under -Wall -Wextra -Werror. exit=0
+  2. (cd build && ctest -R roofline --output-on-failure)
+     -> 14/14 tests passed:
+        roofline:roofline.AiFormulasGemm2048CubeFp16, AiFormulasAllFamiliesHandComputed,
+        AiFormulasEmptyShapeIsZero, FamilyNames, MachinePeaksBriefTablePins,
+        Gfx1101QueryIsProjectedPlaceholder, ClassificationComputeBoundGemmA100,
+        ClassificationMemoryBoundSoftmaxA100, ClassificationLatencyBoundTinyKernel,
+        Gfx1101RooflinePositionRejectedProjected, UnknownArchReturnsErrorCodeAndMessage,
+        KnownGpuWithoutPeaksRowIsExplicitError, NoFp32RoofOnGfx90a, InvalidInputRejected
+        "100% tests passed, 0 tests failed out of 14" (Label no-gpu)  exit=0
+  3. (cd build && ctest -L no-gpu)  [regression sweep]
+     -> "100% tests passed, 0 tests failed out of 44"  exit=0
+
+GEMM AI(2048^3, fp16) HAND COMPUTATION (the pinned acceptance; brief §7 L133
+formula: FLOPs = 2MNK; minimum DRAM bytes = s·(MK + KN + MN), s = 2 for fp16):
+    FLOPs = 2·2048^3        = 2·8589934592            = 17179869184
+    bytes = 2·(2048^2+2048^2+2048^2) = 2·3·4194304    = 25165824
+    AI    = 17179869184 / 25165824 = 2048/3           = 682.6666666666667
+  EXPECT_NEAR(engine_ai, 2048.0/3.0, 1e-9) PASSES (AiFormulasGemm2048CubeFp16).
+  NOTE: the brief's "≈683 F/B" example (N=4096) counts FLOPs = MNK; we count
+  2MNK exactly per the task spec and the polykernel oracle
+  (/home/mei/projects/polykernel/lib/Analysis/tests/roofline_test.cpp L23-32).
+
+BOUND-CLASSIFICATION HANDS (A100): fp16 ridge = 312e12/2039e9 ≈ 153.02 F/B
+(brief §7 L133 "A100 ridge ≈ 153 F/B"); fp32 ridge ≈ 9.56 F/B.
+  compute  GEMM 2048^3 fp16: AI 682.67 >= 153.02  -> compute (ceiling 312 TF)
+  memory   softmax 2^20 fp32: AI 0.625 < 9.56, 8 MiB (4.1 us) -> memory
+  latency  softmax n=64 fp32: 512 bytes -> 0.25 ns < 400 ns (kDramLatencyNs,
+           Little's law; analyzer brief §8.1 A100 global/DRAM 566 cyc ≈ 0.4 us)
+
+QA SCENARIOS
+  happy: ctest -R roofline PASS (14/14) + full no-gpu sweep (44/44) — above.
+  failure: see task-12-gpu-kernel-suite-negative.txt (unknown arch "sm_77" ->
+           kUnknownArch error code + "unknown arch 'sm_77'" message; output
+           struct untouched — sentinel -1 preserved, never zeros).
+
+MACHINE PEAKS (all from brief §7 L127-130; gfx1101 = todo-22 placeholder):
+  sm_80  A100      FP32 19.5 TF / FP16-BF16 TC 312 TF / HBM2e 2039 GB/s
+  sm_89  RTX 4090  FP32 82.6 TF / FP16 ≈2x FP32 (165.2 TF, brief note) / 1008 GB/s
+  gfx90a MI250X    FP16-BF16 matrix 383 TF / 3.28 TB/s (3.2-3.28 caveat brief §9)
+  gfx942 MI300X    BF16 matrix 1307.4 TF / FP32 163.4 TF / 5.3 TB/s
+  gfx1101          projected=true placeholder, ZERO peaks (never fabricated;
+                   provenance names todo 22 + plan todo 12 MUST NOT)
