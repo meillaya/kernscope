@@ -1,0 +1,30 @@
+kernscope todo 31 — verify check classes 1+2 — QA negative evidence
+(device-only ingestion: verdict must degrade, never claim SAFE)
+===================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 31 of gpu-kernel-suite plan)
+Commit: feat(verify): global OOB + shared-memory bounds checks
+
+QA NEGATIVE SCENARIO (plan): remove the launch site (--device-only
+ingestion) -> the same kernel that was SAFE with a constant launch must
+degrade to SYMBOLIC_DIMS — soundness over false safety.
+
+Fixture: tests/verify/corpus/oob_clean.cu, kernel oob_clean_kernel
+(g_buf[i] with i = blockIdx.x*blockDim.x + threadIdx.x, <<<32,256>>>).
+Device-only ingestion drops the host half, so the launch config is gone
+(LaunchTier::Symbolic; the engine emits its kSymbolicDims degraded verdict)
+and the plugin must NOT emit SAFE.
+
+COMMAND + EXACT RESULT (inside `devenv shell`)
+  >>> build/tools/verify/checks/oob/verify-bounds-test \
+        --gtest_filter=VerifyBounds.DeviceOnlyDegradesToSymbolicDims
+  [ RUN      ] VerifyBounds.DeviceOnlyDegradesToSymbolicDims
+  device-only degraded verdict: SYMBOLIC_DIMS (check 1, kernel oob_clean_kernel())
+  [       OK ] VerifyBounds.DeviceOnlyDegradesToSymbolicDims (524 ms)
+  [  PASSED  ] 1 test.
+
+ASSERTIONS (in VerifyBounds.DeviceOnlyDegradesToSymbolicDims)
+  - kernel tier == LaunchTier::Symbolic after --device-only ingestion  PASS
+  - plugin class-1 verdict == SYMBOLIC_DIMS (NOT SAFE)                PASS
+  - verdict != SAFE (soundness over false safety)                     PASS
+  - the same contract is asserted in the ctest suite (verify_bounds)

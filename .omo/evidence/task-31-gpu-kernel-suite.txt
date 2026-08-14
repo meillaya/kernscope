@@ -1,0 +1,105 @@
+kernscope todo 31 — verify check classes 1+2 (global OOB + shared-memory
+bounds) in kernscope-verify — QA evidence (happy path)
+===================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 31 of gpu-kernel-suite plan)
+Commit: feat(verify): global OOB + shared-memory bounds checks
+
+FILES CREATED (isolation mandate: only the listed paths)
+  tools/verify/checks/oob/CMakeLists.txt      plugin lib + verify-bounds-test
+                                              (ctest name verify_bounds, no-gpu)
+  tools/verify/checks/oob/oob_common.h/.cpp   allocation resolution, GEP byte-
+                                              span walker (lattice->SCEV via
+                                              VerifierContext::queryRange),
+                                              launch-site dynamic-smem scan,
+                                              verdict JSON encoding
+  tools/verify/checks/oob/memory_bounds_check.cpp
+                                              BoundsCheckPlugin (id "global-oob",
+                                              check_class_ids {1,2}; REGISTER_CHECK)
+  tools/verify/checks/oob/verify_bounds_test.cpp
+                                              7 gtests: manifest verdict match,
+                                              SAFE-with-SCEV-proof, MAY_OOB
+                                              range+bound, smem overflow pair,
+                                              dynamic smem, device-only
+                                              degradation, registry contract
+  tools/verify/checks/oob/README.md           soundness-scope documentation
+  tests/verify/corpus/oob_clean.cu            class 1 SAFE pair (static
+                                              __device__ global + guarded param)
+  tests/verify/corpus/oob_may.cu              class 1 MAY_OOB pair (stride OOB
+                                              + data-dependent index)
+  tests/verify/corpus/smem_clean.cu           class 2 SAFE (exact-fit boundary)
+  tests/verify/corpus/smem_overflow.cu        class 2 MAY_OOB pair
+  tests/verify/corpus/smem_dynamic.cu         class 2 dynamic smem pair
+  tests/verify/corpus/manifest.oob.json       9 {file,kernel,check,expected_verdict}
+                                              entries (fragment; manifest.json
+                                              is todo 35's file)
+  .omo/evidence/task-31-gpu-kernel-suite.txt  this file
+  .omo/evidence/task-31-gpu-kernel-suite-negative.txt
+                                              device-only degradation evidence
+
+ACCEPTANCE COMMANDS + EXACT RESULTS (inside `devenv shell`)
+  1. cmake --build build
+     -> exit 0, Werror clean (verified on the FULL tree before the parallel
+        todo-32 worker's mid-edit barrier/CMakeLists.txt broke the shared
+        build's reconfigure; the final test-edit was re-verified with the
+        exact ninja compile+link commands, Werror clean, exit 0)
+
+  2. ctest -R verify_bounds   (from build/)
+     -> 100% tests passed, 0 tests failed out of 1
+        Start 562: verify_bounds  Passed  18.40 sec
+        Label Time Summary: no-gpu = 18.40 sec*proc (1 test)
+
+  3. verify-bounds-test (7 tests) -> [  PASSED  ] 7 tests
+     VerifyBounds.ManifestVerdictsMatch                  OK
+     VerifyBounds.CleanKernelSafeWithScevRangeProof       OK
+     VerifyBounds.OobKernelMayOobWithRangeAndBound        OK
+     VerifyBounds.SmemOverflowPair                        OK
+     VerifyBounds.DynamicSmemLaunchParamHandling          OK
+     VerifyBounds.DeviceOnlyDegradesToSymbolicDims        OK
+     VerifyBounds.PluginRegistryContract                  OK
+
+VERDICT JSON EXAMPLES (plugin "verdict_json:" payloads, corpus evidence)
+  SAFE (clean kernel, SCEV-range proof):
+  {"check":1,"kernel":"oob_clean_kernel()","verdict":"SAFE","tier":"Exact",
+   "accesses":1,"may_oob":0,"findings":[
+     {"op":"store","line":39,"alloc":"g_buf","known":true,"bound":65536,
+      "range":"[0,8192)","span":"[0,32765)","kind":"IN_BOUNDS",
+      "note":"access within allocation g_buf (65536 bytes)"}]}
+  MAY_OOB (index = tid*N beyond the allocation, range + bound in JSON):
+  {"check":1,"kernel":"oob_may_kernel()","verdict":"MAY_OOB","tier":"Exact",
+   "accesses":1,"may_oob":1,"findings":[
+     {"op":"store","line":33,"alloc":"g_buf","known":true,"bound":4096,
+      "range":"[0,261121)","span":"[0,1044481)","kind":"MAY_OOB",
+      "note":"access may exceed allocation g_buf (4096 bytes)"}]}
+  MAY_OOB (smem, static __shared__): smem_overflow_kernel: bound 256 bytes,
+    span [0,1021) -> MAY_OOB
+  SAFE (smem, dynamic extern __shared__, bound from launch-site smem arg):
+    smem_dyn_safe_kernel <<<1,64,256,0>>>: bound 256, span [0,253) -> SAFE
+  MAY_OOB (smem, dynamic, same 256-byte launch, 256 threads):
+    smem_dyn_oob_kernel: span [0,1021) vs 256 -> MAY_OOB
+
+MANIFEST MATCH (tests/verify/corpus/manifest.oob.json, asserted in ctest)
+  oob_clean.cu:oob_clean_kernel:1 SAFE    oob_clean.cu:oob_param_kernel:1 SAFE
+  oob_may.cu:oob_may_kernel:1 MAY_OOB    oob_may.cu:oob_data_kernel:1 MAY_OOB
+  smem_clean.cu:smem_clean_kernel:2 SAFE
+  smem_overflow.cu:smem_overflow_kernel:2 MAY_OOB
+  smem_overflow.cu:smem_safe_wide_kernel:2 SAFE
+  smem_dynamic.cu:smem_dyn_safe_kernel:2 SAFE
+  smem_dynamic.cu:smem_dyn_oob_kernel:2 MAY_OOB
+  -> all 9 entries match the emitted verdicts (empty diff)
+
+RISKS / DEVIATIONS (documented in tools/verify/checks/oob/README.md)
+  * may-analysis: data-dependent indices (unboundable by lattice/SCEV) are
+    MAY_OOB, never SAFE — no completeness claim (plan directive).
+  * kernel-param allocations: index proven bounded (SAFE on index grounds),
+    allocation size runtime -> explicit PARAM_BOUNDED note; static
+    allocation proof requires host-side cudaMalloc tracking (not in scope).
+  * dynamic smem with a runtime smem launch argument -> MAY_OOB.
+  * addrspace(0) generic, addrspace(4) const, addrspace(5) local: v1 scope
+    excludes them (documented).
+  * -O1 ingestion DCEs non-volatile shared round-trips (LLVM does not model
+    cross-thread visibility): the smem corpus fixtures use `volatile
+    __shared__` so the verifier sees the accesses (fixture comment).
+  * the final test-edit (an evidence print line) was built with the exact
+    ninja commands after the parallel worker's mid-edit state broke the
+    shared tree's cmake reconfigure; rerun the gate once todo 32 lands.
