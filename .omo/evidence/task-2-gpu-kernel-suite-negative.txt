@@ -1,0 +1,40 @@
+TODO 2 (gpu-kernel-suite) — devenv environment QA — NEGATIVE (failure) PATH
+==========================================================================
+Date: 2026-08-14 | devenv 2.2.1+8f297ea | repo: /home/mei/projects/llvm.h
+
+SCENARIO: temporarily set `nixpkgs.allow_unfree: false` in devenv.yaml and
+attempt `devenv shell true`. Expected: evaluation fails, naming the CUDA
+EULA-gated package. Then restore allow_unfree: true and re-verify.
+
+STEP 1 — mutate:  sed -i 's/allow_unfree: true/allow_unfree: false/' devenv.yaml
+
+STEP 2 — evaluate:  devenv shell true   ->  exit 1 (evaluation failed)
+
+Error trace (abridged; full trace on stdout):
+  ... while evaluating attribute 'CUDA_HOME' of derivation 'devenv-shell'
+  ... while calling 'unfreePackageError'
+      unfreePackageError = pkg: ...
+        devenv: package '${name}' has an unfree license.
+  error: devenv: package 'cuda_cudart' has an unfree license.
+  To allow all unfree packages, add this to devenv.yaml:
+    allow_unfree: true
+  To allow only this package, add this to devenv.yaml:
+    nixpkgs: ...
+
+Under the hood nixpkgs' EULA predicate path fires (lib/license handling:
+hasDeniedUnfreeLicense / hasUnfreeLicense && !explicitPredicate — the CUDA
+redistributables are gated by the NVIDIA CUDA EULA via
+allowUnfreePredicate = _cuda.lib.allowUnfreeCudaPredicate). The failure names
+the exact CUDA-EULA package (cuda_cudart) and points back at the devenv.yaml
+setting — proving the nixpkgs.* yaml route actually enforces the EULA gate
+(the polykernel negative-test pattern).
+
+STEP 3 — restore:  cp devenv.yaml.bak devenv.yaml  (allow_unfree: true back)
+
+STEP 4 — re-verify healthy:
+  devenv eval            -> {} (evaluates cleanly)
+  devenv shell true      -> exit 0, banner shows toolchains
+  scripts/check_env.sh   -> ENV GATE VERDICT: PASS, exit 0
+
+RESULT: negative QA scenario PASSED (evaluation fails mentioning the CUDA
+EULA/unfree predicate; state restored; env verified healthy afterwards).

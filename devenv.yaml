@@ -1,0 +1,31 @@
+# kernscope development environment — LLVM 21 + CUDA 12.6 + ROCm 7.2.3.
+#
+# nixpkgs.* options are devenv-native YAML options (devenv >= 1.7 for
+# allow_unfree / cuda_support / cuda_capabilities, >= 2.0.7 for rocm_support,
+# >= 2.1 for require_version). They configure the nixpkgs instantiation that
+# devenv performs for the `nixpkgs` input — the equivalent of
+# `pkgs = import nixpkgs { config = { ... }; }` in the polykernel flake.
+#
+# FALLBACK BRANCH (only if any nixpkgs.* option below errors on this devenv):
+# drop the `nixpkgs:` block and switch to a polykernel-pattern flake.nix that
+# imports nixpkgs with config = { allowUnfree = true; cudaSupport = true;
+# rocmSupport = true; cudaCapabilities = ["8.0" "9.0"]; } (see
+# /home/mei/projects/polykernel/flake.nix:26-36). polykernel verified the
+# devenv MODULE system has no `nixpkgs.config` option, so the config must be
+# applied where nixpkgs is instantiated — either via these YAML options
+# (preferred) or via the flake import config (fallback).
+
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/nixpkgs-unstable
+
+nixpkgs:
+  allow_unfree: true          # CUDA redistributables are under the NVIDIA EULA
+  cuda_support: true          # enable the cudaPackages_12_6 set
+  # Disk-budget guard (do NOT omit): only sm_80 (8.0) + sm_90 (9.0) are
+  # compiled into the CUDA redistributables, keeping the multi-GB closure
+  # bounded. Rental validation targets A100/H100-class hardware.
+  cuda_capabilities: ["8.0", "9.0"]
+  rocm_support: true          # enable the rocmPackages set (ROCm 7.2.3)
+
+require_version: ">=2.2"
