@@ -42,7 +42,9 @@ def main() -> int:
     ap.add_argument("--hsaco", required=True, help="hipcc --genco output")
     ap.add_argument("--runner", required=True, help="hip_template_runner binary")
     ap.add_argument("--symbol", required=True, help="kernel symbol in the hsaco")
-    ap.add_argument("--family", required=True, choices=("reduction", "matmul", "attention"))
+    ap.add_argument("--family", required=True,
+                    choices=("bias_gelu", "softmax", "layernorm", "reduction",
+                             "matmul", "attention"))
     ap.add_argument("--shape", required=True, help="comma list, e.g. 2,1024")
     ap.add_argument("--grid", required=True, help="W or WxH")
     ap.add_argument("--block", required=True, help="X or XxY")
@@ -90,19 +92,69 @@ def main() -> int:
 
     # 2. npz tensors -> raw row-major bins; kernel arg layout per family.
     if args.family == "reduction":
-        if len(shape) != 2 or shape[0] != 2:
-            return _fail(
-                f"reduction family requires shape 2,N for the elementwise-add "
-                f"template (got {shape})")
-        x = arrays["x"]
-        a, b = x[0], x[1]
-        a_bin, b_bin = os.path.join(work, "a.bin"), os.path.join(work, "b.bin")
-        with open(a_bin, "wb") as fh:
-            fh.write(a.tobytes())
-        with open(b_bin, "wb") as fh:
-            fh.write(b.tobytes())
-        in_args = ["--in", a_bin, "--in", b_bin]
-        int_args = ["--int", str(shape[1])]  # n
+        if args.symbol.startswith("kernscope_templates_"):
+            # The todo-24 elementwise-add reference template: shape 2,N maps
+            # to two vectors a=x[0], b=x[1] and scalar n (see README.md
+            # "Golden mapping" — y[j] = x[0,j]+x[1,j] IS the add of two
+            # vectors).
+            if len(shape) != 2 or shape[0] != 2:
+                return _fail(
+                    f"reduction family (add template) requires shape 2,N "
+                    f"(got {shape})")
+            x = arrays["x"]
+            a, b = x[0], x[1]
+            a_bin, b_bin = os.path.join(work, "a.bin"), os.path.join(work, "b.bin")
+            with open(a_bin, "wb") as fh:
+                fh.write(a.tobytes())
+            with open(b_bin, "wb") as fh:
+                fh.write(b.tobytes())
+            in_args = ["--in", a_bin, "--in", b_bin]
+            int_args = ["--int", str(shape[1])]  # n
+        else:
+            # todo-26 tuner reduction kernel: one x buffer, reduce axis 0;
+            # y[j] = sum_i x[i,j], scalars (rows, cols).
+            if len(shape) != 2:
+                return _fail(f"reduction family requires shape R,C (got {shape})")
+            r, c = shape
+            x_bin = os.path.join(work, "x.bin")
+            with open(x_bin, "wb") as fh:
+                fh.write(arrays["x"].tobytes())
+            in_args = ["--in", x_bin]
+            int_args = ["--int", str(r), "--int", str(c)]
+    elif args.family == "bias_gelu":
+        if len(shape) != 2:
+            return _fail(f"bias_gelu family requires shape R,C (got {shape})")
+        r, c = shape
+        x_bin = os.path.join(work, "x.bin")
+        bias_bin = os.path.join(work, "bias.bin")
+        with open(x_bin, "wb") as fh:
+            fh.write(arrays["x"].tobytes())
+        with open(bias_bin, "wb") as fh:
+            fh.write(arrays["bias"].tobytes())
+        in_args = ["--in", x_bin, "--in", bias_bin]
+        # kernel: (x, bias, out, int total, int cols)
+        int_args = ["--int", str(r * c), "--int", str(c)]
+    elif args.family == "softmax":
+        if len(shape) != 2:
+            return _fail(f"softmax family requires shape R,C (got {shape})")
+        r, c = shape
+        x_bin = os.path.join(work, "x.bin")
+        with open(x_bin, "wb") as fh:
+            fh.write(arrays["x"].tobytes())
+        in_args = ["--in", x_bin]
+        int_args = ["--int", str(r), "--int", str(c)]
+    elif args.family == "layernorm":
+        if len(shape) != 2:
+            return _fail(f"layernorm family requires shape R,C (got {shape})")
+        r, c = shape
+        x_bin = os.path.join(work, "x.bin")
+        gamma_bin = os.path.join(work, "gamma.bin")
+        beta_bin = os.path.join(work, "beta.bin")
+        for path, key in ((x_bin, "x"), (gamma_bin, "gamma"), (beta_bin, "beta")):
+            with open(path, "wb") as fh:
+                fh.write(arrays[key].tobytes())
+        in_args = ["--in", x_bin, "--in", gamma_bin, "--in", beta_bin]
+        int_args = ["--int", str(r), "--int", str(c)]
     elif args.family == "matmul":
         if len(shape) != 3:
             return _fail(f"matmul family requires shape M,N,K (got {shape})")

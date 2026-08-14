@@ -118,6 +118,78 @@ else()
                  "kernscope_templates_hip_runner not available)")
 endif()
 
+# --- todo 26: elementwise/reduction template generators ----------------------
+# Four single-source portable kernel generators (bias+GELU, softmax,
+# layernorm, axis-0 reduction) + the kernscope-tune-elem-gen CLI + the
+# acceptance suite (no-gpu pre-compile gates and gpu-amd LIVE golden gates).
+# Library API in include/kernscope/tune/{bias_gelu,softmax,layernorm,
+# reduction}_gen.h (shared types in elem_common.h); every candidate is
+# validated PRE-COMPILE against libs/arch (search-space membership, block
+# limit, shape divisibility by the vector width) with a reason string.
+add_library(kernscope_elem_gen STATIC
+  src/bias_gelu_gen.cpp
+  src/softmax_gen.cpp
+  src/layernorm_gen.cpp
+  src/reduction_gen.cpp
+)
+target_include_directories(kernscope_elem_gen PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(kernscope_elem_gen PUBLIC cxx_std_20)
+add_library(kernscope::elem_gen ALIAS kernscope_elem_gen)
+target_link_libraries(kernscope_elem_gen PUBLIC kernscope::arch)
+
+# The CLI: one validated config -> one emitted .hip kernel (non-zero exit +
+# reason on pre-compile rejection). Consumed by the todo-28 tuning driver.
+add_executable(kernscope-tune-elem-gen src/elem_gen_cli.cpp)
+target_link_libraries(kernscope-tune-elem-gen PRIVATE kernscope::elem_gen)
+target_compile_features(kernscope-tune-elem-gen PRIVATE cxx_std_20)
+
+# --- no-gpu pre-compile gates ------------------------------------------------
+# nvcc sm_80/sm_90 compile-only gates, hipcc gfx1101 --genco compile-only
+# gate, the vector-width divisibility REJECTION (reason asserted; the QA
+# negative: two-pass softmax vec=4 on a non-divisible shape) and full
+# search-space validity. No GPU device is touched.
+add_executable(tune-elem-gen-test tests/elem_gen_test.cpp)
+target_link_libraries(tune-elem-gen-test PRIVATE
+  kernscope::elem_gen
+  kernscope::arch
+  GTest::gtest_main
+)
+target_compile_definitions(tune-elem-gen-test PRIVATE
+  ${KERNSCOPE_TUNE_TEST_DEFS})
+include(GoogleTest)
+gtest_discover_tests(tune-elem-gen-test
+  TEST_PREFIX "tune_elem_gen:"
+  PROPERTIES LABELS "no-gpu"
+)
+
+# --- gpu-amd LIVE gates ------------------------------------------------------
+# 8 live verdicts (4 families x 2 shapes): each generated kernel runs on
+# this machine (gfx1101) through the kernscope_templates_hip_runner +
+# run_hip_gate.py and must earn a kernscope_golden verdict pass:true. Only
+# built when hipcc + ROCm headers were found AND the runner target exists.
+if(KERNSCOPE_TUNE_HAVE_HIP AND TARGET kernscope_templates_hip_runner)
+  add_executable(tune-elem-gen-live-test tests/elem_gen_test.cpp)
+  target_link_libraries(tune-elem-gen-live-test PRIVATE
+    kernscope::elem_gen
+    kernscope::arch
+    GTest::gtest_main
+  )
+  target_compile_definitions(tune-elem-gen-live-test PRIVATE
+    ${KERNSCOPE_TUNE_TEST_DEFS}
+    KERNSCOPE_TUNE_LIVE=1
+    KERNSCOPE_TUNE_RUNNER="$<TARGET_FILE:kernscope_templates_hip_runner>"
+  )
+  add_dependencies(tune-elem-gen-live-test kernscope_templates_hip_runner)
+  gtest_discover_tests(tune-elem-gen-live-test
+    TEST_PREFIX "tune_elem_gen_live:"
+    PROPERTIES LABELS "gpu-amd"
+  )
+else()
+  message(STATUS "tools/tune: live elementwise gates skipped (hipcc or "
+                 "kernscope_templates_hip_runner not available)")
+endif()
+
 # --- todo 25: matmul template generator -------------------------------------
 # Single-source portable tiled-GEMM generator (bf16 in, fp32 accumulate, bf16
 # out). Library API in include/kernscope/tune/matmul_gen.h; validated
