@@ -270,8 +270,6 @@ void analyze_divergence(const PtxModule &module, KernelReport &report) {
     const std::map<std::string, DClass> cls = analyze_classes(kernel);
     const Cfg cfg = build_cfg(kernel);
     const std::vector<int> loop_depth = compute_loop_depth(cfg);
-    for (int d : loop_depth) std::fprintf(stderr, " %d", d);
-    std::fprintf(stderr, "\n");
     // Branch sites: predicated @p bra / conditional branches.
     std::vector<DClass> branch_class;
     std::vector<std::string> branch_pred;
