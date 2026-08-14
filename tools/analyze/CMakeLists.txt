@@ -86,8 +86,14 @@ gtest_discover_tests(analyze-occ-test
 )
 
 # --- TODO 15: global memory coalescing --------------------------------------
-# (test executable added when tests/analyze_coalescing_test.cpp lands with the
-# todo-15 commit)
+add_executable(analyze-coalesce-test tests/analyze_coalescing_test.cpp)
+target_link_libraries(analyze-coalesce-test PRIVATE kernscope::analyze
+  GTest::gtest_main)
+target_compile_definitions(analyze-coalesce-test PRIVATE ${ANALYZE_TEST_DEFS})
+gtest_discover_tests(analyze-coalesce-test
+  TEST_PREFIX "analyze_coalesce:"
+  PROPERTIES LABELS "no-gpu"
+)
 
 # --- TODO 16: shared-memory bank conflicts ----------------------------------
 # (test executable added when tests/analyze_banks_test.cpp lands with the

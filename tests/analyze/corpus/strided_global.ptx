@@ -1,0 +1,25 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written coalescing fixture: a pathological stride-32B pattern. Each
+// lane loads a 4-byte word 32 bytes apart -> the warp touches 32 distinct
+// 32-byte sectors -> 32 transactions, 1024 bytes transferred for 128 used
+// (brief §3.1 worst case, utilization 12.5%).
+.visible .entry strided_global(
+	.param .u64 p
+)
+{
+	.reg .b64 	%rd<3>;
+	.reg .f32 	%f<2>;
+	.reg .b32 	%r<2>;
+	ld.param.u64 	%rd1, [p];
+	cvta.to.global.u64 	%rd2, %rd1;
+	mov.u32 		%r1, %tid.x;
+	mul.wide.s32 	%rd3, %r1, 32;
+	add.s64 		%rd4, %rd2, %rd3;
+	ld.global.f32 	%f1, [%rd4];
+	add.f32 		%f2, %f1, 1.0;
+	st.global.f32 	[%rd4], %f2;
+	ret;
+}

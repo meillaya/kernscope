@@ -1,0 +1,26 @@
+.version 8.5
+.target sm_86
+.address_size 64
+
+// Hand-written coalescing fixture (QA failure): an INDIRECT load whose
+// address depends on a value read from global memory (%rd3 = a loaded
+// value). The per-warp address pattern is unresolvable by a static
+// analyzer -> the module must emit the "unknown-pattern" classification,
+// NEVER a false "coalesced" verdict.
+.visible .entry indirect_global(
+	.param .u64 p
+)
+{
+	.reg .b64 	%rd<4>;
+	.reg .u32 	%r<3>;
+	.reg .f32 	%f<2>;
+	ld.param.u64 	%rd1, [p];
+	cvta.to.global.u64 	%rd2, %rd1;
+	ld.global.u32 	%r1, [%rd2];        // data-dependent index
+	mul.wide.s32 	%rd3, %r1, 4;
+	add.s64 		%rd4, %rd2, %rd3;
+	ld.global.f32 	%f1, [%rd4];
+	add.f32 		%f2, %f1, 1.0;
+	st.global.f32 	[%rd4], %f2;
+	ret;
+}
