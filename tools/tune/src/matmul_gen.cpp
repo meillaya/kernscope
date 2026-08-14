@@ -18,10 +18,8 @@
 
 #include "kernscope/arch.h"
 
-#include <cstdio>
 #include <fstream>
 #include <sstream>
-#include <utility>
 
 namespace kernscope::tune {
 
