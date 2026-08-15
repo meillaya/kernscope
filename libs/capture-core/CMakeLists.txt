@@ -44,12 +44,15 @@ gtest_discover_tests(capture-shim-test TEST_PREFIX "capture_shim:"
 # suite: v1 write->read roundtrip (field-exact), embedded-pointer remap with
 # a synthetic VA table, size-cap abort w/ partial manifest, v0 compatibility
 # (committed fixture + sidecar blobs), truncated-bundle schema violations
-# with byte offsets, and sha256 provenance verification.
+# with byte offsets (v0 trailing-truncation + v1 blob truncation at ANY byte
+# on the committed fixtures - the F3 review seeds), and sha256 provenance
+# verification at load against the recorded blobs.json reference.
 add_executable(capture-bundle-test tests/bundle_test.cpp)
 target_link_libraries(capture-bundle-test PRIVATE
   kernscope::capture_core GTest::gtest_main)
 target_compile_definitions(capture-bundle-test PRIVATE
-  KERNSCOPE_V0_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/capture/v0-sample.bundle")
+  KERNSCOPE_V0_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/capture/v0-sample.bundle"
+  KERNSCOPE_V1_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/capture/v1-sample.bundle")
 gtest_discover_tests(capture-bundle-test TEST_PREFIX "capture_bundle:"
   PROPERTIES LABELS "no-gpu")
 

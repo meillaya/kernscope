@@ -660,6 +660,14 @@ WriteStatus write_bundle_v1(const CaptureSession &session, const std::string &di
 // Truncated input is reported with line+byte offsets (QA: schema violation
 // WITH OFFSET, no UB, no crash). v0 carries no `seq`; the reader assigns
 // parse order (format doc §7).
+//
+// Truncation hardening (F3 review): a v0 bundle is a NEWLINE-TERMINATED
+// record stream, so an unterminated final line is always a truncation -
+// in particular a 1-byte trailing cut of the 'end-capture-v0' terminator
+// (its trailing '\n' removed) must be reported as a schema violation with
+// the byte offset, never tolerated as a clean end-of-file. The only
+// tolerated leniency is content AFTER a complete, newline-terminated
+// terminator.
 
 namespace {
 
@@ -792,6 +800,7 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
   bool saw_header = false;
   bool saw_end = false;
   std::size_t line_no = 0;
+  std::size_t last_content_line = 0;
   while (line_start <= text.size()) {
     const std::size_t nl = text.find('\n', line_start);
     const std::size_t end = nl == std::string_view::npos ? text.size() : nl;
@@ -802,6 +811,7 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
       l.remove_suffix(1);
     }
     if (!l.empty()) {
+      last_content_line = line_no;
       if (saw_end) {
         break; // tolerate trailing content after end-capture-v0
       }
@@ -1091,6 +1101,19 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
       }
     }
     if (nl == std::string_view::npos) {
+      if (!l.empty()) {
+        // Unterminated final line: the record stream was cut mid-write
+        // (every v0 record, including the terminator, is newline-terminated).
+        // A 1-byte trailing truncation of 'end-capture-v0' lands here and
+        // must be a schema violation with the byte offset, not a clean EOF.
+        if (saw_end) {
+          error = V0Error(line_no, line_start,
+                          "truncated 'end-capture-v0' terminator (missing "
+                          "trailing newline; file ends at byte " +
+                              std::to_string(text.size()) + ")");
+          return false;
+        }
+      }
       break;
     }
     line_start = nl + 1;
@@ -1101,9 +1124,8 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
     return false;
   }
   if (!saw_end) {
-    error = "schema violation: v0 parse error: missing 'end-capture-v0' "
-            "terminator (truncated bundle at line " +
-            std::to_string(line_no) + ")";
+    error = V0Error(last_content_line, text.size(),
+                    "missing 'end-capture-v0' terminator (truncated bundle)");
     return false;
   }
   return true;
@@ -1221,7 +1243,13 @@ bool BundleReader::read_blob(const BufferSnapshot &blob,
   if (actual != blob.sha256) {
     if (error != nullptr) {
       *error = "schema violation: sha256 mismatch for '" + blob.file +
-               "' (expected " + blob.sha256 + ", got " + actual + ")";
+               "' (expected " + blob.sha256 + ", got " + actual;
+      if (out.size() != blob.size) {
+        *error += ", size " + std::to_string(out.size()) + " != recorded " +
+                  std::to_string(blob.size) + " (truncated at byte " +
+                  std::to_string(out.size()) + ")";
+      }
+      *error += ")";
     }
     return false;
   }
@@ -1593,6 +1621,33 @@ bool LoadBlobs(const fs::path &root, BundleReader::Impl &impl,
     }
     impl.blobs.push_back(std::move(blob));
   }
+  // Eager provenance verification (F3): each recorded blob is checked
+  // against its on-disk bytes AT LOAD TIME. sha256 + size are mandatory
+  // per the format spec, so a corrupted/truncated blob file fails open
+  // with a schema violation naming the blob path + offset instead of
+  // surfacing lazily at read_blob.
+  for (const BufferSnapshot &blob : impl.blobs) {
+    std::string bytes;
+    std::string rerr;
+    if (!ReadWholeFile(root / blob.file, bytes, rerr)) {
+      error = "schema violation: blobs.json: blob file '" + blob.file +
+              "': " + rerr;
+      return false;
+    }
+    const std::string actual = sha256_hex(std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t *>(bytes.data()), bytes.size()));
+    if (actual != blob.sha256) {
+      error = "schema violation: blobs.json: sha256 mismatch for '" +
+              blob.file + "' (expected " + blob.sha256 + ", got " + actual;
+      if (bytes.size() != blob.size) {
+        error += ", size " + std::to_string(bytes.size()) + " != recorded " +
+                 std::to_string(blob.size) + " (truncated at byte " +
+                 std::to_string(bytes.size()) + ")";
+      }
+      error += ")";
+      return false;
+    }
+  }
   return true;
 }
 
@@ -1655,7 +1710,7 @@ std::unique_ptr<BundleReader> BundleReader::open(const std::string &path,
     V0Model model;
     if (!ParseV0Text(v0_text, model, err)) {
       if (error != nullptr) {
-        *error = err;
+        *error = err + " (file: " + v0_file.string() + ")";
       }
       return nullptr;
     }
@@ -1736,7 +1791,7 @@ std::unique_ptr<BundleReader> BundleReader::open(const std::string &path,
   V0Model model;
   if (!ParseV0Text(text, model, err)) {
     if (error != nullptr) {
-      *error = err;
+      *error = err + " (file: " + p.string() + ")";
     }
     return nullptr;
   }

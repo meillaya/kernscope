@@ -11,7 +11,13 @@
 //      fixture + sidecar .bin blobs) AND v1;
 //  (e) QA negative: a TRUNCATED bundle file -> reader reports a schema
 //      violation WITH OFFSET (no UB, no crash);
-//  (f) sha256 provenance is verified per blob (mismatch -> schema violation).
+//  (f) sha256 provenance is verified per blob (mismatch -> schema violation);
+//  (g) F3 review seeds: a 1-byte truncation of the LAST byte of the
+//      committed v0 fixture (the 'end-capture-v0' trailing newline) FAILS
+//      with a schema violation naming the terminator + offset, and a
+//      1-byte truncation of the committed v1 fixture blob at ANY byte
+//      position FAILS at load with a sha256-mismatch naming the blob path
+//      + offset (both committed fixtures exercise the hardened paths).
 //
 // All tests are pure host-side (no GPU), LABELS no-gpu.
 //
@@ -29,6 +35,10 @@
 
 #ifndef KERNSCOPE_V0_FIXTURE
 #define KERNSCOPE_V0_FIXTURE ""
+#endif
+
+#ifndef KERNSCOPE_V1_FIXTURE
+#define KERNSCOPE_V1_FIXTURE ""
 #endif
 
 namespace {
@@ -476,6 +486,50 @@ TEST(BundleV0Test, ReaderLoadsV0BundleWithSidecarBlobs) {
   EXPECT_EQ(out, blob_bytes);
 }
 
+TEST(BundleV0Test, ReaderLoadsCommittedV1Fixture) {
+  // The committed v1 fixture (F3): a real writer-produced bundle with
+  // recorded per-blob sha256 - the load-time provenance path is exercised
+  // against COMMITTED data, not just temp-dir writes.
+  const std::string fixture = KERNSCOPE_V1_FIXTURE;
+  ASSERT_NE(fixture, "") << "KERNSCOPE_V1_FIXTURE not defined";
+  ASSERT_TRUE(fs::is_directory(fixture)) << fixture;
+
+  std::string err;
+  auto reader = BundleReader::open(fixture, &err);
+  ASSERT_NE(reader, nullptr) << err;
+  EXPECT_TRUE(reader->is_v1());
+  EXPECT_EQ(reader->schema_version(), 1);
+  EXPECT_EQ(reader->tool_version(), "kernscope-capture/1.0");
+  EXPECT_EQ(reader->vendor(), "mock");
+  EXPECT_EQ(reader->arch(), "sm_80");
+  EXPECT_EQ(reader->first_kernel(), "vec_add");
+  EXPECT_EQ(reader->total_blob_bytes(), 52u);
+  ASSERT_EQ(reader->blobs().size(), 2u);
+  const auto &b0 = reader->blobs()[0];
+  EXPECT_EQ(b0.role, BufferRole::kInput);
+  EXPECT_EQ(b0.va, 0x1000u);
+  EXPECT_EQ(b0.size, 48u);
+  EXPECT_EQ(b0.file, "blobs/b0001.bin");
+  // The recorded reference must be the sha256 of the committed bytes.
+  const std::vector<std::uint8_t> kExpected0 = []() {
+    std::vector<std::uint8_t> v(48);
+    for (std::size_t i = 0; i < v.size(); ++i) {
+      v[i] = static_cast<std::uint8_t>(i);
+    }
+    return v;
+  }();
+  EXPECT_EQ(b0.sha256, kernscope::sha256_hex(kExpected0));
+  const auto &b1 = reader->blobs()[1];
+  EXPECT_EQ(b1.role, BufferRole::kKernelBinary);
+  EXPECT_EQ(b1.size, 4u);
+  EXPECT_EQ(b1.sha256,
+            kernscope::sha256_hex(std::vector<std::uint8_t>{0xAA, 0xBB, 0xCC, 0xDD}));
+  // Bytes read back match the recorded provenance.
+  std::vector<std::uint8_t> bytes;
+  ASSERT_TRUE(reader->read_blob(b0, bytes, &err)) << err;
+  EXPECT_EQ(bytes, kExpected0);
+}
+
 //--- (e) QA negative: truncated bundle -> schema violation WITH OFFSET ------------
 
 TEST(BundleNegativeTest, TruncatedV1EventsJsonReportsByteOffset) {
@@ -535,7 +589,74 @@ TEST(BundleNegativeTest, TruncatedV0TextReportsLineAndByteOffset) {
   EXPECT_NE(err.find("byte "), std::string::npos) << err;
 }
 
-//--- (f) sha256 provenance is verified per blob ------------------------------------
+//--- (g) F3 review seeds: 1-byte truncations of the COMMITTED fixtures ------------
+
+TEST(BundleNegativeTest, TruncatedV0FixtureLastByteReportsTerminatorOffset) {
+  // F3 seed: exactly ONE byte removed from the committed v0 fixture - the
+  // trailing newline of the 'end-capture-v0' terminator. The parser must
+  // report a schema violation naming the terminator + the truncation offset
+  // (never treat the unterminated terminator as a clean end-of-file).
+  const std::string full = ReadFile(KERNSCOPE_V0_FIXTURE);
+  ASSERT_FALSE(full.empty());
+  ASSERT_EQ(full.back(), '\n') << "fixture must be newline-terminated";
+  const fs::path file = TempDir() / "truncated-v0-last-byte.bundle";
+  std::ofstream(file, std::ios::binary | std::ios::trunc)
+      .write(full.data(), full.size() - 1);
+
+  std::string err;
+  auto reader = BundleReader::open(file.string(), &err);
+  EXPECT_EQ(reader, nullptr);
+  EXPECT_NE(err.find("schema violation"), std::string::npos) << err;
+  EXPECT_NE(err.find("end-capture-v0"), std::string::npos) << err;
+  EXPECT_NE(err.find("line "), std::string::npos) << err;
+  EXPECT_NE(err.find("truncated-v0-last-byte.bundle"), std::string::npos)
+      << err; // the error names the file
+  // The reported truncation offset is the file's post-truncation size (the
+  // position of the removed trailing newline).
+  EXPECT_NE(err.find("ends at byte " + std::to_string(full.size() - 1)),
+            std::string::npos)
+      << err;
+}
+
+TEST(BundleNegativeTest, TruncatedV1BlobAnyByteFailsShaMismatch) {
+  // F3 seeds on the committed v1 fixture: a 1-byte truncation of the blob at
+  // ANY byte position (first, quarter, mid, three-quarter, last) must fail
+  // AT LOAD with a sha256-mismatch schema violation naming the blob path +
+  // the truncation offset.
+  const fs::path src = fs::path(KERNSCOPE_V1_FIXTURE);
+  ASSERT_TRUE(fs::is_directory(src)) << KERNSCOPE_V1_FIXTURE;
+  const fs::path blob_rel = "blobs/b0001.bin";
+  const std::string full = ReadFile(src / blob_rel);
+  ASSERT_FALSE(full.empty());
+  ASSERT_GE(full.size(), 8u);
+
+  const std::size_t positions[] = {
+      0u, full.size() / 4, full.size() / 2, (full.size() * 3) / 4,
+      full.size() - 1};
+  for (const std::size_t cut : positions) {
+    const fs::path dir = TempDir() / ("v1trunc-" + std::to_string(cut));
+    fs::copy(src, dir, fs::copy_options::recursive);
+    std::string bytes = ReadFile(dir / blob_rel);
+    ASSERT_EQ(bytes.size(), full.size());
+    bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+    std::ofstream(dir / blob_rel, std::ios::binary | std::ios::trunc)
+        .write(bytes.data(), bytes.size());
+
+    std::string err;
+    auto reader = BundleReader::open(dir.string(), &err);
+    EXPECT_EQ(reader, nullptr) << "cut at byte " << cut << ": " << err;
+    EXPECT_NE(err.find("sha256 mismatch"), std::string::npos)
+        << "cut at byte " << cut << ": " << err;
+    EXPECT_NE(err.find(blob_rel.string()), std::string::npos)
+        << "cut at byte " << cut << ": " << err; // names the blob path
+    // The truncation offset: the blob's post-truncation size.
+    EXPECT_NE(err.find("truncated at byte " + std::to_string(full.size() - 1)),
+              std::string::npos)
+        << "cut at byte " << cut << ": " << err;
+  }
+}
+
+//--- (f) sha256 provenance is verified per blob (EAGERLY at load) -----------------
 
 TEST(BundleNegativeTest, CorruptedBlobFailsSha256Verification) {
   CaptureSession session;
@@ -558,7 +679,9 @@ TEST(BundleNegativeTest, CorruptedBlobFailsSha256Verification) {
       << err;
   const fs::path bundle = dir.string() + ".kcap";
 
-  // Flip one byte of the blob on disk: the recorded sha256 no longer matches.
+  // Flip one byte of the blob on disk (size unchanged): the recorded sha256
+  // no longer matches. Verification is EAGER at load (F3): open itself must
+  // fail with a sha256-mismatch schema violation naming the blob path.
   const fs::path blob_path = bundle / "blobs" / "b0001.bin";
   std::string bytes = ReadFile(blob_path);
   bytes[0] = static_cast<char>(0xFF);
@@ -566,11 +689,10 @@ TEST(BundleNegativeTest, CorruptedBlobFailsSha256Verification) {
       .write(bytes.data(), bytes.size());
 
   auto reader = BundleReader::open(bundle.string(), &err);
-  ASSERT_NE(reader, nullptr) << err; // open succeeds; verification is lazy
-  ASSERT_EQ(reader->blobs().size(), 1u);
-  std::vector<std::uint8_t> out;
-  EXPECT_FALSE(reader->read_blob(reader->blobs()[0], out, &err));
+  EXPECT_EQ(reader, nullptr) << err;
+  EXPECT_NE(err.find("schema violation"), std::string::npos) << err;
   EXPECT_NE(err.find("sha256 mismatch"), std::string::npos) << err;
+  EXPECT_NE(err.find("blobs/b0001.bin"), std::string::npos) << err;
 }
 
 } // namespace

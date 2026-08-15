@@ -1,0 +1,1 @@
+{"arch":"sm_80","capture_mechanism":"preload","first_kernel":"vec_add","format_id":"kernscope-capture","schema_version":"1.0","size_governance":{"abort_reason":"","aborted":false,"max_snapshot_bytes":1.073741824e+09,"total_blob_bytes":52},"snapshot_policy":"va-faithful","timestamp":"2026-08-14T04:00:00Z","tool_version":"kernscope-capture/1.0","vendor":"mock"}

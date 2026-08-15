@@ -150,7 +150,12 @@ struct ParamInfoRecord {
 // Loads v1 directory bundles AND v0 line-oriented text bundles (the
 // todos-43/44/45 output shape; docs/capture-format.md §7). Errors carry byte
 // offsets for JSON ("byte N: ...") and line/column for v0 text - the
-// truncated-bundle QA (no UB, no crash).
+// truncated-bundle QA (no UB, no crash). Two corruption defenses (F3):
+// the v0 parser rejects an unterminated final line (a 1-byte trailing cut
+// of the 'end-capture-v0' terminator is a schema violation, never a clean
+// EOF), and v1 blob provenance is verified EAGERLY at open (sha256 + size
+// against the recorded blobs.json reference; mismatch/truncation names the
+// blob path + offset).
 
 class BundleReader {
 public:
@@ -200,6 +205,8 @@ public:
   const std::vector<BufferSnapshot> &blobs() const;
   /// Reads the blob's bytes AND verifies its sha256 provenance; false + a
   /// clear error on I/O failure or hash mismatch (never silent corruption).
+  /// NOTE: open() already verified every recorded blob eagerly (sha256 +
+  /// size vs blobs.json), so this is a defense-in-depth re-check.
   bool read_blob(const BufferSnapshot &blob, std::vector<std::uint8_t> &out,
                  std::string *error) const;
 

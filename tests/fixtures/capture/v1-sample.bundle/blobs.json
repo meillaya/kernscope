@@ -1,0 +1,1 @@
+{"blobs":[{"file":"blobs/b0001.bin","id":"b0001","patches":[],"role":"input","sha256":"4dbdc2b2b62cb00749785bc84202236dbc3777d74660611b8e58812f0cfde6c3","size":"0x30","va":"0x1000"},{"file":"blobs/b0002.bin","id":"b0002","patches":[],"role":"kernel-binary","sha256":"8d70d691c822d55638b6e7fd54cd94170c87d19eb1f628b757506ede5688d297","size":"0x4","va":"0x0"}],"schema_version":"1.0"}
