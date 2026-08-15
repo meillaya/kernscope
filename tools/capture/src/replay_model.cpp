@@ -442,7 +442,6 @@ bool LoadV0Sidecars(const fs::path &blob_dir, V0Sidecars &out,
 bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
   const auto &allocs = model.allocs;
   const auto &copies = model.copies;
-  const auto &launches = model.launches;
 
   // allocation map (alloc records), exact sizes
   std::unordered_map<std::uint64_t, std::size_t> alloc_size;
@@ -562,12 +561,8 @@ bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
   // argument marshalling
   const auto &arg_tables = model.arg_tables;
   std::vector<ArgSlotInfo> table;
-  if (plan.launch != nullptr && !arg_tables.empty()) {
-    const std::size_t li = static_cast<std::size_t>(
-        plan.launch - launches.data());
-    if (li < arg_tables.size()) {
-      table = arg_tables[li];
-    }
+  if (!arg_tables.empty() && plan.launch_index < arg_tables.size()) {
+    table = arg_tables[plan.launch_index];
   }
   // pointer classification pass: alloc-map hit (like the reader) OR any
   // copy record's device-side pointer (buffers allocated via unhooked APIs
@@ -581,9 +576,9 @@ bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
       device_ptrs.insert(c.src);
     }
   }
-  const std::size_t nargs = plan.launch != nullptr ? plan.launch->args.size() : 0;
+  const std::size_t nargs = plan.launch_rec.args.size();
   for (std::size_t i = 0; i < nargs; ++i) {
-    const KernelArgSlot &slot = plan.launch->args[i];
+    const KernelArgSlot &slot = plan.launch_rec.args[i];
     ArgPlan ap;
     ap.size = slot.size;
     const bool reader_pointer =
@@ -712,47 +707,43 @@ bool BuildPlanV1(const BundleReader &reader, Plan &plan, std::string *error) {
     return idx;
   };
   const auto &launch_arg_tables = reader.launch_arg_tables();
-  if (plan.launch != nullptr && !launch_arg_tables.empty()) {
-    const auto &launches = reader.launches();
-    const std::size_t li =
-        static_cast<std::size_t>(plan.launch - launches.data());
-    if (li < launch_arg_tables.size()) {
-      const auto &table = launch_arg_tables[li];
-      for (std::size_t i = 0; i < plan.launch->args.size(); ++i) {
-        const KernelArgSlot &slot = plan.launch->args[i];
-        ArgPlan ap;
-        ap.size = slot.size;
-        if (i < table.size() && table[i].is_pointer) {
-          ap.is_pointer = true;
-          ap.pointer_va = table[i].va;
-          const bool out = output_by_va.count(table[i].va) != 0;
-          ap.buffer = add_buffer(table[i].va, out);
-          if (ap.buffer < 0) {
-            return false;
-          }
-          DevBuffer &b = plan.buffers[static_cast<std::size_t>(ap.buffer)];
-          if (b.size == 0) {
-            b.size_unknown = true;
-            b.size = kSyntheticDefaultBytes;
-            b.kind = BufKind::kSynthetic;
-            b.bytes.assign(b.size, kSyntheticFillByte);
-            b.warning = "buffer has no snapshot blob in the bundle "
-                        "(size-unknown) - SYNTHETIC input";
-            plan.has_synthetic = true;
-          } else if (b.bytes.empty() && !out) {
-            b.blob_missing = true;
-            b.bytes.assign(b.size, kSyntheticFillByte);
-            b.warning = "input buffer snapshot missing - SYNTHETIC input";
-            plan.has_synthetic = true;
-          }
-        } else {
-          ap.scalar = 0;
-          if (slot.bytes.size() <= 8) {
-            std::memcpy(&ap.scalar, slot.bytes.data(), slot.bytes.size());
-          }
+  if (!launch_arg_tables.empty() &&
+      plan.launch_index < launch_arg_tables.size()) {
+    const auto &table = launch_arg_tables[plan.launch_index];
+    for (std::size_t i = 0; i < plan.launch_rec.args.size(); ++i) {
+      const KernelArgSlot &slot = plan.launch_rec.args[i];
+      ArgPlan ap;
+      ap.size = slot.size;
+      if (i < table.size() && table[i].is_pointer) {
+        ap.is_pointer = true;
+        ap.pointer_va = table[i].va;
+        const bool out = output_by_va.count(table[i].va) != 0;
+        ap.buffer = add_buffer(table[i].va, out);
+        if (ap.buffer < 0) {
+          return false;
         }
-        plan.args.push_back(std::move(ap));
+        DevBuffer &b = plan.buffers[static_cast<std::size_t>(ap.buffer)];
+        if (b.size == 0) {
+          b.size_unknown = true;
+          b.size = kSyntheticDefaultBytes;
+          b.kind = BufKind::kSynthetic;
+          b.bytes.assign(b.size, kSyntheticFillByte);
+          b.warning = "buffer has no snapshot blob in the bundle "
+                      "(size-unknown) - SYNTHETIC input";
+          plan.has_synthetic = true;
+        } else if (b.bytes.empty() && !out) {
+          b.blob_missing = true;
+          b.bytes.assign(b.size, kSyntheticFillByte);
+          b.warning = "input buffer snapshot missing - SYNTHETIC input";
+          plan.has_synthetic = true;
+        }
+      } else {
+        ap.scalar = 0;
+        if (slot.bytes.size() <= 8) {
+          std::memcpy(&ap.scalar, slot.bytes.data(), slot.bytes.size());
+        }
       }
+      plan.args.push_back(std::move(ap));
     }
   }
   return true;
@@ -873,7 +864,8 @@ bool BuildPlan(const std::string &bundle_path, const PlanOptions &opts,
              + std::string(opts.kernel) + "')";
     return false;
   }
-  plan.launch = target;
+  plan.launch_index = static_cast<std::size_t>(target - launches->data());
+  plan.launch_rec = *target;
   plan.kernel_name = target->kernel_name;
 
   // model

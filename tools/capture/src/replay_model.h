@@ -74,7 +74,12 @@ struct OutputRef {
 struct Plan {
   std::string vendor, arch, mechanism, tool_version, timestamp, kernel_name;
   std::string bundle_path;
-  const LaunchRecord *launch = nullptr;
+  // The target launch, OWNED by the plan: the source records live in the
+  // BundleReader / v0 model which are destroyed when BuildPlan returns, so
+  // a pointer into them would dangle. launch_index locates the record in
+  // the source bundle's launch list (for arg-table lookups).
+  LaunchRecord launch_rec;
+  std::size_t launch_index = 0;
   std::vector<DevBuffer> buffers;
   std::vector<ArgPlan> args;
   std::vector<std::uint8_t> kernel_binary; // empty => not captured

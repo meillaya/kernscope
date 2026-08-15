@@ -330,7 +330,7 @@ bool ApplyRefFiles(ReplayCtx &ctx, const std::vector<std::string> &ref_files,
 /// One launch + synchronize, with the launch timing record appended to
 /// `result.launches`; outputs are copied back into ctx.replay_bytes.
 GpuStatus LaunchOnce(ReplayCtx &ctx, ReplayResult *result) {
-  const LaunchRecord &lr = *ctx.plan.launch;
+  const LaunchRecord &lr = ctx.plan.launch_rec;
   LaunchConfig cfg;
   cfg.grid_x = lr.grid_x;
   cfg.grid_y = lr.grid_y;
@@ -535,15 +535,19 @@ bool run_replay_bench(const BenchOptions &opts, BenchResult &result,
   bopts.min_time_ms = 0.0; // fixed sample count, not a time budget
   bopts.max_noise = 1.0;   // any noise converges; sample count decides
   bopts.timeout_ms = 0.0;  // no hard wall-clock cap for a fixed sample count
+  // One sample per convergence-check batch (rep_ms=0 -> n_repeat=1), so the
+  // run stops at exactly min_samples timed reps instead of overshooting to
+  // a full 100 ms budget batch (~9100 reps at 11 us/call).
+  bopts.rep_ms = 0.0;
 
   LaunchConfig cfg;
-  cfg.grid_x = ctx.plan.launch->grid_x;
-  cfg.grid_y = ctx.plan.launch->grid_y;
-  cfg.grid_z = ctx.plan.launch->grid_z;
-  cfg.block_x = ctx.plan.launch->block_x;
-  cfg.block_y = ctx.plan.launch->block_y;
-  cfg.block_z = ctx.plan.launch->block_z;
-  cfg.shared_mem_bytes = ctx.plan.launch->shared_mem_bytes;
+  cfg.grid_x = ctx.plan.launch_rec.grid_x;
+  cfg.grid_y = ctx.plan.launch_rec.grid_y;
+  cfg.grid_z = ctx.plan.launch_rec.grid_z;
+  cfg.block_x = ctx.plan.launch_rec.block_x;
+  cfg.block_y = ctx.plan.launch_rec.block_y;
+  cfg.block_z = ctx.plan.launch_rec.block_z;
+  cfg.shared_mem_bytes = ctx.plan.launch_rec.shared_mem_bytes;
 
   const bench::Result r = bench::run(
       *ctx.rt, ctx.device_name,

@@ -117,12 +117,12 @@ std::string EmitMainSource(const Plan &plan) {
   os << "//   capture mechanism:   " << plan.mechanism << "\n";
   os << "//   vendor/arch:         " << plan.vendor << " / " << plan.arch << "\n";
   os << "//   kernel:              " << plan.kernel_name << "\n";
-  if (plan.launch != nullptr) {
-    os << "//   grid:                " << plan.launch->grid_x << "x"
-       << plan.launch->grid_y << "x" << plan.launch->grid_z << "\n";
-    os << "//   block:               " << plan.launch->block_x << "x"
-       << plan.launch->block_y << "x" << plan.launch->block_z << "\n";
-    os << "//   shared_mem_bytes:    " << plan.launch->shared_mem_bytes << "\n";
+  {
+    os << "//   grid:                " << plan.launch_rec.grid_x << "x"
+       << plan.launch_rec.grid_y << "x" << plan.launch_rec.grid_z << "\n";
+    os << "//   block:               " << plan.launch_rec.block_x << "x"
+       << plan.launch_rec.block_y << "x" << plan.launch_rec.block_z << "\n";
+    os << "//   shared_mem_bytes:    " << plan.launch_rec.shared_mem_bytes << "\n";
   }
   if (!plan.kernel_binary_sha.empty()) {
     os << "//   kernel binary sha256: " << plan.kernel_binary_sha << "\n";
@@ -329,16 +329,16 @@ std::string EmitMainSource(const Plan &plan) {
     os << "  }\n";
     os << "\n";
     if (hip) {
-      os << "  err = hipModuleLaunchKernel(fn, " << plan.launch->grid_x << ", "
-         << plan.launch->grid_y << ", " << plan.launch->grid_z << ", "
-         << plan.launch->block_x << ", " << plan.launch->block_y << ", "
-         << plan.launch->block_z << ", " << plan.launch->shared_mem_bytes
+      os << "  err = hipModuleLaunchKernel(fn, " << plan.launch_rec.grid_x << ", "
+         << plan.launch_rec.grid_y << ", " << plan.launch_rec.grid_z << ", "
+         << plan.launch_rec.block_x << ", " << plan.launch_rec.block_y << ", "
+         << plan.launch_rec.block_z << ", " << plan.launch_rec.shared_mem_bytes
          << ", nullptr, kparams.data(), nullptr);\n";
     } else {
-      os << "  err = cuLaunchKernel(fn, " << plan.launch->grid_x << ", "
-         << plan.launch->grid_y << ", " << plan.launch->grid_z << ", "
-         << plan.launch->block_x << ", " << plan.launch->block_y << ", "
-         << plan.launch->block_z << ", " << plan.launch->shared_mem_bytes
+      os << "  err = cuLaunchKernel(fn, " << plan.launch_rec.grid_x << ", "
+         << plan.launch_rec.grid_y << ", " << plan.launch_rec.grid_z << ", "
+         << plan.launch_rec.block_x << ", " << plan.launch_rec.block_y << ", "
+         << plan.launch_rec.block_z << ", " << plan.launch_rec.shared_mem_bytes
          << ", nullptr, kparams.data(), nullptr);\n";
     }
     os << "  if (err != " << (hip ? "hipSuccess" : "CUDA_SUCCESS")
@@ -454,12 +454,12 @@ std::string EmitReadme(const Plan &plan) {
   os << "| capture tool | " << plan.tool_version << " |\n";
   os << "| capture mechanism | " << plan.mechanism << " |\n";
   os << "| kernel | " << plan.kernel_name << " |\n";
-  if (plan.launch != nullptr) {
-    os << "| grid | " << plan.launch->grid_x << "x" << plan.launch->grid_y
-       << "x" << plan.launch->grid_z << " |\n";
-    os << "| block | " << plan.launch->block_x << "x" << plan.launch->block_y
-       << "x" << plan.launch->block_z << " |\n";
-    os << "| shared mem | " << plan.launch->shared_mem_bytes << " B |\n";
+  {
+    os << "| grid | " << plan.launch_rec.grid_x << "x" << plan.launch_rec.grid_y
+       << "x" << plan.launch_rec.grid_z << " |\n";
+    os << "| block | " << plan.launch_rec.block_x << "x" << plan.launch_rec.block_y
+       << "x" << plan.launch_rec.block_z << " |\n";
+    os << "| shared mem | " << plan.launch_rec.shared_mem_bytes << " B |\n";
   }
   if (!plan.kernel_binary_sha.empty()) {
     os << "| kernel binary sha256 | `" << plan.kernel_binary_sha << "` |\n";
