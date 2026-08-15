@@ -157,3 +157,80 @@ clear message.
 - `tune_driver` (no-gpu) / `tune_driver_live` (gpu-amd): the todo-28 driver
   acceptance (infeasible-at-floor-1.0 negative; live 24-grid tune, cache-hit
   re-run compiles 0 new variants).
+
+## Capture->tune mode (`--from-capture`, todo 53)
+
+The **distinct tuning mode for CAPTURED kernels** (Metis H-3): a capture
+bundle carries the kernel binary + arguments + buffers but **no source**, so
+the template pipeline above (generate -> compile -> golden gate) cannot
+consume it. The launch configuration is the only searchable degree of
+freedom:
+
+```
+kernscope-tune --from-capture <bundle> [--vendor amd] [--arch gfx1101]
+               [--blob-dir <dir>] [--kernel <name>] [--ref <file>...]
+               [--candidates <blocks-csv>]
+               [--inject-config <gx,gy,gz:bx,by,bz[:shared]>]
+               [--reps <n>] [--no-flush] [--db <path>]
+               [--profile-out <path>] [--json|--text]
+```
+
+Pipeline (each candidate replayed through the todo-48 replay machinery via
+its public APIs — `BuildPlan` from tools/capture + libs/gpuruntime +
+libs/bench + libs/db; the replay_model.cpp plan builder is compiled into the
+capture-tune library **unchanged**):
+
+1. **Plan** — `BuildPlan(bundle, vendor/arch/blob-dir/kernel)` restores the
+   target launch, the device-buffer plan (inputs with captured content,
+   outputs with their validation references), the kernel binary and the arg
+   marshalling table. v1 `*.kcap/` bundles carry their own output refs;
+   v0 text bundles need `--ref <captured-output>` (output-buffer order).
+2. **Candidates** — the captured baseline config is **always candidate #1**
+   (explored first — guarantees `best.speedup >= 1.0`), then block sizes
+   from the arch-valid set (`--candidates`, default {128,256,512,1024}) at
+   the **captured grid** (a captured kernel's grid is workload-semantic;
+   only the within-block partition is searchable without touching the
+   binary). Shared-mem carveout is explored only when the captured launch
+   used dynamic shared memory. `--inject-config` appends a test candidate
+   (the acceptance injects block 2048 -> must be rejected pre-replay).
+3. **Pre-screen** — every candidate is validated against the documented
+   launch limits BEFORE any replay: per-block threads <= 1024 (HIP
+   maxThreadsPerBlock ceiling), grid x <= 2^31-1, grid y/z <= 65535, shared
+   <= the arch smem-per-block budget. Rejections carry a reason.
+4. **Replay + validate** — each surviving candidate is launched with its
+   (grid, block, shared) and the outputs are compared **bitwise** (sha256 +
+   byte compare) against the captured reference; a validation failure
+   DISCARDS the candidate and records it (never benchmarked).
+5. **Bench** — a validated candidate is timed via libs/bench (N reps, L2
+   flush, median + p20/p80).
+6. **Select + persist** — best config by median (ties: p20, p80, order),
+   then libs/db records keyed **(arch, kernel-name-hash,
+   capture-bundle-hash)** — `kernel_family = "kernel=<sha256(kernel name)>"`,
+   `shape_hash = "bundle=<sha256(bundle identity)>"` (v0: the bundle file;
+   v1: manifest.json) — one record per measured candidate plus the JSON
+   evidence report (baseline vs best speedup, ALL candidates with status +
+   reason).
+
+**Boundary vs template tuning (documented):** this mode only ever varies the
+LAUNCH CONFIG of the captured kernel binary — the hsaco/cubin bytes, the
+arguments and the buffers are byte-identical to the capture (the db key
+proves it). Template tuning instead regenerates SOURCE with baked-in
+tile/warp/smem structure and recompiles; the two modes cannot consume each
+other's inputs.
+
+Exit codes: 0 = best config selected (db written); 1 = no valid config
+(every candidate pre-screen rejected / launch-failed / validation-failed /
+bench-failed — **no db write**, asserted); 2 = usage/environment error.
+
+Tests:
+
+- `integ_capture_tune` (ctest, LABELS gpu-amd): live acceptance on gfx1101
+  over the committed layernorm_fused bundle (`tests/fixtures/capture/
+  layernorm-live/`) — >= 3 candidates explored, baseline first, validation
+  PASS for every explored config, `best.speedup >= 1.0`, db record
+  queryable via the libs/db CLI (`kernscope-capture db-query`) under the
+  exact (arch, kernel-name-hash, capture-bundle-hash) key, the injected
+  block-2048 config REJECTED PRE-REPLAY with a reason, and the QA negative
+  (garbage reference -> exit 1, "no valid config", NO db write).
+- `capture_tune_usage` (no-gpu): the --from-capture flag fails cleanly
+  (exit 2) without a bundle / with a broken bundle.
