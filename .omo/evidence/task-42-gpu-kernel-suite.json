@@ -1,0 +1,69 @@
+{
+  "task": "todo:42",
+  "plan": "gpu-kernel-suite",
+  "title": "pass: coalescing analysis pass + before/after IR + PTX generation + benchmark validation",
+  "date": "2026-08-15",
+  "commit": "see git log (skeleton c674a66, classifier 5be3438, showcase bff2ebe, bench 6dc84fa, evidence HEAD)",
+  "status": "happy",
+  "acceptance": {
+    "check-kernscope pass-coalesce lit exit 0": {
+      "command": "lit build/tests/pass/coalesce.test",
+      "output": "PASS: kernscope-pass :: coalesce.test (1 of 1) — Passed: 1 (100.00%)",
+      "exit": 0,
+      "notes": "asserts the classifier goldens (stride-1 fully 2/2, stride-8 uncoalesced 2/2, indirect unknown 2/3) AND the acceptance delta on the committed showcase IR: kernscope-vectorize 'vectorized 48 loads, 0 stores (12 chains)' + after.ll contains load <4 x float> (vector_width 1 -> 4), before.ll has none"
+    },
+    "reports/passes before/after .ll + .ptx + report.json per showcase (>=3 kernels)": {
+      "artifacts": {
+        "gemm": ["before.ll", "after.ll", "before.ptx", "after.ptx", "llvm-diff.txt", "pass_reports.txt", "report.json"],
+        "layernorm": ["before.ll", "after.ll", "before.ptx", "after.ptx", "llvm-diff.txt", "pass_reports.txt", "report.json"],
+        "softmax": ["before.ll", "after.ll", "before.ptx", "after.ptx", "llvm-diff.txt", "pass_reports.txt", "report.json"]
+      },
+      "asserted_deltas": {
+        "layernorm": {"vector_width_before": 1, "vector_width_after": 4, "vector_width_increased": true, "transform": "vectorize", "kernscope-vectorize line": "vectorized 48 loads, 0 stores (12 chains)"},
+        "note": "delta asserted in tests/pass/coalesce.test (DELTA-LN/DELTA-VEC FileCheck prefixes) and in report.json fields; smem_promoted remains false on all three real-clang showcases — promote's v1 constant-start {const,+,1} gate does not match clang-21 rotated loops / tid-dependent window starts (documented honestly)"
+      }
+    },
+    "AMD-analog bench records in libs/db with measured provenance": {
+      "db": "reports/passes/bench/gfx1101-showcase-bench.jsonl (schema_version 1, JSONL, canonical serialization)",
+      "records": [
+        {"kernel_family": "showcase_gemm", "shape_hash": "M=64,N=64,K=100", "timings_median_ms": 0.01124, "n_reps": 8446, "provenance_mode": "measured", "tool_version": "kernscope-pass-bench 0.1.0"},
+        {"kernel_family": "showcase_layernorm", "shape_hash": "rows=64,cols=64", "timings_median_ms": 0.00916, "n_reps": 9616, "provenance_mode": "measured", "tool_version": "kernscope-pass-bench 0.1.0"},
+        {"kernel_family": "showcase_softmax", "shape_hash": "rows=64,cols=64", "timings_median_ms": 0.02336, "n_reps": 4195, "provenance_mode": "measured", "tool_version": "kernscope-pass-bench 0.1.0"}
+      ],
+      "provenance_fields": ["gcn_arch gfx1101", "gcn_arch_full gfx1101", "device_name (device query)", "rocm-smi clocks as-measured (never locked)", "measured: true", "ISO-8601 UTC timestamp"],
+      "live_device": "AMD Radeon RX 7800 XT (gfx1101), hipcc --genco --offload-arch=gfx1101 hsacos, todo-22 harness (libs/bench: 25ms warmup / 100ms reps, L2 flush, event timing, adaptive trials)"
+    },
+    "llc PTX compile exit 0 for all showcases": {
+      "command": "llc -mtriple=nvptx64-nvidia-cuda -mcpu=sm_80 before.ll/after.ll",
+      "gemm": {"before_exit": 0, "after_exit": 0},
+      "layernorm": {"before_exit": 0, "after_exit": 0},
+      "softmax": {"before_exit": 0, "after_exit": 0},
+      "note": "COMPILE-ONLY — no NVIDIA runtime numbers claimed locally (Metis L-6 venue rule; the measured numbers are the gfx1101 analog above)"
+    },
+    "cmake --build build Werror clean": {"exit": 0, "errors_or_warnings": 0},
+    "lit build/tests/pass full suite": {"tests": 9, "passed": 9},
+    "ctest no-gpu": {"tests": 547, "passed": 547, "includes": ["coalesce_classify", "analyze_coalesce:Coalesce.* (todo-15 goldens intact)"]}
+  },
+  "deliverables": {
+    "pass_module": "tools/pass/passes/coalesce/ (include/kernscope/pass/coalesce.h, src/coalesce.cpp, src/as1.cpp, tests/coalesce_classify_test.cpp, CMakeLists.txt)",
+    "showcase_kernels": "tools/pass/showcase/{gemm,layernorm,softmax}/kernel.cu (portable CUDA/HIP, fresh rewrites — tensors sources SEMANTIC reference only)",
+    "pipeline": "tools/pass/showcase/scripts/{run_pipeline.sh,make_report.py}",
+    "bench": "tools/pass/showcase/bench/{bench_driver.cpp,build_and_run.sh}",
+    "reports": "reports/passes/<kernel>/* + reports/passes/bench/gfx1101-showcase-bench.jsonl",
+    "lit": "tests/pass/coalesce.test + tests/pass/Inputs/coalesce/{fully_coalesced,strided,unknown}.ll",
+    "wiring_deviation": "tools/pass/CMakeLists.txt gained exactly one add_subdirectory(passes/coalesce) line — todo 36 pre-declared FIVE module stubs and todo 42's sixth module cannot link into the plugin otherwise; documented in that file and this evidence"
+  },
+  "analyzer_split": {
+    "libs_shared_classifier": "NONE — verified 2026-08-15: libs/ has no coalescing classifier (todo-38-style bank-math note; the analyzer's math lives in tools/analyze/src/analyze_coalescing.cpp)",
+    "ir_level": "tools/pass/passes/coalesce (this module): SCEV-based per-lane coefficient extraction (tid intrinsic SCEVUnknown term; zext/sext/trunc transparent; AddRec start distributes, lane-in-step non-affine; blockIdx/ntid uniform; tid.y/z warp-varying -> unknown — DOCUMENTED divergence from the analyzer's tid.y-as-uniform simplification)",
+    "ptx_level": "tools/analyze/src/analyze_coalescing.cpp (todo 15): textual mov/add/shl/mul resolver on %tid.x",
+    "shared": "same vocabulary (contiguous-128B | contiguous-partial | strided | unknown-pattern) + same 32B-sector model; goldens match exactly (stride-1 float -> 4 sectors / eff 1.0; stride-8 -> 32 sectors / 0.125)"
+  },
+  "plan_vs_actuality": {
+    "clang21_generic_as": "clang 21.1.8 NVPTX lowers ALL device accesses through the generic flat address space (ConstantExpr addrspacecast AS1/AS3->p0 for globals; p0 kernel params). The committed v1 passes are direct-AS-scoped, so the pipeline runs kernscope-as1 (new, in the coalesce module) to restore the fixture form — semantics-preserving on NVPTX (flat address of a global object IS its AS1 address). Documented in src/as1.cpp + showcase README.",
+    "tile_latch_shape": "kernscope-tile v1 requires the fixture latch shape (icmp ult inc, N, continue-first); clang-21 emits rotated eq latches -> honest decline on real kernels (recorded in pass_reports.txt)",
+    "promote_constant_start": "kernscope-promote v1 requires {const,+,1} constant-start windows; real 2D/tid-dependent window starts -> honest decline (gemm report: no-transform with reasons)",
+    "vectorize_alignment": "kernscope-vectorize needs provable head alignment; tid-dependent heads are provably 4B-only -> the layernorm showcase uses thread-per-row slabs (stride-16 loops) where the head {row*64,+,16} has TZ 4 -> <4 x float> fires",
+    "honesty": "gemm (no-transform: tile latch + promote constant-start declined), softmax (no-transform: runtime row length), layernorm (vectorize 48 loads/12 chains; classifier: 64 uncoalesced before -> 12 partial + 16 uncoalesced after, the thread-per-row tradeoff documented)"
+  }
+}

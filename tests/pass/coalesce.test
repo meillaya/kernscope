@@ -31,6 +31,25 @@
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/strided.ll -o %t.str 2>&1 | FileCheck %s --check-prefix=REPORT-STRIDED
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/unknown.ll -o %t.unk 2>&1 | FileCheck %s --check-prefix=REPORT-UNKNOWN
 
+; ============================================================================
+; The todo-42 acceptance DELTA assertion, on the COMMITTED showcase IR
+; (reports/passes/<kernel>/before.ll — real clang-21 output; the committed
+; showcase artifacts are inputs here, so the suite pins the before/after
+; story end to end):
+;
+;   * layernorm: the canonical pipeline (kernscope-as1 + the real pass
+;     chain) raises vector_width 1 -> 4 — after.ll contains <4 x float>
+;     loads (48 loads / 12 chains) and before.ll has none. ASSERTED.
+;   * the classifier on the real kernels (canonical form): gemm's stride-1
+;     b-load fully + tid.y-dependent unknowns; softmax's runtime-stride
+;     accesses unknown; layernorm's thread-per-row accesses uncoalesced.
+;
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-tile,kernscope-promote,kernscope-vectorize,kernscope-pad,verify' -kernscope-vectorize-report -S %S/../../reports/passes/layernorm/before.ll -o %t.ln 2>&1 | FileCheck %s --check-prefix=DELTA-LN
+; RUN: FileCheck %s --check-prefix=DELTA-VEC --input-file %t.ln
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/gemm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=GEMM
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/softmax/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=SOFTMAX
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/layernorm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=LN
+
 ; The analysis must be a no-op on the IR (byte-identical llvm-diff above).
 ; Fully coalesced (stride-1 float): 32 lanes x 4 B = 128 B = 4 sectors ->
 ; efficiency 1.0 (the brief §3.1 golden, same counts as the todo-15 PTX
@@ -44,3 +63,25 @@
 ; Indirect (loaded) index: the gather load stays affine (fully), the two
 ; data-dependent accesses are unknown-pattern — never claimed coalesced.
 ; REPORT-UNKNOWN: kernscope-coalesce: unknown_kernel: 3 global accesses (1 fully, 0 partial, 0 uncoalesced, 2 unknown); widest access 8 B; vectorized 0
+
+; ---- the todo-42 delta, asserted on the real showcase IR ------------------
+; The layernorm showcase through the canonical pipeline: 48 scalar loads
+; vectorized into 12 <4 x float> chains (vector_width 1 -> 4; the
+; before.ll has no vector loads — see the report's vector_width_before=1).
+; DELTA-LN: kernscope-vectorize: {{.*}}: vectorized 48 loads, 0 stores (12 chains)
+; DELTA-VEC: load <4 x float>
+; DELTA-VEC-NOT: load <8 x float>
+
+; ---- the classifier on the real kernels (canonical form) ------------------
+; gemm: the stride-1 b-load is fully coalesced; the tid.y-dependent
+; a-load/c-store are honestly unknown-pattern (warp-varying rows).
+; GEMM: kernscope-coalesce: {{.*}}: 3 global accesses (1 fully, 0 partial, 0 uncoalesced, 2 unknown); widest access 4 B; vectorized 0
+
+; softmax: runtime row length -> per-lane stride not a compile-time
+; constant -> all accesses unknown-pattern, never claimed coalesced.
+; SOFTMAX: kernscope-coalesce: {{.*}}: 4 global accesses (0 fully, 0 partial, 0 uncoalesced, 4 unknown); widest access 4 B; vectorized 0
+
+; layernorm: thread-per-row -> per-lane stride 256 B -> 32 sectors per
+; warp for 128 B of useful data -> all uncoalesced (honest; the report
+; records the vectorize-after state: 12 partial + 16 uncoalesced).
+; LN: kernscope-coalesce: {{.*}}: 64 global accesses (0 fully, 0 partial, 64 uncoalesced, 0 unknown); widest access 4 B; vectorized 0

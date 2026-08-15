@@ -1,0 +1,46 @@
+kernscope-pass coalescing analysis (todo 42) — QA negative evidence
+date: 2026-08-15
+scenario: showcase with no applicable transform pattern -> the report
+          records "no-transform" HONESTLY (asserted field in the report
+          JSON), and the classifier reports unknown-pattern for the
+          runtime-dependent accesses (never optimistically claimed
+          coalesced).
+
+== showcase: tools/pass/showcase/softmax/kernel.cu ==
+row-per-thread softmax with RUNTIME row length n (kernel param):
+  * kernscope-tile:      trip count not a compile-time constant (n is a
+                         runtime arg) -> decline
+  * kernscope-promote:   {row*n,+,1} window start contains the runtime n
+                         -> not {const,+,1} -> decline
+  * kernscope-vectorize: one load per loop iteration, no consecutive
+                         chains -> untouched
+  * kernscope-coalesce:  per-lane stride row*n with n runtime (SCEV
+                         Mul(Unknown(n), Unknown(tid))) -> not a
+                         compile-time constant -> unknown-pattern, all 4
+                         accesses
+
+== report.json (asserted fields) ==
+transform: "no-transform"
+no-transform: true
+smem_promoted: false
+vectorized: false
+tiled: false
+vector_width_before/after: 1/1
+coalescing_class_before/after: total 4, fully 0, partial 0,
+  uncoalesced 0, unknown 4
+
+== pass_reports.txt (the honest decline trail) ==
+(no kernscope-tile output at all: tile's kStructure declines are silent
+ by design (tile.cpp:592 `if (Reason != DeclineReason::kStructure)`); the
+ softmax loops are rotated eq-latch loops with the RUNTIME bound n — the
+ v1 structural + constant-trip gates. The report's asserted field
+ `tiled: false` records the outcome; no promote/vectorize lines: no
+ candidates, no chains — pass reports only fire on rewrites, matching
+ the sibling passes' contracts)
+
+== lit assertion ==
+tests/pass/coalesce.test SOFTMAX prefix (runs the classifier on the
+committed showcase before.ll):
+  kernscope-coalesce: {{.*}}: 4 global accesses (0 fully, 0 partial,
+  0 uncoalesced, 4 unknown); widest access 4 B; vectorized 0
+PASS.
