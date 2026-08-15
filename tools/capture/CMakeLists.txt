@@ -13,13 +13,19 @@
 
 add_executable(kernscope-capture
   src/main.cpp
-  src/repro_gen.cpp)
+  src/repro_gen.cpp
+  src/replay.cpp
+  src/replay_model.cpp
+  src/tolerance.cpp)
 target_include_directories(kernscope-capture PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src)
-# BundleReader + sha256 provenance (libs/capture-core, todo 46) and the
-# dependency-free json model (libs/db, todo 8).
+# BundleReader + sha256 provenance (libs/capture-core, todo 46), the
+# dependency-free json model (libs/db, todo 8) and the shared replay plan
+# model (todo 48). The live replay/bench paths additionally use the
+# gpuruntime abstraction + bench harness (todo 48 links them here).
 target_link_libraries(kernscope-capture PRIVATE
-  kernscope::capture_core kernscope::db)
+  kernscope::capture_core kernscope::db
+  kernscope::bench kernscope::gpuruntime kernscope::arch)
 # Land at build/kernscope-capture (the acceptance command shape).
 set_target_properties(kernscope-capture PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -117,4 +123,39 @@ add_test(NAME capture_repro_gen
           ${CMAKE_BINARY_DIR}
           ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(capture_repro_gen PROPERTIES LABELS "gpu-amd"
+  TIMEOUT 900)
+
+# --- todo-48: db-query CLI gate (GPU-less, pinned in every run) --------------
+add_test(NAME capture_db_query
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_db_query_check.py
+          ${CMAKE_BINARY_DIR}
+          ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(capture_db_query PROPERTIES LABELS "no-gpu" TIMEOUT 120)
+
+# --- todo-48 e2e: live HIP record->replay->bench->db on gfx1101 --------------
+# The acceptance command `ctest -R capture_e2e -L gpu-amd` selects ALL three
+# capture_e2e* tests (the CUDA mock one runs without a GPU but validates the
+# rental-gated NVIDIA path's local chain).
+add_test(NAME capture_e2e
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_e2e_check.py
+          ${CMAKE_BINARY_DIR}
+          ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(capture_e2e PROPERTIES LABELS "gpu-amd" TIMEOUT 1800)
+
+add_test(NAME capture_e2e_cuda_mock
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_e2e_cuda_mock_check.py
+          ${CMAKE_BINARY_DIR}
+          ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(capture_e2e_cuda_mock PROPERTIES LABELS "gpu-amd"
+  TIMEOUT 900)
+
+add_test(NAME capture_e2e_negative
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_e2e_negative_check.py
+          ${CMAKE_BINARY_DIR}
+          ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(capture_e2e_negative PROPERTIES LABELS "gpu-amd"
   TIMEOUT 900)
