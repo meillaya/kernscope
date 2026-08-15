@@ -1,0 +1,2 @@
+kernscope-tile: declining tiling of loop @ in @_Z11gemm_kernelPKfS0_Pf: latch is not `inc = i+1; icmp ult inc, N`
+kernscope-coalesce: _Z11gemm_kernelPKfS0_Pf: 3 global accesses (1 fully, 0 partial, 0 uncoalesced, 2 unknown); widest access 4 B; vectorized 0

@@ -1,0 +1,46 @@
+{
+  "arch": "sm_80",
+  "coalescing_class_after": {
+    "fully": 0,
+    "partial": 12,
+    "total": 28,
+    "uncoalesced": 16,
+    "unknown": 0
+  },
+  "coalescing_class_before": {
+    "fully": 0,
+    "partial": 0,
+    "total": 64,
+    "uncoalesced": 64,
+    "unknown": 0
+  },
+  "ir_changed": true,
+  "kernel": "layernorm",
+  "llvm_diff_exit": 1,
+  "llvm_diff_summary": [
+    "in function _Z16layernorm_kernelv:",
+    "  in block %7 / %7:",
+    "    >   %8 = phi float [ 0.000000e+00, %0 ], [ %74, %7 ]",
+    "    >   %9 = phi i32 [ 0, %0 ], [ %75, %7 ]"
+  ],
+  "no-transform": false,
+  "pipeline": "kernscope-tile,kernscope-promote,kernscope-vectorize,kernscope-pad,kernscope-coalesce",
+  "provenance": {
+    "mode": "projected",
+    "note": "static IR/PTX artifacts (llc compile-only); the measured numbers are the gfx1101 analog in the libs/db records (mode: measured)",
+    "tool_version": "kernscope-pass 0.1.0"
+  },
+  "ptx_compile_after_exit": 0,
+  "ptx_compile_all_exit0": true,
+  "ptx_compile_before_exit": 0,
+  "smem_bytes_after": 0,
+  "smem_bytes_before": 0,
+  "smem_bytes_increased": false,
+  "smem_promoted": false,
+  "tiled": false,
+  "transform": "vectorize",
+  "vector_width_after": 4,
+  "vector_width_before": 1,
+  "vector_width_increased": true,
+  "vectorized": true
+}

@@ -1,0 +1,4 @@
+in function _Z14softmax_kernelPKfPfi:
+  in block %3 / %3:
+    >   %4 = addrspacecast ptr %1 to ptr addrspace(1)
+    >   %5 = addrspacecast ptr %0 to ptr addrspace(1)

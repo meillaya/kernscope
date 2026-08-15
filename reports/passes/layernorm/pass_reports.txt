@@ -1,0 +1,5 @@
+kernscope-tile: declining tiling of loop @ in @_Z16layernorm_kernelv: no canonical {0,+,1} induction phi
+kernscope-tile: declining tiling of loop @ in @_Z16layernorm_kernelv: no canonical {0,+,1} induction phi
+kernscope-tile: declining tiling of loop @ in @_Z16layernorm_kernelv: no canonical {0,+,1} induction phi
+kernscope-vectorize: _Z16layernorm_kernelv: vectorized 48 loads, 0 stores (12 chains)
+kernscope-coalesce: _Z16layernorm_kernelv: 28 global accesses (0 fully, 12 partial, 16 uncoalesced, 0 unknown); widest access 16 B; vectorized 12
