@@ -1,0 +1,420 @@
+{
+  "todo": 53,
+  "track": "gpu-kernel-suite",
+  "title": "integration: capture->tune pipeline (replay-based launch-config tuning)",
+  "date": "2026-08-15",
+  "executor": "implementation worker (todo 53 of gpu-kernel-suite plan)",
+  "commits": [
+    "9218cc4 feat(tune): capture->tune replay-based launch-config tuning skeleton (todo 53) \u2014 --from-capture flag + candidate loop skeleton + no-gpu usage gate",
+    "7e69466 feat(tune): capture->tune live acceptance e2e (todo 53) \u2014 integ_capture_tune (gpu-amd) + --inject-config broken-config rejection",
+    "38d59b0 docs(tune): capture->tune mode + template-tuning boundary (todo 53) \u2014 docs/tuning.md",
+    "FINAL feat(integration): capture->tune replay-based launch-config tuning (this commit; evidence force-added here)"
+  ],
+  "files_created": [
+    "tools/tune/include/kernscope/tune/capture_tune.h (public API: CaptureTuneOptions/CaptureTuneResult/CaptureTuneStatus/tune_from_capture + the documented launch limits kMaxBlockThreads=1024, grid caps, shared <= arch smem budget)",
+    "tools/tune/src/capture_tune.cpp (the capture->tune driver: BuildPlan reuse + gpuruntime restore + candidate loop [baseline ALWAYS first -> block grid -> --inject-config] + pre-replay pre-screen + bitwise validation + libs/bench timing + best-by-median + libs/db records keyed (arch, kernel-name-hash, capture-bundle-hash) + JSON evidence)",
+    "tools/tune/tests/integ_capture_tune_check.py (the todo-53 LIVE acceptance, ctest -R integ_capture_tune -L gpu-amd: >= 3 candidates, baseline first, validation PASS everywhere, speedup >= 1.0, db-query under the exact key, injected block-2048 REJECTED PRE-REPLAY, no-valid-config negative with NO db write)",
+    "tools/tune/tests/capture_tune_usage_check.py (trivial no-gpu usage gate: --from-capture without/broken bundle exits 2 cleanly)"
+  ],
+  "files_modified": [
+    "tools/tune/src/tune_cli.cpp (--from-capture <bundle> mode + --vendor/--blob-dir/--candidates/--inject-config/--ref/--reps/--no-flush/--profile-out flags + capture-mode dispatch/exit codes)",
+    "tools/tune/CMakeLists.txt (kernscope_capture_tune static lib compiling tools/capture/src/replay_model.cpp UNCHANGED \u2014 reuse via API, no tools/capture or libs/* file touched; CLI links it; integ_capture_tune + capture_tune_usage tests)",
+    "docs/tuning.md (the --from-capture section: pipeline, baseline-first rule, pre-screen limits, bitwise gating, db keying, and the documented boundary vs template tuning \u2014 launch-config only, binaries byte-identical)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "full build Werror-clean (no errors/warnings/FAILED)",
+      "details": [
+        "clang++ -Wall -Wextra -Werror -std=c++20 across all targets including the new kernscope_capture_tune lib"
+      ]
+    },
+    {
+      "command": "ctest -R integ_capture_tune -L gpu-amd",
+      "exit": 0,
+      "result": "1/1 passed; the tool's own output (JSON evidence) proves: >= 3 candidates INCLUDING the captured baseline (explored FIRST), validation PASS for every explored config, best.speedup >= 1.0, db records queryable via the libs/db CLI under (arch, kernel-name-hash, capture-bundle-hash), injected broken config (block 2048) REJECTED PRE-REPLAY with a reason, QA negative -> exit 1 'no valid config' with NO db write",
+      "details": [
+        "candidates explored: block 128 (baseline, grid 1024x1x1) -> block 256 -> block 512 -> block 1024: ALL validated bitwise (replay_sha == ref_sha a0027ed9...) + benchmarked",
+        "best: block 128 median 0.0120 ms (baseline tie), speedup 1.0000 >= 1.0 (baseline-first guarantee)",
+        "injected '128,1,1:2048,1,1' -> status pre_screen_rejected, reason 'block 2048 exceeds the launch limit 1024 threads per block (HIP maxThreadsPerBlock ceiling)', never replayed (validation pass false, no ref/replay sha)",
+        "db-query: 'record: gpu_arch=gfx1101 kernel_family=kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66 shape_hash=bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308 median_ms=0.0122 ...' \u2014 4 records found, min-median matches evidence.best",
+        "QA negative (garbage reference): exit 1, status no_viable_config, message 'no valid config: every candidate was ... failed bitwise validation ...', summary validation_failed=4, NO db file written (asserted)"
+      ]
+    },
+    {
+      "command": "ctest -R 'tune_report|capture_tune'",
+      "exit": 0,
+      "result": "3/3 passed (capture_tune_usage no-gpu, integ_capture_tune gpu-amd, tune_report no-gpu) \u2014 the shared tune_cli.cpp change does not regress the template-tuning path"
+    }
+  ],
+  "evidence": {
+    "happy_run": {
+      "arch": "gfx1101",
+      "baseline": {
+        "config": {
+          "block": [
+            128,
+            1,
+            1
+          ],
+          "grid": [
+            1024,
+            1,
+            1
+          ],
+          "is_baseline": true,
+          "shared_mem_bytes": 0
+        },
+        "timings": {
+          "median": 0.012160000391304493,
+          "p20": 0.012080000154674054,
+          "p80": 0.012255199812352657
+        },
+        "validation": {
+          "pass": true,
+          "ref_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+          "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+        }
+      },
+      "best": {
+        "config": {
+          "block": [
+            128,
+            1,
+            1
+          ],
+          "grid": [
+            1024,
+            1,
+            1
+          ],
+          "is_baseline": true,
+          "shared_mem_bytes": 0
+        },
+        "timings": {
+          "median": 0.012160000391304493,
+          "p20": 0.012080000154674054,
+          "p80": 0.012255199812352657
+        }
+      },
+      "bundle": "",
+      "bundle_hash": "bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308",
+      "candidates": [
+        {
+          "config": {
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": true,
+            "shared_mem_bytes": 0
+          },
+          "speedup": 1,
+          "status": "validated",
+          "timings": {
+            "median": 0.012160000391304493,
+            "p20": 0.012080000154674054,
+            "p80": 0.012255199812352657
+          },
+          "validation": {
+            "pass": true,
+            "ref_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "speedup": 0.9950900551591422,
+          "status": "validated",
+          "timings": {
+            "median": 0.01221999991685152,
+            "p20": 0.011976000107824803,
+            "p80": 0.012368000112473965
+          },
+          "validation": {
+            "pass": true,
+            "ref_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              512,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "speedup": 0.9440993883134204,
+          "status": "validated",
+          "timings": {
+            "median": 0.012880000285804272,
+            "p20": 0.012799999676644802,
+            "p80": 0.012919999659061432
+          },
+          "validation": {
+            "pass": true,
+            "ref_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              1024,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "speedup": 0.8074369384545438,
+          "status": "validated",
+          "timings": {
+            "median": 0.015060000121593475,
+            "p20": 0.014919999986886978,
+            "p80": 0.015216000191867352
+          },
+          "validation": {
+            "pass": true,
+            "ref_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              2048,
+              1,
+              1
+            ],
+            "grid": [
+              128,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "reason": "block 2048 exceeds the launch limit 1024 threads per block (HIP maxThreadsPerBlock ceiling)",
+          "status": "pre_screen_rejected",
+          "validation": {
+            "pass": false,
+            "ref_sha": "",
+            "replay_sha": ""
+          }
+        }
+      ],
+      "db_key": {
+        "gpu_arch": "gfx1101",
+        "kernel_family": "kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66",
+        "shape_hash": "bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308"
+      },
+      "device_name": "AMD Radeon RX 7800 XT",
+      "kernel_name": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+      "kernel_name_hash": "kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66",
+      "message": "best config selected (validated)",
+      "mode": "capture_tune",
+      "speedup": 1,
+      "status": "ok",
+      "summary": {
+        "bench_failed": 0,
+        "candidates_total": 5,
+        "launch_failed": 0,
+        "pre_screen_rejected": 1,
+        "validated": 4,
+        "validation_failed": 0
+      },
+      "vendor": "amd"
+    },
+    "negative_run": {
+      "arch": "gfx1101",
+      "baseline": {
+        "config": {
+          "block": [
+            128,
+            1,
+            1
+          ],
+          "grid": [
+            1024,
+            1,
+            1
+          ],
+          "is_baseline": true,
+          "shared_mem_bytes": 0
+        },
+        "timings": {
+          "median": 0,
+          "p20": 0,
+          "p80": 0
+        },
+        "validation": {
+          "pass": false,
+          "ref_sha": "49bcc6cb4d7429b3d8d326a3d5cb511dc571514e8f06b41dc33e76e4bb8d2f6a",
+          "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+        }
+      },
+      "best": {},
+      "bundle": "",
+      "bundle_hash": "bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308",
+      "candidates": [
+        {
+          "config": {
+            "block": [
+              128,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": true,
+            "shared_mem_bytes": 0
+          },
+          "status": "validation_failed",
+          "validation": {
+            "pass": false,
+            "ref_sha": "49bcc6cb4d7429b3d8d326a3d5cb511dc571514e8f06b41dc33e76e4bb8d2f6a",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              256,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "status": "validation_failed",
+          "validation": {
+            "pass": false,
+            "ref_sha": "49bcc6cb4d7429b3d8d326a3d5cb511dc571514e8f06b41dc33e76e4bb8d2f6a",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              512,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "status": "validation_failed",
+          "validation": {
+            "pass": false,
+            "ref_sha": "49bcc6cb4d7429b3d8d326a3d5cb511dc571514e8f06b41dc33e76e4bb8d2f6a",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        },
+        {
+          "config": {
+            "block": [
+              1024,
+              1,
+              1
+            ],
+            "grid": [
+              1024,
+              1,
+              1
+            ],
+            "is_baseline": false,
+            "shared_mem_bytes": 0
+          },
+          "status": "validation_failed",
+          "validation": {
+            "pass": false,
+            "ref_sha": "49bcc6cb4d7429b3d8d326a3d5cb511dc571514e8f06b41dc33e76e4bb8d2f6a",
+            "replay_sha": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+          }
+        }
+      ],
+      "db_key": {
+        "gpu_arch": "gfx1101",
+        "kernel_family": "kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66",
+        "shape_hash": "bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308"
+      },
+      "device_name": "AMD Radeon RX 7800 XT",
+      "kernel_name": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+      "kernel_name_hash": "kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66",
+      "message": "no valid config: every candidate was pre-screen rejected, failed to launch, failed bitwise validation, or failed benchmarking",
+      "mode": "capture_tune",
+      "speedup": 1,
+      "status": "no_viable_config",
+      "summary": {
+        "bench_failed": 0,
+        "candidates_total": 4,
+        "launch_failed": 0,
+        "pre_screen_rejected": 0,
+        "validated": 0,
+        "validation_failed": 4
+      },
+      "vendor": "amd"
+    },
+    "db_query": [
+      "record: gpu_arch=gfx1101 kernel_family=kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66 shape_hash=bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308 median_ms=0.0122 p20=0.0121 p80=0.0123 mode=measured",
+      "record: gpu_arch=gfx1101 kernel_family=kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66 shape_hash=bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308 median_ms=0.0122 p20=0.0120 p80=0.0124 mode=measured",
+      "record: gpu_arch=gfx1101 kernel_family=kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66 shape_hash=bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308 median_ms=0.0129 p20=0.0128 p80=0.0129 mode=measured",
+      "record: gpu_arch=gfx1101 kernel_family=kernel=6b3e72fc66b45f234af3454b0e1db0d0a09d4bd8f8129b61953c66930e7d1b66 shape_hash=bundle=289d2439973b718a134dcd1a785d5fc906d00d17a249d857bc1558921a092308 median_ms=0.0151 p20=0.0149 p80=0.0152 mode=measured",
+      "db-query: 4 record(s) found"
+    ]
+  },
+  "notes": [
+    "REUSE ONLY: tools/capture and libs/* are untouched \u2014 the driver composes the todo-48 replay harness's OWN public building blocks (BuildPlan from tools/capture/src/replay_model.cpp, compiled unchanged into kernscope_capture_tune; libs/gpuruntime; libs/bench; libs/db).",
+    "Boundary vs template tuning documented (capture_tune.h + docs/tuning.md): only the LaunchConfig varies \u2014 hsaco/cubin bytes, args and buffers byte-identical to the capture; the db key (kernel-name-hash, bundle-hash) proves it.",
+    "Baseline-first guarantee (Momus LOW.d fix): the captured config is always candidate #1, so best.speedup >= 1.0 by construction.",
+    "Shared-mem carveout explored only when the captured launch used dynamic smem (layernorm_fused uses static smem, shared=0 -> no carveout candidates); pre-screen still validates shared against the arch budget.",
+    "ReadFileBytes hardened against non-regular --ref files (a device like /dev/zero never EOFs -> refused up front)."
+  ]
+}

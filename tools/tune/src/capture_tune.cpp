@@ -74,14 +74,28 @@ std::string IsoDateUtc() {
 
 bool ReadFileBytes(const std::string &path, std::vector<std::uint8_t> &out,
                    std::string *error) {
+  // Only regular files are readable as byte sources (a device like /dev/zero
+  // never reaches EOF — refuse it up front instead of hanging).
+  std::error_code ec;
+  const fs::file_status st = fs::status(path, ec);
+  if (ec || !fs::is_regular_file(st)) {
+    *error = "not a regular file: " + path;
+    return false;
+  }
+  const std::uintmax_t size = fs::file_size(path, ec);
+  if (ec) {
+    *error = "cannot stat " + path;
+    return false;
+  }
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     *error = "cannot open " + path;
     return false;
   }
-  out.assign((std::istreambuf_iterator<char>(in)),
-             std::istreambuf_iterator<char>());
-  if (in.bad()) {
+  out.resize(static_cast<std::size_t>(size));
+  in.read(reinterpret_cast<char *>(out.data()),
+          static_cast<std::streamsize>(out.size()));
+  if (!in) {
     *error = "read failed: " + path;
     return false;
   }

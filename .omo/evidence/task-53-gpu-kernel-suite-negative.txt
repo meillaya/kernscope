@@ -1,0 +1,15 @@
+kernscope-tune --from-capture <layernorm-live bundle> --vendor amd --arch gfx1101
+  --blob-dir <blobs> --ref <GARBAGE reference (cannot match the replayed output)>
+  --db <db.jsonl> --json
+EXIT: 1  (asserted: no valid config)
+DB FILE: NOT WRITTEN (asserted: the negative leaves no db behind)
+
+Evidence JSON (status field):
+  status: "no_viable_config"
+  message: "no valid config: every candidate was pre-screen rejected, failed to launch, failed bitwise validation, or failed benchmarking"
+  summary: {candidates_total: 4, pre_screen_rejected: 0, launch_failed: 0, validation_failed: 4, bench_failed: 0, validated: 0}
+
+Every candidate (including the captured baseline) failed bitwise validation
+against the garbage reference (ref_sha != replay_sha a0027ed9...) and was
+recorded as validation_failed — candidate discarded + recorded, never
+benchmarked, and the pipeline reports "no valid config" with NO libs/db write.
