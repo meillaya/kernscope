@@ -28,6 +28,37 @@
 # ctest hardware-gating convention (todo 3): every registered test carries a
 # LABELS property of exactly one of no-gpu | gpu-amd | gpu-nvidia-rental.
 
+# --- per-kernel enrichment layer (todo 50) --------------------------------------
+# The vendor-neutral enrichment library: theoretical occupancy + limiter via
+# libs/occupancy (todo 11 — the ONLY occupancy engine, no cuda_occupancy.h
+# port), the cuobjdump -res-usage / PTX -lineinfo / llvm-objdump -l parsers
+# and the enriched JSONL shape. Deliberately CUPTI/HIP-free (pure libs/arch +
+# libs/occupancy + std) so BOTH tracers and the report path can link it.
+add_library(kernscope_profile_enrich STATIC src/enrich.cpp)
+target_include_directories(kernscope_profile_enrich PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(kernscope_profile_enrich PUBLIC kernscope::occupancy)
+add_library(kernscope::profile_enrich ALIAS kernscope_profile_enrich)
+
+# --- enrichment unit suite ------------------------------------------------------
+# The todo-50 acceptance (no-gpu): occupancy field == libs/occupancy output
+# (asserted EQUAL), the -lineinfo fixture -> source-mapping entries >= 1, the
+# cubin-only fixture -> ptx_available == false with no PTX diagnostics, the
+# QA negative -> registersPerThread==0 marks "unknown-resources" (never 0%),
+# plus the cuobjdump -res-usage and llvm-objdump -l parsers against the
+# committed fixtures.
+find_package(GTest REQUIRED)
+add_executable(profile-enrich-test tests/enrich_test.cpp)
+target_include_directories(profile-enrich-test PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(profile-enrich-test PRIVATE
+  PROFILE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/profile")
+target_link_libraries(profile-enrich-test PRIVATE
+  kernscope::profile_enrich GTest::gtest_main)
+include(GoogleTest)
+gtest_discover_tests(profile-enrich-test TEST_PREFIX "profile_enrich:"
+  PROPERTIES LABELS "no-gpu")
+
 # --- CUPTI tracer (compile+unit locally; the adapter + parser) ----------------
 # Gated on the todo-44 shared subscription library (which itself requires
 # $CUPTI_HOME at configure time — configure inside `devenv shell`).
@@ -86,6 +117,7 @@ else()
     "${HIP_INCLUDE_DIR}" "$ENV{ROCPROF_SDK_DEV}/include")
   target_compile_definitions(kernscope_profile_hip PRIVATE __HIP_PLATFORM_AMD__)
   target_link_libraries(kernscope_profile_hip PRIVATE
+    kernscope_profile_enrich
     "$ENV{ROCPROF_SDK_OUT}/lib/librocprofiler-sdk.so")
   set_target_properties(kernscope_profile_hip PROPERTIES
     CXX_VISIBILITY_PRESET hidden
@@ -105,5 +137,17 @@ else()
             ${CMAKE_BINARY_DIR}
             ${CMAKE_CURRENT_SOURCE_DIR})
   set_tests_properties(profile_tracer_amd PROPERTIES LABELS "gpu-amd"
+    TIMEOUT 600)
+
+  # The todo-50 live enrichment check: the same layernorm run, additionally
+  # asserting the code-object service facts on the kernel record — vgpr/sgpr
+  # non-zero + LDS non-zero (the fixture uses __shared__), matching the
+  # hipcc build — plus the enriched occupancy/limiter fields.
+  add_test(NAME profile_enrich_amd
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/profile_enrich_amd_check.py
+            ${CMAKE_BINARY_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(profile_enrich_amd PROPERTIES LABELS "gpu-amd"
     TIMEOUT 600)
 endif()
