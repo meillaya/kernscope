@@ -40,6 +40,40 @@ target_include_directories(kernscope_profile_enrich PUBLIC
 target_link_libraries(kernscope_profile_enrich PUBLIC kernscope::occupancy)
 add_library(kernscope::profile_enrich ALIAS kernscope_profile_enrich)
 
+# --- ranking + compiler-aware diagnostics engine (todo 51) ----------------------
+# Hot-kernel ranking + the SOL-style "why is this slow?" rules engine
+# (docs/research/profiler-research-brief.md §6): occupancy resource hints,
+# libs/roofline (todo 12) memory-traffic classification for known families,
+# the insufficient-evidence degradation, and the kernscope-analyze (todo 20)
+# subprocess merge on extracted PTX (the profiler<->analyzer cross-tool
+# multiplier). Reuses libs/roofline + libs/report + libs/db via their headers
+# (MUST NOT modify libs/*). Pure host-side: no CUPTI/HIP/GPU required.
+add_library(kernscope_profile_diag STATIC src/diagnostics.cpp)
+target_include_directories(kernscope_profile_diag PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(kernscope_profile_diag PUBLIC
+  kernscope::profile_enrich kernscope::roofline kernscope::report
+  kernscope::db)
+add_library(kernscope::profile_diag ALIAS kernscope_profile_diag)
+
+find_package(GTest REQUIRED)
+add_executable(profile-diag-test tests/profile_diag_test.cpp)
+target_include_directories(profile-diag-test PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(profile-diag-test PRIVATE
+  PROFILE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/profile"
+  KERNSCOPE_ANALYZE_CLI="$<TARGET_FILE:kernscope-analyze>")
+target_link_libraries(profile-diag-test PRIVATE
+  kernscope::profile_diag kernscope::profile_enrich kernscope::roofline
+  kernscope::report kernscope::db GTest::gtest_main)
+# The analyzer-merge acceptance INVOKES the REAL kernscope-analyze CLI (todo
+# 20) on the extracted-PTX fixture: the test binary must be built after it.
+# The analyzer itself is never modified (MUST NOT touch tools/analyze).
+add_dependencies(profile-diag-test kernscope-analyze)
+include(GoogleTest)
+gtest_discover_tests(profile-diag-test TEST_PREFIX "profile_diag:"
+  PROPERTIES LABELS "no-gpu")
+
 # --- enrichment unit suite ------------------------------------------------------
 # The todo-50 acceptance (no-gpu): occupancy field == libs/occupancy output
 # (asserted EQUAL), the -lineinfo fixture -> source-mapping entries >= 1, the
