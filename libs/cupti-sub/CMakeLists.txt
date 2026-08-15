@@ -88,3 +88,67 @@ target_link_libraries(cupti-negative PRIVATE kernscope::cupti_sub)
 add_test(NAME capture_cupti_negative COMMAND cupti-negative)
 set_tests_properties(capture_cupti_negative PROPERTIES LABELS "no-gpu"
   TIMEOUT 60)
+
+# --- dual-mechanism equivalence test (todo 44, Metis circularity breaker) -----
+# ctest -R capture_equiv -L gpu-amd: the bundle produced by the CUDA
+# mechanism (CUPTI callback/injection driven by the synthetic harness -
+# "shim-on-mock") must equal FIELD-FOR-FIELD the bundle produced by the
+# todo-45 HIP mechanism (LIVE on gfx1101 under libkernscope_capture_hip.so)
+# per docs/capture-mapping.md. Both bundles are produced in ONE test process
+# (CUDA side in-process via equiv_cuda_side, HIP side as a subprocess).
+find_program(KERNSCOPE_CUPTI_NVCC nvcc)
+if(KERNSCOPE_CUPTI_NVCC AND TARGET kernscope_capture_hip)
+  # The REAL cubin compiled from the todo-24 elementwise_add source (sm_80) -
+  # the CUDA side's kernel-binary blob (M12/M13: presence + per-vendor hash).
+  set(CUPTI_TPL_INCLUDE "${CMAKE_SOURCE_DIR}/kernels/templates/include")
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/elementwise_add.cubin
+    COMMAND ${KERNSCOPE_CUPTI_NVCC} -cubin -arch=sm_80 -x cu -std=c++20
+            -I${CUPTI_TPL_INCLUDE}
+            ${CMAKE_SOURCE_DIR}/kernels/templates/reference/elementwise_add.hip
+            -o ${CMAKE_CURRENT_BINARY_DIR}/elementwise_add.cubin
+    DEPENDS ${CMAKE_SOURCE_DIR}/kernels/templates/reference/elementwise_add.hip
+    COMMENT "nvcc -cubin sm_80: elementwise_add (equivalence test)")
+  add_custom_target(equiv_elementwise_cubin DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/elementwise_add.cubin)
+
+  add_executable(equiv_cuda_side
+    tests/equiv/equiv_cuda_side.cpp)
+  target_include_directories(equiv_cuda_side PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+  target_include_directories(equiv_cuda_side SYSTEM PRIVATE
+    "$ENV{CUPTI_HOME}/include")
+  target_link_libraries(equiv_cuda_side PRIVATE
+    kernscope::cupti_sub)
+  add_dependencies(equiv_cuda_side equiv_elementwise_cubin)
+
+  # The HIP side: the todo-24 portable kernel compiled for gfx1101 with the
+  # hipMemcpy-based program (equiv_hip_app.hip mirrors the runner's program;
+  # the todo-45 tool wraps hipMemcpy/hipMemcpyAsync, not the HtoD/DtoH
+  # entry points).
+  find_program(KERNSCOPE_CUPTI_HIPCC hipcc REQUIRED)
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/equiv_hip_app
+    COMMAND ${KERNSCOPE_CUPTI_HIPCC} --offload-arch=gfx1101 -std=c++17 -O3
+            -D__HIP_PLATFORM_AMD__=1
+            -I${CUPTI_TPL_INCLUDE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/equiv/equiv_hip_app.hip
+            -o ${CMAKE_CURRENT_BINARY_DIR}/equiv_hip_app
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/equiv/equiv_hip_app.hip
+            ${CMAKE_SOURCE_DIR}/kernels/templates/reference/elementwise_add.hip
+            ${CMAKE_SOURCE_DIR}/kernels/templates/include/kernscope/kernel_traits.h
+    COMMENT "hipcc gfx1101: equiv_hip_app (equivalence test)")
+  add_custom_target(equiv_hip_app_build DEPENDS
+    ${CMAKE_CURRENT_BINARY_DIR}/equiv_hip_app)
+  add_dependencies(equiv_hip_app_build kernscope_capture_hip)
+
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME capture_equiv
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/equiv/capture_equiv_check.py
+            ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_SOURCE_DIR}/kernels/templates)
+  set_tests_properties(capture_equiv PROPERTIES LABELS "gpu-amd"
+    TIMEOUT 600)
+else()
+  message(STATUS "capture_equiv DISABLED (nvcc or libkernscope_capture_hip "
+                 "unavailable at configure time)")
+endif()

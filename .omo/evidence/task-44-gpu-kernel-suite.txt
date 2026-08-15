@@ -1,0 +1,62 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+  CC/CXX:      /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang / /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang++
+  CUDA_HOME:   /nix/store/an6sdsdk5b1apdvlq80687rkymzqm73r-cuda12.6-cuda_cudart-12.6.77 (single root)
+  CUPTI_HOME:  /nix/store/fxwhb6kzfnrw8fm7swbbzqvhh4lkkw9y-cuda-cupti-home
+  mlir-tblgen: LLVM (http://llvm.org/):
+  nvcc:        Cuda compilation tools, release 12.6, V12.6.85
+  hipcc:       HIP version: 7.2.53211-9999
+  cmake:       cmake version 4.3.4
+  clang:       clang version 21.1.8
+todo 44 (gpu-kernel-suite): CUPTI callback/injection capture (NVIDIA PRIMARY) + dual-mechanism equivalence
+Acceptance: ctest -R capture_cupti exit 0; ctest -R capture_equiv -L gpu-amd exit 0; cupti-sub links into a stub; cmake --build build exit 0 (Werror)
+Date: 2026-08-15T02:36:20Z
+
+=== (a) ctest -R capture_cupti (compile+unit vs the synthetic CUPTI-callback harness) ===
+1/7 Test #470: capture_cupti:CuptiCaptureTest.CallbackDispatchRecordsMallocFree ........   Passed    0.00 sec
+2/7 Test #471: capture_cupti:CuptiCaptureTest.CallbackDispatchRecordsMemcpy ............   Passed    0.00 sec
+3/7 Test #472: capture_cupti:CuptiCaptureTest.CallbackDispatchRecordsLaunchWithArgs ....   Passed    0.00 sec
+4/7 Test #473: capture_cupti:CuptiCaptureTest.CallbackDispatchModuleLoadRecordsCubin ...   Passed    0.00 sec
+5/7 Test #474: capture_cupti:CuptiCaptureTest.MemoryRecordsLearnAllocationSizes ........   Passed    0.00 sec
+6/7 Test #475: capture_cupti_stub_link .................................................   Passed    0.00 sec
+7/7 Test #476: capture_cupti_negative ..................................................   Passed    0.00 sec
+100% tests passed, 0 tests failed out of 7
+
+=== (b) capture_equiv: field-for-field per docs/capture-mapping.md (CUDA-shim-on-mock vs HIP-live on gfx1101) ===
+--- ctest registration ---
+1/1 Test #477: capture_equiv ....................   Passed    0.30 sec
+100% tests passed, 0 tests failed out of 1
+--- detailed field-for-field checks (capture_equiv_check.py output) ---
+equiv_cuda_side: bundle written to /tmp/capture_equiv_s79eoni7/cuda.bundle (launches=1 allocs=6 copies=3)
+equiv_hip_app: wrote 2048 bytes -> /tmp/capture_equiv_s79eoni7/out.bin
+[PASS] three allocations per side (cuda=3, hip=3)
+[PASS] M9 alloc sizes equal [2048, 2048, 2048]
+[PASS] CUDA bundle has the elementwise launch
+[PASS] HIP bundle has the elementwise launch
+[PASS] M1 kernel name equal under normalization (kernscope_templates_elementwise_add)
+[PASS] M2 grid equal (4, 1, 1)
+[PASS] M3 block equal (256, 1, 1)
+[PASS] M4 shared equal (0)
+[PASS] M5 stream equal (default 0x0)
+[PASS] M6 arg count equal (4)
+[PASS] M7 arg sizes equal [8, 8, 8, 4]
+[PASS] M7 scalar arg byte-identical (int32 n=1024, bytes=00040000)
+[PASS] three pointer slots per side
+[PASS] raw device VAs differ across vendors (VA normalization is necessary: cuda=['0x1000', '0x2000', '0x3000'] hip=['0x7f03c9c00000', '0x7f03c9c01000', '0x7f03c9c02000'])
+[PASS] M8 pointer args equal after VA normalization ([(8, 'va#1'), (8, 'va#2'), (8, 'va#3')])
+[PASS] M10 H2D copy byte counts equal [2048, 2048]
+[PASS] M10 D2H copy present on both sides
+[PASS] M11 two input blobs per side (['input-buffer-1.bin', 'input-buffer-2.bin'], ['input-buffer-1.bin', 'input-buffer-2.bin'])
+[PASS] M11 input-buffer blobs byte-identical (a sha256=cefd928208ddcab2..., b sha256=02322d1f0a45f344...)
+[PASS] M12 kernel-binary blob present per side
+[PASS] M13 CUDA module sha256 == cubin blob sha256 (provenance bijection)
+[PASS] M13 HIP module sha256 == hsaco blob sha256 (provenance bijection)
+[PASS] M12 per-vendor hashes recorded and DISTINCT (cubin != hsaco by construction; cuda=0ac3c7b59e5824e3... hip=13a5f407373f4a1f...)
+[PASS] M14 stream record(s) present per side (sync of default stream)
+[PASS] M14 default-stream sync recorded on both sides
+[PASS] capture_equiv: CUDA(CUPTI-synthetic) == HIP(live) field-for-field per docs/capture-mapping.md
+
+=== (c) link smoke (cupti-sub into a stub, no symbol conflicts) ===
+cupti-stub-smoke: mechanism=0 initialized=0 app_helper=2 exported=42 allocs=1
+
+=== (d) cmake --build build (Werror clean) ===
+ninja: no work to do.

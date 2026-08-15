@@ -74,14 +74,19 @@ value match against the alloc records, in allocation order) — after which
   — equal per side.
 
 ### 4.3 VA normalization (device pointers)
-- Build the allocation ordinals: sort the ALLOC records by `ptr`; the
-  ordinal of a pointer is its position in that order (allocation #1, #2, …).
+- Build the allocation ordinals: the ordinal of an allocation is its position
+  in the program's ALLOCATION ORDER (the alloc record sequence, 1-based).
+  Both mechanisms record allocations in the same program order (a, b, out
+  for the todo-24 kernel), so the same logical buffer receives the SAME
+  ordinal on both sides regardless of the raw VAs - pointer-VALUE sorting
+  would be meaningless cross-vendor (the VAs are platform-assigned).
 - Replace every device pointer VALUE in launch pointer-arg slots, copy
-  dst/src and alloc/free records with `va#N`.
+  dst/src (the DEVICE side only: H2D → dst, D2H → src, D2D → both) and
+  alloc/free records with `va#N`.
 - The ordinal assignment is per-side; after substitution, compare the
   positions (both sides must reference allocation #1 for the same logical
-  buffer). The ORDER of allocations is the program's allocation order — a
-  capture fact.
+  buffer). Host-side pointer VALUES (copy sources for H2D, destinations for
+  D2H) are process-local and NOT compared.
 
 ### 4.4 Input-blob ordering
 - Both sides number `input-buffer-<n>.bin` in H2D-copy call order; the

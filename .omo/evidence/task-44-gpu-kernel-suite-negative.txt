@@ -1,0 +1,25 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+  CC/CXX:      /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang / /nix/store/xy32w323i90dlgscl5zbac0dyvgk7lig-clang-wrapper-21.1.8/bin/clang++
+  CUDA_HOME:   /nix/store/an6sdsdk5b1apdvlq80687rkymzqm73r-cuda12.6-cuda_cudart-12.6.77 (single root)
+  CUPTI_HOME:  /nix/store/fxwhb6kzfnrw8fm7swbbzqvhh4lkkw9y-cuda-cupti-home
+  mlir-tblgen: LLVM (http://llvm.org/):
+  nvcc:        Cuda compilation tools, release 12.6, V12.6.85
+  hipcc:       HIP version: 7.2.53211-9999
+  cmake:       cmake version 4.3.4
+  clang:       clang version 21.1.8
+todo 44 (gpu-kernel-suite) QA negative: injection entry missing -> graceful fallback
+Contract: "CUPTI injection unavailable, falling back to LD_PRELOAD" logged; NO crash, NO hang (ctest TIMEOUT 60 guards hang).
+This runs the REAL negative path on this driverless box: try_initialize() dlopens the REAL libcupti.so
+from CUPTI_HOME and calls the REAL cuptiSubscribe; with no NVIDIA driver the subscription fails.
+Date: 2026-08-15T02:35:57Z
+
+=== capture_cupti_negative (ctest) ===
+1/1 Test #476: capture_cupti_negative ...........   Passed    0.00 sec
+100% tests passed, 0 tests failed out of 1
+
+=== direct run: stderr log ===
+[cupti-negative] attempting CUPTI subscription on a driverless host...
+[kernscope-cupti-sub] cuptiSubscribe failed (no NVIDIA driver on this host?)
+[kernscope-cupti-sub] CUPTI injection unavailable, falling back to LD_PRELOAD
+[cupti-negative] try_initialize() returned false
+exit code: 0

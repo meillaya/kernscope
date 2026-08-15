@@ -93,6 +93,15 @@ inline Callback CudaLaunchKernel(cudaLaunchKernel_v7000_params *p) {
   return cb;
 }
 
+inline Callback CudaStreamSynchronize(cudaStreamSynchronize_v3020_params *p,
+                                      cudaError_t rc) {
+  Callback cb;
+  cb.params.resize(sizeof(*p));
+  std::memcpy(cb.params.data(), p, sizeof(*p));
+  cb.retval = rc;
+  return cb;
+}
+
 inline Callback CuFuncGetParamInfo(std::uint64_t cufunc, std::size_t param_index,
                                    std::size_t offset, std::size_t size) {
   // The struct sits at the buffer head (functionParams points at it); the
