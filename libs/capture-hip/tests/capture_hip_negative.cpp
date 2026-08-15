@@ -64,8 +64,19 @@ int main() {
   for (float v : hout) {
     ok = ok && (v == 2.0f);
   }
-  hipFree(dout);
-  hipFree(dpitch);
+  // hipFree is [[nodiscard]]: check + report so a failing free is not dropped.
+  hipError_t ferr = hipFree(dout);
+  if (ferr != hipSuccess) {
+    std::fprintf(stderr, "[FAIL] neg: hipFree(dout): %s\n",
+                 hipGetErrorString(ferr));
+    ok = false;
+  }
+  ferr = hipFree(dpitch);
+  if (ferr != hipSuccess) {
+    std::fprintf(stderr, "[FAIL] neg: hipFree(dpitch): %s\n",
+                 hipGetErrorString(ferr));
+    ok = false;
+  }
   std::fprintf(stderr, "[INFO] neg: output %s\n", ok ? "correct" : "WRONG");
   return ok ? 0 : 1;
 }
