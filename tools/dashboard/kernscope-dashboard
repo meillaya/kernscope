@@ -49,6 +49,16 @@ TOOL_VERSION = "kernscope-dashboard 0.1.0"
 SCHEMA_VERSION = "1.0"
 REPORT_TYPE = "kernscope_dashboard"
 
+# Reproducible output: when SOURCE_DATE_EPOCH (reproducible-builds
+# convention) is set, the "generated" timestamp comes from it so a scripted
+# regeneration is byte-identical; otherwise the wall clock is used.
+def generated_timestamp() -> str:
+    epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if epoch:
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 # The six module sections, in the tt-flow six-section report convention.
 SECTION_ORDER = ["analyzer", "tune", "verify", "capture", "profile", "pass"]
 
@@ -347,7 +357,7 @@ def build_model(root: Path, missing: set) -> dict:
         "schema_version": SCHEMA_VERSION,
         "report_type": REPORT_TYPE,
         "tool_version": TOOL_VERSION,
-        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated": generated_timestamp(),
         "machine": machine,
         "honesty": {
             "rule": "projected numbers are never presented as measured; "
