@@ -1,0 +1,49 @@
+kernscope todo 45 — HIP capture via rocprofiler-sdk — QA evidence (NEGATIVE path)
+===================================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 45 of gpu-kernel-suite plan)
+Commits: da3603a / 59b55aa / acc3649 (feat(capture): todo 45)
+
+SCENARIO (plan): "app with an allocation via an UNSUPPORTED API -> bundle
+marks that buffer 'size-unknown' + a warning (graceful, no crash)"
+
+FIXTURE: libs/capture-hip/tests/capture_hip_negative.cpp
+  - allocates via hipMallocPitch (an API the capture tool deliberately does
+    NOT hook -> no entry in the ptr->size allocation map)
+  - hipMemcpy H2D into the pitch buffer (2048 bytes of 1.0f)
+  - launches neg_kernel<<<1,512>>>(dpitch, dout, 512) + D2H + frees
+
+COMMAND:
+  LD_PRELOAD=build/libkernscope_capture_hip.so \
+  KERNSCOPE_HIP_BUNDLE=<tmp>/negative.bundle \
+  KERNSCOPE_HIP_BLOB_DIR=<tmp>/negblobs \
+  build/libs/capture-hip/capture_hip_negative_app
+  -> APP_EXIT=0
+
+STDERR (the warnings - asserted by capture_hip_negative_check.py):
+  [kernscope-capture-hip] info: HIP runtime intercept table registered (lib v7.2.0)
+  [kernscope-capture-hip] warning: buffer size-unknown (ptr=0x7f1bb1600000): not
+    allocated via a captured HIP allocation API
+  [kernscope-capture-hip] warning: buffer size-unknown (kernel arg #0,
+    ptr=0x7f1bb1600000): not allocated via a captured HIP allocation API
+  [INFO] neg: output correct
+  [kernscope-capture-hip] info: bundle written to <tmp>/negative.bundle
+
+BUNDLE MARKS (size-unknown = v0 convention dst-size=0, capture.h "0 = unknown"):
+  alloc ptr=0x7f1bb1601000 size=2048        <- dout (hipMalloc, hooked) known
+  copy kind=memcpy dst=0x7f1bb1600000 src=0x55acdead5e60 bytes=2048
+       cuda-kind=1 dst-size=0 src-size=0    <- dst = pitch buffer: SIZE-UNKNOWN
+  launch kernel="_Z10neg_kernelPKfPfi.kd" grid=1x1x1 block=512x1x1 args=3
+       [8:000060b11b7f0000] [8:001060b11b7f0000] [4:00020000]
+       <- arg #0 = pitch ptr, captured with raw value + warning
+  copy kind=memcpy dst=0x55acdead4560 src=0x7f1bb1601000 bytes=2048
+       cuda-kind=2 dst-size=0 src-size=2048 <- dout known on the D2H read
+  free ptr=0x7f1bb1601000 size=2048
+
+ASSERTED BY capture_hip_negative_check.py (ctest -R capture_hip_negative,
+gpu-amd): app exit 0 + output correct, size-unknown warning logged, H2D copy
+dst-size=0 mark, byte count still recorded, bundle complete -> ALL PASS.
+
+RESULT: GRACEFUL. No crash; the unsupported-API buffer is marked size-unknown
+in the bundle and the capture logs a warning, exactly per the plan's QA
+scenario.

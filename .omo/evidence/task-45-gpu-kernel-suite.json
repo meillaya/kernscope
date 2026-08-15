@@ -1,0 +1,100 @@
+{
+  "todo": 45,
+  "track": "gpu-kernel-suite",
+  "title": "HIP capture via rocprofiler-sdk with live gfx1101 loop",
+  "date": "2026-08-14",
+  "executor": "implementation worker (todo 45 of gpu-kernel-suite plan)",
+  "commits": [
+    "da3603a feat(capture): HIP capture tool skeleton via rocprofiler-sdk intercept table (todo 45)",
+    "59b55aa feat(capture): byte-exact kernel args via HSACO metadata + input-buffer capture (todo 45)",
+    "acc3649 feat(capture): size-unknown negative QA + hidden-arg skip (todo 45)"
+  ],
+  "files_created": [
+    "libs/capture-hip/CMakeLists.txt",
+    "libs/capture-hip/include/kernscope/capture_hip.h",
+    "libs/capture-hip/src/capture_hip.cpp",
+    "libs/capture-hip/src/amdgpu_metadata.h",
+    "libs/capture-hip/src/amdgpu_metadata.cpp",
+    "libs/capture-hip/tests/capture_hip_check.py",
+    "libs/capture-hip/tests/capture_hip_negative.cpp",
+    "libs/capture-hip/tests/capture_hip_negative_check.py"
+  ],
+  "files_modified": [
+    "CMakeLists.txt (one add_subdirectory line wiring libs/capture-hip after libs/capture-core)",
+    "THIRD-PARTY.md (rocprofiler-sdk samples + Kerncap HSA-table pattern attribution)"
+  ],
+  "mechanism": {
+    "registration": "rocprofiler_configure + rocprofiler_at_intercept_table_registration(ROCPROFILER_HIP_RUNTIME_TABLE)",
+    "hooks": ["hipMalloc->ptr->size map", "hipFree", "hipMemcpy/Async", "hipMemset/Async", "hipLaunchKernel", "hipStreamSynchronize", "hipDeviceSynchronize"],
+    "kernel_dispatch": "ROCPROFILER_CALLBACK_TRACING_KERNEL_DISPATCH (grid/workgroup at HSA layer)",
+    "code_object": "ROCPROFILER_CALLBACK_TRACING_CODE_OBJECT (HSACO blob + kernel symbol -> kernel_id->name)",
+    "args": "per-argument byte-exact capture from hipLaunchKernel kernelParams + NT_AMDGPU_METADATA (msgpack, note type 32) arg layout",
+    "roctracer": false,
+    "intellikit": "pattern study only, no code copied (THIRD-PARTY.md)",
+    "bundle_writer": "libs/capture-core v0 BundleWriter (capture-core NOT modified)",
+    "alternative_documented": "hsa_amd_queue_intercept_create per-packet interception documented in THIRD-PARTY.md (kernel-dispatch callback tracing chosen instead)"
+  },
+  "acceptance": {
+    "command": "ctest -R capture_hip -L gpu-amd",
+    "exit_code": 0,
+    "output": "1/2 Test #468: capture_hip_live ... Passed 1.63 sec\n2/2 Test #469: capture_hip_negative ... Passed 0.12 sec\n100% tests passed, 0 tests failed out of 2",
+    "capture_hip_live_assertions": {
+      "total": 19,
+      "passed": 19,
+      "highlights": [
+        "captured app output matches golden (cos=0.999999 max_rel_err=3.889e-03) - behavior unchanged",
+        "kernel name names layernorm_fused (got _Z15layernorm_fusedPKtS0_S0_Ptfi.kd)",
+        "grid=1024x1x1",
+        "block=128x1x1",
+        "arg count == 6",
+        "allocation sizes match known buffers [256, 256, 262144, 262144]",
+        "H2D copy byte counts == known inputs [256, 256, 262144]",
+        "input-buffer blobs hash-match the app's known inputs",
+        "bundle module sha256 set == hsaco blob sha256 set (provenance bijection)",
+        "module record carries the layernorm kernel name",
+        "layernorm module blob present on disk + hash-provenanced"
+      ]
+    },
+    "input_buffer_hash_match": {
+      "X":      {"known_bytes": 262144, "captured_sha256": "c26160a5c8c57522e54304587b64531bb2e18daeffd3885f455258cb15e06394", "captured_bytes": 262144},
+      "gamma":  {"known_bytes": 256,    "captured_sha256": "4874889880bd933101fa0a88266d759034ec5c0f49d052fa3907c4be022439ea", "captured_bytes": 256},
+      "beta":   {"known_bytes": 256,    "captured_sha256": "5005f23eba66455dd6758acec1e752003e27e1734997b1f23729574727faaf67", "captured_bytes": 256}
+    },
+    "kernel_binary_blob": {
+      "layernorm_hsaco": {"blob": "code-object-2.hsaco", "bytes": 5616, "sha256": "fe32aafba2708420efb28e22936ed7fc289df24523ea55206bbbf30578236fcd", "bundle_module_line": "fatbin mod=2 sha256=fe32aafba2708420efb28e22936ed7fc289df24523ea55206bbbf30578236fcd kernels=\"_Z15layernorm_fusedPKtS0_S0_Ptfi.kd\""}
+    },
+    "bundle_launch_record": "launch kernel=\"_Z15layernorm_fusedPKtS0_S0_Ptfi.kd\" via=runtime grid=1024x1x1 block=128x1x1 shared=0 stream=0x0 graph=0x0 args=6 [8:0000a087c67f0000] [8:0000a487c67f0000] [8:0010a487c67f0000] [8:0020a487c67f0000] [4:acc52737] [4:80000000]",
+    "arg_bytes_decoded": {
+      "arg0": "dX device pointer (8 bytes)",
+      "arg1": "dG device pointer (8 bytes)",
+      "arg2": "dB device pointer (8 bytes)",
+      "arg3": "dY device pointer (8 bytes)",
+      "arg4": "eps = 0x3727c5ac (LE bytes acc52737) = 1e-5f, byte-exact",
+      "arg5": "n = 128 (LE bytes 80000000), byte-exact"
+    },
+    "build": {"command": "cmake --build build", "exit_code": 0, "werror": "clean"},
+    "full_gate": {"command": "ctest -L 'no-gpu|gpu-amd'", "result": "579/579 tests passed, 0 failed (577 baseline + 2 new capture-hip tests)"}
+  },
+  "qa_negative": {
+    "fixture": "libs/capture-hip/tests/capture_hip_negative.cpp (allocation via hipMallocPitch - an API the capture deliberately does not hook)",
+    "evidence_file": ".omo/evidence/task-45-gpu-kernel-suite-negative.txt",
+    "result": "graceful: app exit 0 + correct output; warning lines on stderr; bundle marks the pitch buffer size-unknown (copy dst-size=0)"
+  },
+  "risks_and_deviations": [
+    "Pending-launch merge is FIFO + grid/workgroup matched (single-GPU sequential apps); correlation-id hardening is a todo-48/49 concern. Runtime-internal dispatches (rocclr copy kernels) never consume the queue.",
+    "The kernel-dispatch grid arrives in WORK-ITEMS (ROCm 7.2.3); converted to blocks by dividing through the workgroup size (v0 LaunchRecord grid is in blocks).",
+    "Arg bytes are captured from the host-side kernelParams array (byte-exact for user args); hidden_* compiler args are skipped (no kernelParams entry).",
+    "Input-buffer capture reads the host source of H2D copies at the API boundary (v0-scope of the Kerncap address-space closure); the full VA-faithful device snapshot policy is todo 46's deliverable.",
+    "HSACO blob registered through the fatbin module record (the v0 module-blob record carrying the kernel-name table); todo 46 formalizes the blob kind.",
+    "rocprofiler-sdk nix cmake package is broken (self-checks a missing lib subdir) - the tool links librocprofiler-sdk.so by path via ROCPROF_SDK_DEV/ROCPROF_SDK_OUT.",
+    "Contexts are created in the tool's initialize callback, not in rocprofiler_configure (client id is assigned only after configure returns; live-caught assert on ROCm 7.2.3)."
+  ],
+  "must_not_compliance": {
+    "capture_core_modified": false,
+    "tools_modified": false,
+    "roctracer_used": false,
+    "intellikit_code_copied": false,
+    "ci_baseline_changed": false,
+    "nvidia_auto_run": false
+  }
+}

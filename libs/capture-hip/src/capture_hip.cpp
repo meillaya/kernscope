@@ -485,58 +485,60 @@ void KernelDispatchCallback(rocprofiler_callback_tracing_record_t record,
   if (have_pending) {
     launch.shared_mem_bytes = pending.shared_mem_bytes;
     launch.stream = pending.stream;
-    // Per-argument byte-exact capture: the code object's AMDGPU metadata
-    // gives each argument's size; the wrapped hipLaunchKernel exposed the
-    // host-side argument pointer array (pending.kernel_params). Copy
-    // size bytes from each pointer - the same layout the toolchain uses to
-    // build the kernarg segment. Pointer-valued args whose pointee is NOT in
-    // the allocation map trigger the size-unknown warning (QA negative), but
-    // the slot still carries the raw pointer value bytes.
-    const auto layout_it = g_arg_layouts.find(LayoutKey(launch.kernel_name));
-    if (layout_it != g_arg_layouts.end() && pending.kernel_params != nullptr) {
-      std::size_t idx = 0;
-      for (const kernscope::AmdArgLayout &a : layout_it->second) {
-        // Compiler-added hidden args (hidden_global_offset_x, printf buffers,
-        // ...) occupy kernarg space but have NO kernel_params entry: the
-        // hipLaunchKernel array covers user args only. Skipping them also
-        // keeps the captured arg count == the user-callable parameter count.
-        if (a.value_kind.rfind("hidden_", 0) == 0) {
-          continue;
-        }
-        if (a.size == 0) {
-          continue;
-        }
-        kernscope::KernelArgSlot slot;
-        slot.size = static_cast<std::size_t>(a.size);
-        if (idx < 64 && pending.kernel_params[idx] != nullptr) {
-          const auto *bytes = static_cast<const std::uint8_t *>(
-              pending.kernel_params[idx]);
-          slot.bytes.assign(bytes, bytes + slot.size);
-          if (a.is_pointer) {
-            std::uint64_t pointee = 0;
-            if (a.size >= sizeof(std::uint64_t)) {
-              std::memcpy(&pointee, bytes, sizeof(pointee));
-            }
-            if (!Session().allocation_size(pointee).has_value()) {
-              std::fprintf(stderr,
-                           "[kernscope-capture-hip] warning: buffer "
-                           "size-unknown (kernel arg #%zu, ptr=0x%llx): not "
-                           "allocated via a captured HIP allocation API\n",
-                           idx, static_cast<unsigned long long>(pointee));
-            }
+  }
+  // Per-argument byte-exact capture: the code object's AMDGPU metadata gives
+  // each argument's size; the wrapped hipLaunchKernel exposed the host-side
+  // argument pointer array (pending.kernel_params). Copy size bytes from each
+  // pointer - the same layout the toolchain uses to build the kernarg
+  // segment. Pointer-valued args whose pointee is NOT in the allocation map
+  // trigger the size-unknown warning (QA negative), but the slot still
+  // carries the raw pointer value bytes.
+  const auto layout_it = g_arg_layouts.find(LayoutKey(launch.kernel_name));
+  if (layout_it != g_arg_layouts.end() && have_pending &&
+      pending.kernel_params != nullptr) {
+    std::size_t idx = 0;
+    for (const kernscope::AmdArgLayout &a : layout_it->second) {
+      // Compiler-added hidden args (hidden_global_offset_x, printf buffers,
+      // ...) occupy kernarg space but have NO kernel_params entry: the
+      // hipLaunchKernel array covers user args only. Skipping them also
+      // keeps the captured arg count == the user-callable parameter count.
+      if (a.value_kind.rfind("hidden_", 0) == 0) {
+        continue;
+      }
+      if (a.size == 0) {
+        continue;
+      }
+      kernscope::KernelArgSlot slot;
+      slot.size = static_cast<std::size_t>(a.size);
+      if (idx < 64 && pending.kernel_params[idx] != nullptr) {
+        const auto *bytes = static_cast<const std::uint8_t *>(
+            pending.kernel_params[idx]);
+        slot.bytes.assign(bytes, bytes + slot.size);
+        if (a.is_pointer) {
+          std::uint64_t pointee = 0;
+          if (a.size >= sizeof(std::uint64_t)) {
+            std::memcpy(&pointee, bytes, sizeof(pointee));
+          }
+          if (!Session().allocation_size(pointee).has_value()) {
+            std::fprintf(stderr,
+                         "[kernscope-capture-hip] warning: buffer "
+                         "size-unknown (kernel arg #%zu, ptr=0x%llx): not "
+                         "allocated via a captured HIP allocation API\n",
+                         idx, static_cast<unsigned long long>(pointee));
           }
         }
-        launch.args.push_back(std::move(slot));
-        ++idx;
       }
-    } else if (kit != g_kernels.end() &&
-               kit->second.kernarg_segment_size > 0) {
-      // No metadata layout: fall back to the raw kernarg segment size as a
-      // single slot (sizes unavailable - bytes stay empty).
-      kernscope::KernelArgSlot slot;
-      slot.size = kit->second.kernarg_segment_size;
       launch.args.push_back(std::move(slot));
+      ++idx;
     }
+  } else if (kit != g_kernels.end() &&
+             kit->second.kernarg_segment_size > 0) {
+    // No metadata layout (or no pending launch): fall back to the raw
+    // kernarg segment size as a single slot (sizes unavailable - bytes stay
+    // empty). Applies to dispatch-only launches (runtime-internal kernels).
+    kernscope::KernelArgSlot slot;
+    slot.size = kit->second.kernarg_segment_size;
+    launch.args.push_back(std::move(slot));
   }
   Session().record_launch(std::move(launch));
 }
