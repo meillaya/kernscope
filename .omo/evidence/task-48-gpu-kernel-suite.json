@@ -1,0 +1,70 @@
+{
+  "todo": 48,
+  "track": "gpu-kernel-suite",
+  "title": "capture: replay + output validation + timing hooks + kernscope-capture CLI + e2e",
+  "date": "2026-08-14",
+  "executor": "implementation worker (todo 48 of gpu-kernel-suite plan)",
+  "commits": [
+    "00277aa feat(capture): replay engine + CLI record|replay|bench|db-query (todo 48)",
+    "8bdf4cc fix(capture): owned launch record in replay plan + fixed-sample bench (todo 48)"
+  ],
+  "files_created": [
+    "tools/capture/src/replay.h",
+    "tools/capture/src/replay.cpp",
+    "tools/capture/src/replay_model.h",
+    "tools/capture/src/replay_model.cpp",
+    "tools/capture/src/tolerance.h",
+    "tools/capture/src/tolerance.cpp",
+    "tools/capture/tests/capture_e2e_check.py",
+    "tools/capture/tests/capture_e2e_cuda_mock_check.py",
+    "tools/capture/tests/capture_e2e_negative_check.py",
+    "tools/capture/tests/capture_db_query_check.py",
+    "docs/capture.md"
+  ],
+  "files_modified": [
+    "tools/capture/src/main.cpp (CLI dispatch: record|emit-repro|replay|bench|db-query + vendor auto-detect)",
+    "tools/capture/src/repro_gen.cpp (plan building extracted to replay_model)",
+    "tools/capture/CMakeLists.txt (new sources, bench/gpuruntime/arch links, 4 new ctest registrations)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "ctest -R capture_e2e -L gpu-amd",
+      "exit": 0,
+      "result": "3/3 passed: capture_e2e (HIP live e2e), capture_e2e_cuda_mock (mock record->bundle->nvcc compile), capture_e2e_negative (corrupted blob -> FAIL verdict)",
+      "key_evidence": {
+        "record": "kernscope-capture: record: vendor auto-detect -> amd; captured output sha256=a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+        "replay_bitwise": "output ref=a0027ed9a8ef replay=a0027ed9a8ef bitwise EQUAL -> PASS; validation: PASS; replayed output hash == captured output hash",
+        "bitwise_vs_noise": "ref=1b93497e1bba replay=a0027ed9a8ef BITWISE DIFF -> FAIL; exit 1 (both asserted)",
+        "tolerance_vs_noise": "cos=1.000000 max_rel_err=7.246e-03 pcc=1.000000 -> PASS; exit 0 (both asserted)",
+        "golden_crosscheck": "golden verdict {'pass': True, 'cosine': 1.0, 'max_rel_err': 0.00724636297672987, 'pcc': 1.0}; C++ cosine 1.000000 == golden cosine (within 1e-4)",
+        "bench": "gfx1101 median 0.0120 ms (p20 0.0119, p80 0.0123) over 10 reps (L2 flush on)",
+        "db_record": "record: gpu_arch=gfx1101 kernel_family=capture_replay shape_hash=kernel=6b3e72fc... median_ms=0.0120 mode=measured; db-query: 1 record(s) found; db-query median matches the bench report",
+        "profile_hook": "launch records: 1; profile JSONL has timestamped launch + aggregate bench records"
+      }
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "Werror clean (no warnings/errors)"
+    },
+    {
+      "command": "ctest -R capture -L no-gpu|gpu-amd (capture suite)",
+      "exit": 0,
+      "result": "34/34 passed incl. capture_repro_gen (todo-47 live), capture_equiv, capture_cupti*, capture_shim_smoke, capture_db_query"
+    }
+  ],
+  "profiling_hook_contract_for_todo_49": {
+    "file": "docs/capture.md section 6 (Timing hooks)",
+    "record_shape": "{\"kind\":\"launch\",\"kernel\":\"<name>\",\"seq\":1,\"launched_at_us\":<t0>,\"completed_at_us\":<t1>,\"duration_us\":<t1-t0>}",
+    "jsonl": "written to --profile-out (replay: per-launch records; bench: validation launch record + {\"kind\":\"bench\",\"reps\":N,\"median_ms\":...,\"p20_ms\":...,\"p80_ms\":...})",
+    "consumers": "todo-49 tracers (rocprofiler-sdk / CUPTI CONCURRENT_KERNEL) emit the same semantic fields (kernel, start/end timestamps, duration) for cross-validation against replay timings"
+  },
+  "risks_deviations": [
+    "libs/golden is the Python package tests/golden/kernscope_golden/metrics.py; the C++ tolerance port in tools/capture/src/tolerance.cpp mirrors it exactly and the e2e asserts equality against the Python original (true reuse via cross-validation).",
+    "Original-VA restore is not available on HIP (HSA assigns VAs); the engine always remaps and documents CUDA VMM (cuMemAddressReserve) as the rental-gated extension point (docs/capture.md section 4).",
+    "v0 bundles carry no output blobs; replay validation takes the captured output via --ref (the e2e passes the app output). v1 bundles validate against in-bundle output snapshots.",
+    "Bench is a fixed sample count (--reps N): the libs/bench harness is configured rep_ms=0 so each convergence batch is one rep (warmup stays time-budgeted).",
+    "CUDA runtime e2e is NOT run locally: the mock-runtime chain (record->bundle->nvcc compile) is the local gate; NVIDIA runtime validation stays owner-gated via scripts/rental-validate.sh.",
+    "No bundles are uploaded anywhere (record/replay/bench are purely local)."
+  ]
+}

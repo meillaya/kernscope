@@ -1,0 +1,16 @@
+QA NEGATIVE (todo 48): replay with a CORRUPTED input blob
+run: python3 tools/capture/tests/capture_e2e_negative_check.py build tools/capture (exit 0, all asserts pass)
+exit code of the replay command itself: 1 (FAIL verdict, no crash)
+==================================================
+[PASS] fixture has input blobs
+[PASS] input blob non-empty
+kernscope-capture: replay _Z15layernorm_fusedPKtS0_S0_Ptfi.kd (amd/gfx1101) on AMD Radeon RX 7800 XT
+  output 0x7f91a4642000 ref=a0027ed9a8ef replay=6472f64d301c BITWISE DIFF -> FAIL (ref: ref file /tmp/capture_e2e_neg_z8nrpmdy/layernorm-live/output.bin)
+validation: FAIL
+launch records: 1 (profiling hook contract, docs/capture.md §profiling-hooks)
+[PASS] replay on corrupted blob exited 1 (FAIL verdict, got 1)
+[PASS] no crash (no SIGSEGV/SIGABRT)
+[PASS] validation FAIL reported
+[PASS] bitwise diff reported
+[PASS] hash diff shown (ref sha != replay sha)
+[PASS] capture_e2e_negative: corrupted blob -> FAIL verdict, hash diff, exit 1, no crash
