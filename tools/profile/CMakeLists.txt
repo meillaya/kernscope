@@ -35,19 +35,29 @@ if(NOT TARGET kernscope::cupti_sub)
   message(STATUS "tools/profile: CUPTI tracer DISABLED (kernscope::cupti_sub "
                  "unavailable — no CUPTI_HOME at configure time)")
 else()
+  # The tracer itself: dlopen-based CUPTI activity subscription (kineto
+  # enable-set), buffer request/completed callbacks, forced flush. Links the
+  # todo-44 shared subscription library for the MEMORY-record routing and the
+  # shared fallback contract.
+  add_library(kernscope_profile_cupti STATIC src/cupti_tracer.cpp)
+  target_include_directories(kernscope_profile_cupti PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_include_directories(kernscope_profile_cupti SYSTEM PRIVATE
+    "$ENV{CUPTI_HOME}/include")
+  target_link_libraries(kernscope_profile_cupti PRIVATE
+    kernscope::cupti_sub ${CMAKE_DL_LIBS})
+  add_library(kernscope::profile_cupti ALIAS kernscope_profile_cupti)
+
   find_package(GTest REQUIRED)
   add_executable(profile-cupti-test tests/cupti_tracer_test.cpp)
   target_include_directories(profile-cupti-test PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  # CUPTI headers are SYSTEM so the project-wide -Werror never trips on
-  # vendor declarations.
+  target_include_directories(profile-cupti-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src) # cupti_tracer.h lives with the impl
   target_include_directories(profile-cupti-test SYSTEM PRIVATE
     "$ENV{CUPTI_HOME}/include")
-  # The reuse contract: the tracer's tests link the todo-44 shared
-  # subscription library (kernscope::cupti_sub); the tracer itself (commit 2)
-  # links it for the MEMORY-record routing + the fallback contract.
   target_link_libraries(profile-cupti-test PRIVATE
-    kernscope::cupti_sub GTest::gtest_main)
+    kernscope::profile_cupti kernscope::cupti_sub GTest::gtest_main)
   include(GoogleTest)
   gtest_discover_tests(profile-cupti-test TEST_PREFIX "profile_tracer:"
     PROPERTIES LABELS "no-gpu")

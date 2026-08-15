@@ -26,14 +26,19 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "kernscope/capture_cupti.h" // the todo-44 shared subscription library
 #include "kernscope/profile/record_adapter.h"
+#include "cupti_tracer.h" // the tracer under test (kineto enable-set + dlopen)
 
 #include <gtest/gtest.h>
+
+#include <dlfcn.h>
 
 #include <cstring>
 #include <vector>
 
 using namespace kernscope::profile;
+using namespace kernscope::profile::cupti;
 
 namespace {
 
@@ -151,6 +156,59 @@ static_assert(has_is_device_launched<CUpti_ActivityKernel9>::value == false,
               "Kernel9 must not expose the Kernel10 tail field");
 static_assert(has_is_device_launched<Kernel10View>::value == true,
               "Kernel10View must expose the Kernel10 tail field");
+
+//===--- 4. the todo-44 reuse + the driverless negative path -------------------===//
+
+TEST(profile_tracer, ReuseRoutesMemoryRecordsToCuptiSub) {
+  // The reuse contract (libs/cupti-sub, todo 44): MEMORY activity records
+  // route through the shared subscription library's handle_activity_record()
+  // into the shared CaptureSession allocation map — the same dispatcher the
+  // capture path uses. The tracer consumes the other kinds itself.
+  kernscope::CaptureSession session;
+  kernscope::cupti::arm_session(&session);
+
+  CUpti_ActivityMemory4 mem{};
+  mem.kind = CUPTI_ACTIVITY_KIND_MEMORY;
+  mem.memoryKind = CUPTI_ACTIVITY_MEMORY_KIND_DEVICE;
+  mem.memoryOperationType = CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION;
+  mem.address = 0x1F0000;
+  mem.bytes = 65536;
+  mem.contextId = 1;
+  mem.streamId = 0;
+  kernscope::cupti::handle_activity_record(
+      reinterpret_cast<const CUpti_Activity *>(&mem));
+
+  const auto size = session.allocation_size(0x1F0000);
+  ASSERT_TRUE(size.has_value());
+  EXPECT_EQ(*size, 65536u);
+}
+
+TEST(profile_tracer, DriverlessBoxDegradesGracefully) {
+  // First-class negative contract (same as todo 44): on a host without the
+  // CUPTI runtime the tracer must log the shared fallback line and return
+  // false — never crash, never hang. When a real CUPTI runtime IS present
+  // (rental host) the assertion is skipped: the tracer may legitimately
+  // start there.
+  const bool cupti_present = [] {
+    std::string home_path;
+    if (const char *home = std::getenv("CUPTI_HOME"); home != nullptr) {
+      home_path = std::string(home) + "/lib/libcupti.so";
+    }
+    for (const char *c : {home_path.c_str(), "libcupti.so.12", "libcupti.so"}) {
+      if (c != nullptr && c[0] != '\0' && dlopen(c, RTLD_NOW | RTLD_LOCAL) != nullptr) {
+        return true;
+      }
+    }
+    return false;
+  }();
+  if (cupti_present) {
+    GTEST_SKIP() << "CUPTI runtime present — real tracing is rental-gated";
+  }
+  TracerStats stats;
+  const bool started = start_tracing(nullptr, nullptr, &stats);
+  EXPECT_FALSE(started);
+  EXPECT_FALSE(tracing_active());
+}
 
 } // namespace
 
