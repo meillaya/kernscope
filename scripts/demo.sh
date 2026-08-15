@@ -60,8 +60,8 @@ CAPTURE="$BUILD/kernscope-capture"
 ANALYZE="$BUILD/bin/kernscope-analyze"
 TUNE="$BUILD/tools/tune/kernscope-tune"
 PASS_REPORT="$BUILD/tools/tune/kernscope-pass-report"
-AGGREGATE="python3 $ROOT/scripts/demo_aggregate.py"
-CHECK_LOOP="python3 $ROOT/tests/integration/check_loop.py"
+AGGREGATE=(python3 "$ROOT/scripts/demo_aggregate.py")
+CHECK_LOOP=(python3 "$ROOT/tests/integration/check_loop.py")
 
 LAYERNORM_DIR="$ROOT/tests/fixtures/layernorm_fused"
 APP_DIR="$BUILD/tests/fixtures/layernorm_fused"
@@ -97,7 +97,7 @@ python3 -c 'import numpy' 2>/dev/null || {
 # --- GPU gate (QA hook: KERNSCOPE_NO_GPU=1 masks /dev/kfd) -------------------
 if [ "${KERNSCOPE_NO_GPU:-0}" = "1" ] || [ ! -e /dev/kfd ]; then
     echo "[demo] gpu-amd required: /dev/kfd not available (KERNSCOPE_NO_GPU=${KERNSCOPE_NO_GPU:-0}) — aborting the loop before any stage" >&2
-    "$AGGREGATE" skipped "$DEMO_DIR" "gpu-amd required: /dev/kfd masked (KERNSCOPE_NO_GPU=${KERNSCOPE_NO_GPU:-0}); stages not run (graceful abort)"
+    "${AGGREGATE[@]}" skipped "$DEMO_DIR" "gpu-amd required: /dev/kfd masked (KERNSCOPE_NO_GPU=${KERNSCOPE_NO_GPU:-0}); stages not run (graceful abort)"
     echo "[demo] wrote all-skipped report to $DEMO_DIR/report.json (graceful negative)" >&2
     exit 1
 fi
@@ -148,14 +148,22 @@ echo "[demo]   bundle: $CAPTURE_DIR/bundle.v0 (bitwise replay PASS)"
 # === stage 3: analyze the captured kernel's ISA (todo 20) ====================
 log "stage 3/5 — kernscope-analyze: static findings on the captured kernel's AMDGPU ISA"
 HSA=""
+TUNE_WORK=""
+PASS_WORK=""
+OBJDUMP_TMP="$(mktemp)"
+trap 'rm -rf "$TUNE_WORK" "$PASS_WORK" "$OBJDUMP_TMP"' EXIT
 for blob in "$CAPTURE_DIR"/blobs/code-object-*.hsaco; do
-    if llvm-objdump -d "$blob" 2>/dev/null | grep -q "layernorm_fused"; then
+    # grep a FILE, not the pipe: `grep -q` on a pipe closes it after the
+    # first match, SIGPIPEs llvm-objdump, and with `set -o pipefail` the
+    # pipeline then reports 141 even though the pattern matched.
+    if llvm-objdump -d "$blob" > "$OBJDUMP_TMP" 2>/dev/null \
+        && grep -q "layernorm_fused" "$OBJDUMP_TMP"; then
         HSA="$blob"
         break
     fi
 done
 [ -n "$HSA" ] || { echo "[demo] no layernorm code-object blob captured" >&2; exit 1; }
-"$AGGREGATE" sanitize-isa "$HSA" "$CAPTURE_DIR/layernorm.isa"
+"${AGGREGATE[@]}" sanitize-isa "$HSA" "$CAPTURE_DIR/layernorm.isa"
 "$ANALYZE" "$CAPTURE_DIR/layernorm.isa" --arch gfx1101 --block 128 --json \
     > "$DEMO_DIR/stage-3-analyze.json" || rc=$?
 rc="${rc:-0}"
@@ -194,7 +202,6 @@ EOF
 log "stage 5/5 — kernscope-tune --verify (verifier-gated) + kernscope-pass-report --report-pipeline"
 TUNE_WORK="$(mktemp -d)"
 PASS_WORK="$(mktemp -d)"
-trap 'rm -rf "$TUNE_WORK" "$PASS_WORK"' EXIT
 "$TUNE" --kernel bias_gelu --shape 4096,4096 --arch gfx1101 --verify \
     --inject-risky "$RISKY" --no-cache --json \
     --db "$DEMO_DIR/stage-5-verify-tune.jsonl" --workdir "$TUNE_WORK" \
@@ -224,9 +231,9 @@ EOF
 END_S="$(date +%s)"
 RUNTIME=$((END_S - START_S))
 log "aggregate — one report linking all five stages"
-"$AGGREGATE" aggregate "$DEMO_DIR" "$RUNTIME"
+"${AGGREGATE[@]}" aggregate "$DEMO_DIR" "$RUNTIME"
 log "assert — tests/integration/check_loop.py"
-"$CHECK_LOOP" "$DEMO_DIR/report.json"
+"${CHECK_LOOP[@]}" "$DEMO_DIR/report.json"
 
 if [ "$RUNTIME" -ge "$RUNTIME_BUDGET" ]; then
     echo "[demo] FAIL: runtime ${RUNTIME}s >= budget ${RUNTIME_BUDGET}s (< 15 min, asserted)" >&2

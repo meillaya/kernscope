@@ -235,7 +235,7 @@ def assert_happy(report: dict, report_path: Path) -> None:
 def assert_skipped(report: dict) -> None:
     check(report.get("report_type") == "kernscope_demo_report",
           "negative report_type == kernscope_demo_report")
-    check(report.get("gpu_required") is False,
+    check(report.get("machine", {}).get("gpu_required") is False,
           "negative report marks gpu_required false")
     check(report.get("runtime_seconds") == 0,
           "negative report runtime_seconds == 0 (aborted before stages)")
