@@ -1,0 +1,38 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+  ROCPROF_SDK_DEV/OUT: /nix/store/hbbw8546ynrzbmp6d9pk98c7phwc4dj3-rocprofiler-sdk-7.2.3-dev / /nix/store/aqinr7xzr2qwnacrvy9ypaa3sz0k4qv9-rocprofiler-sdk-7.2.3
+todo 50 (gpu-kernel-suite) QA negative: registersPerThread == 0 -> occupancy marked "unknown-resources" (NOT 0%)
+Contract: a kernel record with NO resource evidence (registersPerThread == 0; also covered:
+unknown arch name, block_size == 0) must NOT report a fabricated 0% occupancy. The enrichment
+marks the record "unknown-resources": occupancy_unknown == true, limiter empty, blocks_per_sm 0,
+and the JSONL emits "\"occupancy\":\"unknown-resources\"" (a string marker, never a 0.0 number).
+Asserted in the unit suite (tests/enrich_test.cpp ZeroRegistersIsUnknownResources +
+UnknownArchIsUnknownResources + ZeroBlockSizeIsUnknownResources), evidence captured via the
+gtest filter below.
+Date: 2026-08-15
+
+=== gtest filter run (unknown-resources negative) ===
+Running main() from /build/source/googletest/src/gtest_main.cc
+Note: Google Test filter = profile_enrich.ZeroRegistersIsUnknownResources:profile_enrich.UnknownArchIsUnknownResources:profile_enrich.ZeroBlockSizeIsUnknownResources
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from profile_enrich
+[ RUN      ] profile_enrich.ZeroRegistersIsUnknownResources
+[       OK ] profile_enrich.ZeroRegistersIsUnknownResources (0 ms)
+[ RUN      ] profile_enrich.UnknownArchIsUnknownResources
+[       OK ] profile_enrich.UnknownArchIsUnknownResources (0 ms)
+[ RUN      ] profile_enrich.ZeroBlockSizeIsUnknownResources
+[       OK ] profile_enrich.ZeroBlockSizeIsUnknownResources (0 ms)
+[----------] 3 tests from profile_enrich (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from profile_enrich ran. (0 ms total)
+[  PASSED  ] 3 tests.
+
+=== what the negative asserts (tests/enrich_test.cpp) ===
+- enriched.occupancy_unknown == true (record: registersPerThread == 0, sm_86, 128-thread blocks)
+- enriched.limiter empty, blocks_per_sm == 0 (no resource evidence -> no limiter claim)
+- JSONL: "\"occupancy\":\"unknown-resources\"" PRESENT
+- JSONL: no "occupancy":0.0 / 0.000000 figure anywhere (the fabrication the contract forbids)
+- same unknown-resources handling for an unknown arch name (sm_99, not in libs/arch) and
+  block_size == 0 (both can never be fed to the occupancy engine, which would otherwise
+  produce a meaningless number)

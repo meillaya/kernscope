@@ -1,0 +1,63 @@
+{
+  "todo": 50,
+  "track": "gpu-kernel-suite",
+  "title": "profile: per-kernel enrichment (occupancy via libs/occupancy, resources, source<->asm mapping)",
+  "date": "2026-08-15",
+  "executor": "implementation worker (todo 50 of gpu-kernel-suite plan)",
+  "commits": [
+    "e290628 feat(profile): enrichment skeleton — libs/occupancy reuse + parsers + fixtures (todo 50)",
+    "7b39671 feat(profile): AMD code-object resource enrichment in the live tracer (todo 50)",
+    "this commit: feat(profile): per-kernel enrichment with occupancy reuse + source mapping + degradation (evidence force-added here)"
+  ],
+  "files_created": [
+    "tools/profile/include/kernscope/profile/enrich.h (EnrichedKernel + EnrichOptions + parse/apply APIs + enriched JSONL)",
+    "tools/profile/src/enrich.cpp (libs/occupancy reuse, cuobjdump -res-usage parser, PTX .loc parser, llvm-objdump -l parser, embedded-PTX detection)",
+    "tools/profile/tests/enrich_test.cpp (todo-50 acceptance suite, TEST_PREFIX profile_enrich:, label no-gpu)",
+    "tools/profile/tests/profile_enrich_amd_check.py (live gfx1101 enrichment acceptance, label gpu-amd)",
+    "tests/fixtures/profile/tiny.cu + tiny_lineinfo.ptx (nvcc -lineinfo: source<->PTX fixture, 9 .loc directives)",
+    "tests/fixtures/profile/tiny.cubin (nvcc -cubin: cubin-only fixture, cuobjdump -ptx empty -> ptx_available false)",
+    "tests/fixtures/profile/tiny_amdgcn.cpp + tiny_amdgcn.o (clang --target=amdgcn-amd-amdhsa -mcpu=gfx1101 -gline-tables-only: source<->ISA fixture, 7 llvm-objdump -l comments)"
+  ],
+  "files_modified": [
+    "tools/profile/CMakeLists.txt (kernscope::profile_enrich lib + profile-enrich-test + profile_enrich_amd test)",
+    "tools/profile/src/amd_tracer.cpp (code-object service: sgpr/arch_vgpr/accum_vgpr/group_segment/private_segment/kernel_address per kernel_id; enriched JSONL via enrich_kernel)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "ctest -R profile_enrich",
+      "exit": 0,
+      "result": "11/11 passed (10 no-gpu gtest cases + 1 gpu-amd live check); 0 failed",
+      "details": [
+        "profile_enrich.OccupancyEqualsLibsOccupancy: synthetic Kernel9-style record (96 regs, 24576 smem, 128-thread blocks, sm_86) -> enriched.occupancy EXPECT_DOUBLE_EQ kernscope::occupancy::compute_occupancy(...).occupancy (same engine, asserted EQUAL — libs/occupancy reuse, no cuda_occupancy.h port)",
+        "profile_enrich.OccupancyMatchesPinnedGolden: sm_90 / 128 regs / 256 threads -> occupancy == 0.25, limiter == \"registers\" (brief §1.2 L101-102 golden)",
+        "profile_enrich.AmdGfx1101RecordEnriched: gfx1101 record -> occupancy in (0,1], limiter in {registers,shared,threads,blocks}, max_warps_per_sm > 0",
+        "profile_enrich.LineinfoFixtureYieldsSourceMapping: -lineinfo fixture (9 .loc directives) -> source_mapping >= 1 entries, pinned (tiny.cu, line >= 3) triple — source<->PTX",
+        "profile_enrich.CubinOnlyModuleHasNoPtx: nvcc -cubin fixture -> module_has_embedded_ptx() == false, ptx_available == false, ptx_diagnostics EMPTY (Metis degradation: never fabricated)",
+        "profile_enrich.CuobjdumpResUsageParsed: cuobjdump -res-usage on the cubin -> Function _Z11tiny_kernelPKfPfi: REG:10 STACK:0 SHARED:0 LOCAL:0 (the actual nvcc 12.6 output)",
+        "profile_enrich.AmdgcnObjdumpLinesParsed: llvm-objdump --disassemble --arch=amdgcn --mcpu=gfx1101 -l on tiny_amdgcn.o -> >= 1 (tiny_amdgcn.cpp, line, ISA) entries — source<->ISA",
+        "profile_enrich_amd (LIVE gfx1101): layernorm_fused kernel record enriched from the rocprofiler-sdk code-object service: vgpr=24 sgpr=128 accum_vgpr=0 lds_bytes=1024 scratch_bytes=0 kernel_address=140205141202944 occupancy=1.0 limiter=registers blocks_per_sm=8 — all NON-ZERO/matching the hipcc build; ptx_available == false (honest AMD degradation); todo-49 fields preserved (grid [1024,1,1], workgroup [128,1,1], correlation_id joins hipLaunchKernel API record)"
+      ]
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "no work to do (Werror-clean; also verified standalone: clang++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only on enrich.cpp and enrich_test.cpp -> exit 0)"
+    },
+    {
+      "command": "ctest -R profile_tracer_amd (regression guard)",
+      "exit": 0,
+      "result": "1/1 passed — the todo-49 live check still passes against the enriched JSONL shape (field-for-field preserved)"
+    }
+  ],
+  "qa_negative": "see .omo/evidence/task-50-gpu-kernel-suite-negative.txt",
+  "libs_reused": [
+    "libs/occupancy (todo 11) — kernscope::occupancy::compute_occupancy (4- and 5-arg) is the ONLY occupancy implementation; enrich_kernel only picks inputs (registersPerThread/static+dynamic smem/block dims) and maps the result. NO cuda_occupancy.h vendored.",
+    "libs/arch — get_arch/has_arch for the ArchInfo constants (transitively via kernscope::occupancy)"
+  ],
+  "must_not_violations": [
+    "libs/occupancy: NOT modified (git diff clean)",
+    "tools/verify|analyze|tune|pass|capture: NOT touched",
+    "scripts/ci-baseline.txt: NOT changed",
+    "No Nsight/PerfWorks dependency; no auto-run on NVIDIA (CUPTI path is compile+unit only, rental-gated)"
+  ]
+}
