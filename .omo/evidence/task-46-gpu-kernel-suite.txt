@@ -116,3 +116,58 @@ ACCEPTANCE 6: cmake --build build (Werror clean) + full no-gpu suite
   out of 572 (587-gate + 8 new bundle tests = 595 total registered)
   ctest --test-dir build -R capture -L no-gpu -> 100% passed out of 25
   (capture_shim 17 + capture_bundle 8; v0 writer + shim behavior UNCHANGED)
+
+================================================================================
+FIX NOTE (2026-08-15) - F3 adversarial-QA rejection: 1-byte truncation undetected
+--------------------------------------------------------------------------------
+SEED: reviewer removed exactly ONE byte from the committed v0 fixture
+(tests/fixtures/capture/v0-sample.bundle, 1314 -> 1313: the trailing '\n' of
+the 'end-capture-v0' terminator). `ctest -R capture_bundle` passed 8/8.
+
+ROOT CAUSES (verified in libs/capture-core/src/bundle.cpp):
+  1. v0 parser: an unterminated final line parsed identically to a clean
+     end-of-file (find('\n') == npos -> end = text.size()); the truncated
+     terminator was tolerated as valid.
+  2. No committed v1 bundle existed, so the per-blob sha256 recorded in
+     blobs.json (todo-46 spec) was never violated by a committed fixture;
+     v0 sidecar hashes are computed at load, not checked against a record.
+
+FIX (commit 7202b62 "fix(capture): detect trailing truncation + verify
+recorded blob hashes"):
+  - v0 parser hardened: a non-empty final line WITHOUT a trailing newline is
+    now a schema violation with line + byte offsets ("truncated
+    'end-capture-v0' terminator ... file ends at byte N"); the missing-
+    terminator error now also carries line + byte. Leniency kept ONLY for
+    content after a complete, newline-terminated terminator. Errors name the
+    file ("(file: ...)").
+  - v1 blob provenance verified EAGERLY at open (LoadBlobs): every recorded
+    blob is read and checked against the blobs.json sha256 + size reference;
+    mismatch/truncation fails open with "sha256 mismatch for '<blob path>'
+    (... truncated at byte N)". read_blob keeps a defense-in-depth re-check.
+  - New committed fixture tests/fixtures/capture/v1-sample.bundle/ (v1 dir,
+    writer-produced: manifest + events + 2 blobs with recorded sha256;
+    NOT `.kcap`-suffixed - `.gitignore` `*.kcap/`). Total fixtures still
+    ~1 MB << 64 MB guard.
+  - Tests (11/11 now): TruncatedV0FixtureLastByteReportsTerminatorOffset
+    (F3 seed on committed v0 fixture -> FAIL, offset == truncated size),
+    TruncatedV1BlobAnyByteFailsShaMismatch (5 seeds: first/quarter/mid/
+    three-quarter/last byte of committed v1 blob -> FAIL at load naming
+    path + offset), ReaderLoadsCommittedV1Fixture; CorruptedBlobFails
+    Sha256Verification updated to assert eager load-time rejection.
+
+MANUAL F3-SEED REPRODUCTION (both restore clean afterwards):
+  - truncate -s -1 v0-sample.bundle -> ctest -R capture_bundle FAILS:
+    "schema violation: v0 parse error at line 34 byte 1299: truncated
+    'end-capture-v0' terminator (missing trailing newline; file ends at
+    byte 1313) (file: .../tests/fixtures/capture/v0-sample.bundle)"
+    -> git checkout restores (1314 bytes, 11/11 pass).
+  - truncate -s -1 v1-sample.bundle/blobs/b0001.bin -> ctest FAILS:
+    "schema violation: blobs.json: sha256 mismatch for 'blobs/b0001.bin'
+    (expected 4dbdc2b2..., got ef8a7781..., size 47 != recorded 48
+    (truncated at byte 47))" -> restored byte-identical (48 bytes,
+    11/11 pass).
+
+VERIFY: cmake --build build exit 0 (Werror clean); ctest -R capture_bundle
+11/11. NOT run here: bash scripts/ci.sh (owner runs the full gate after all
+F3-wave fixes land).
+================================================================================
