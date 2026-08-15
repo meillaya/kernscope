@@ -496,6 +496,13 @@ void KernelDispatchCallback(rocprofiler_callback_tracing_record_t record,
     if (layout_it != g_arg_layouts.end() && pending.kernel_params != nullptr) {
       std::size_t idx = 0;
       for (const kernscope::AmdArgLayout &a : layout_it->second) {
+        // Compiler-added hidden args (hidden_global_offset_x, printf buffers,
+        // ...) occupy kernarg space but have NO kernel_params entry: the
+        // hipLaunchKernel array covers user args only. Skipping them also
+        // keeps the captured arg count == the user-callable parameter count.
+        if (a.value_kind.rfind("hidden_", 0) == 0) {
+          continue;
+        }
         if (a.size == 0) {
           continue;
         }

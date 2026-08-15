@@ -96,6 +96,6 @@ add_custom_target(capture_hip_negative_build ALL
 add_test(NAME capture_hip_negative
   COMMAND ${Python3_EXECUTABLE}
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_hip_negative_check.py
-          ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_BINARY_DIR})
+          ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(capture_hip_negative PROPERTIES LABELS "gpu-amd"
   TIMEOUT 600)
