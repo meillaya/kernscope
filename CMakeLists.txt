@@ -54,6 +54,10 @@ add_subdirectory(libs/occupancy)
 # capture/profile tracks; registers the no-gpu mock/compile-only suites and
 # the gpu-amd live HIP suite.
 add_subdirectory(libs/gpuruntime)
+# capture-core: shared interception foundation (todo 43) + the CUDA LD_PRELOAD
+# shim (libkernscope_intercept.so) + its mock-runtime unit/smoke suites.
+# Must stay after libs/gpuruntime (the tests consume the todo-21 mock).
+add_subdirectory(libs/capture-core)
 # bench: nvbench/Triton-style benchmarking harness + gfx1101 roofline peak
 # microbenches (todo 22), consumed by tools/bench and the tune track.
 add_subdirectory(libs/bench)

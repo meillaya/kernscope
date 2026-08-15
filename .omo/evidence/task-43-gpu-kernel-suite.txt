@@ -1,0 +1,120 @@
+task-43-gpu-kernel-suite: capture interception foundation + CUDA LD_PRELOAD shim (HAPPY PATH)
+=============================================================================================
+Commit: feat(capture): interception foundation + CUDA LD_PRELOAD shim with full API table
+Date:   2026-08-14 (devenv shell; CUDA 12.6 headers; no NVIDIA hardware)
+
+Files created (libs/capture-core/, NEW lib - no existing lib touched):
+  include/kernscope/capture.h   CaptureSession (interception table, ptr->size
+                                allocation map, event log), BundleWriter v0
+                                interface, sha256_hex (todo-46 provenance hook)
+  src/capture.cpp               session impl + FIPS 180-4 SHA-256 + v0 writer
+  shim/intercept.cpp            libkernscope_intercept.so: full 22-symbol API
+                                table, dlsym(RTLD_NEXT) lazy caching, TLS dedup
+                                for the runtime->driver re-dispatch, fatbin
+                                (__fatBinCHeader) + ELF-sized cubin capture,
+                                documented LD_PRELOAD limitations (brief §2
+                                pitfalls 1-5 -> todo-44 CUPTI primary)
+  tests/capture_core_test.cpp   9 gtest cases against the todo-21 MockRuntime
+  tests/mockcudart.cpp          fake runtime .so exporting the cuda*/cu* table
+  tests/shim_smoke.cpp          mock-linked smoke binary (self-checking)
+  CMakeLists.txt                no-gpu labels; shim at build/libkernscope_intercept.so
+
+ACCEPTANCE 1: ctest -R capture_shim
+--------------------------------------------------------------------------------
+100% tests passed, 0 tests failed out of 10
+  1/10 capture_shim:...MockScenarioCapturesLaunchAndExactAllocSizes  Passed
+  2/10 capture_shim:...FreeErasesMapAndUnknownFreeIsLoggedAndForwarded Passed
+  3/10 capture_shim:...FatBinaryRegistrationRecordsCubinBytesHash     Passed
+  4/10 capture_shim:...Sha256MatchesFips1804Vectors                  Passed
+  5/10 capture_shim:...CubinModuleLoadRecordsBlobHash                Passed
+  6/10 capture_shim:...ParamInfoSizesDriverLaunchArgs                Passed
+  7/10 capture_shim:...ApiTableCountsEveryInterposedApi              Passed
+  8/10 capture_shim:...StreamsGetStableLogicalIds                    Passed
+  9/10 capture_shim:...BundleWriterV0IsDeterministicAndComplete      Passed
+ 10/10 capture_shim_smoke (LD_PRELOAD smoke, self-checking)          Passed
+exit 0
+
+  Highlights (acceptance asserts):
+  - mock-runtime scenario: launch record kernel="vec_add" grid=2x1x1
+    block=128x1x1, args byte-exact vs MockRuntime::Op.payload (the exact bytes
+    the driver path captures via cuFuncGetParamInfo sizing)
+  - allocation map sizes EXACT: {1:1024, 2:64}, allocation_count()==2
+  - fatbinary registration recorded with cubin bytes HASH (sha256, FIPS 180-4
+    vectors asserted: "" -> e3b0c442... , "abc" -> ba7816bf...)
+  - cuFuncGetParamInfo (offset,size) layout sizes the driver-API arg capture
+
+ACCEPTANCE 2: LD_PRELOAD smoke against the mock-linked binary
+--------------------------------------------------------------------------------
+$ LD_PRELOAD=$PWD/build/libkernscope_intercept.so ./build/libs/capture-core/capture-shim-smoke
+smoke: PASS - capture log kernscope-capture.log verified (1788 bytes)
+exit 0   (the shim loads, intercepts and forwards with NO real CUDA runtime -
+          the mock provides the symbols; log written via kernscope_intercept_flush)
+
+  capture log (build/capture-smoke.log, verbatim):
+    kernscope-capture-v0
+    api cudaLaunchKernel calls=1        api cuModuleLoad calls=0
+    api cudaLaunchKernelExC calls=1     api cuModuleLoadData calls=1
+    api cudaGraphLaunch calls=1         api cuModuleLoadDataEx calls=0
+    api cudaMalloc calls=1              api cuModuleGetFunction calls=1
+    api cudaFree calls=2                api cuFuncGetParamInfo calls=2
+    api cudaMemcpy calls=1              api cuLaunchKernel calls=1
+    api cudaMemcpyAsync calls=0         api cuLaunchKernelEx calls=0
+    api cudaMemcpy2D calls=1            alloc ptr=0x10000 size=1024
+    api cudaMemcpy2DAsync calls=0       free ptr=0x10000 size=1024
+    api cudaMemset calls=1              unknown-free ptr=0x42424242 forwarded=true
+    api cudaMemsetAsync calls=1         launch kernel="vec_add" via=runtime grid=2x1x1 block=128x1x1 shared=0 stream=0x0 graph=0x0 args=0
+    api cudaStreamCreate calls=1        launch kernel="vec_add" via=runtime-ex grid=2x1x1 block=128x1x1 shared=0 stream=0x0 graph=0x0 args=0
+    api cudaStreamSynchronize calls=1   launch kernel="vec_add" via=driver grid=2x1x1 block=128x1x1 shared=0 stream=0x5000 graph=0x0 args=2 [8:0000010000000000] [4:00020000]
+    api __cudaRegisterFatBinary calls=1 launch kernel="<graph>" via=graph grid=1x1x1 block=1x1x1 shared=0 stream=0x5000 graph=0x9876 args=0
+    api __cudaRegisterFunction calls=1  copy kind=memcpy dst=0x10000 src=0x... bytes=256 cuda-kind=1 dst-size=1024 src-size=0 stream=0x0
+                                        copy kind=memcpy2d dst=0x10000 src=0x... bytes=512 cuda-kind=1 dst-size=1024 src-size=0 stream=0x0
+                                        memset ptr=0x10000 value=171 bytes=64 ptr-size=1024 stream=0x0
+                                        memset ptr=0x10000 value=17 bytes=32 ptr-size=1024 stream=0x5000
+                                        stream create handle=0x5000 id=1
+                                        stream sync handle=0x5000 id=1
+                                        fatbin mod=1 sha256=8bfe96b7ab7217459a0d2f0b4b020a21e5976fec991eba4803711536093ca1b2 kernels="vec_add"
+                                        cubin mod=2 sha256=4290b31ca97b66d5b5531e6f4c5e744a5365a01b8be53491f1b299c1b4fdb00d
+    end-capture-v0
+
+  Smoke self-checks asserted (exit 0):
+  - allocation map EXACT size (alloc ptr=0x10000 size=1024, free size remembered)
+  - fatbin cubin-bytes hash EXACT + registered kernel name
+  - cubin blob hash EXACT (shim sized the minimal ELF64 image via the section
+    table - cuModuleLoadData carries no length at the boundary)
+  - 4 launch records (runtime / runtime-ex / driver / graph) with
+    name+grid+block; driver path carries arg bytes from cuFuncGetParamInfo
+  - exactly ONE via=driver record: the runtime launch's internal re-dispatch
+    through cuLaunchKernel is deduped via the shim's thread-local flag
+  - stream create/sync with stable logical ids
+  - copy/memset records carry allocation-map-attributed sizes (dst-size=1024)
+
+ACCEPTANCE 3: full build (Werror)
+--------------------------------------------------------------------------------
+cmake --build build  -> exit 0 (global -Wall -Wextra -Werror clean)
+
+ACCEPTANCE 4: full CI gate
+--------------------------------------------------------------------------------
+bash scripts/ci.sh  -> exit 0
+  [PASS] configure (scripts/configure.sh)
+  [PASS] build (cmake --build build)
+  100% tests passed, 0 tests failed out of 577
+  [PASS] ctest -L "no-gpu|gpu-amd"
+  [PASS] ctest count guard: 577 tests >= baseline 550 (scripts/ci-baseline.txt)
+  (+10 tests over the todo-42 baseline 567: 9 capture_shim unit tests + smoke)
+  scripts/ci-baseline.txt NOT touched.
+
+Design notes / risks (deviations from the literal plan wording are in the
+header comments of capture.h / intercept.cpp):
+- driver-API coverage extended by cuModuleGetFunction + cuLaunchKernel/Ex:
+  cuFuncGetParamInfo arg introspection is meaningless without a driver-API
+  launch interceptor; cuModuleGetFunction provides the CUfunction->name link
+  so the bundle's kernel-name field is satisfiable on the driver path
+  (22-symbol table; the plan's "full API table").
+- runtime-API launch records carry NO arg bytes (opaque void** args with no
+  per-arg sizes at the boundary; the sizes live in the kernel image).
+  Byte-exact runtime-path args are todo-44 CUPTI functionParams; the driver
+  path + the mock scenario cover byte-exact args now.
+- graph launch records carry the exec handle only (nodes unreachable via
+  LD_PRELOAD) - CUPTI (todo 44) walks graph nodes.
+- the shim is compiled+unit-tested against the MOCK only; real-NVIDIA
+  interception is rental-gated (scripts/rental-validate.sh).

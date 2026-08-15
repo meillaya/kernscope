@@ -1,0 +1,36 @@
+task-43-gpu-kernel-suite-negative: unknown cudaFree (QA negative, asserted)
+============================================================================
+Scenario: the app calls intercepted cudaFree on a pointer the shim's
+allocation map has never seen. Per the CUDA Runtime API contract
+(cuda_runtime_api.h, cudaFree: "Frees the memory space pointed to by devPtr";
+freeing a pointer cudaMalloc did not return is UNDEFINED), the shim must
+NEVER crash: it logs the "unknown-free" event and forwards to the real
+cudaFree.
+
+(1) gtest assertion (capture_shim:CaptureSessionTest.FreeErasesMapAndUnknownFreeIsLoggedAndForwarded):
+--------------------------------------------------------------------------------
+$ ./libs/capture-core/capture-shim-test \
+    --gtest_filter=CaptureSessionTest.FreeErasesMapAndUnknownFreeIsLoggedAndForwarded
+[==========] Running 1 test from 1 test suite.
+[ RUN      ] CaptureSessionTest.FreeErasesMapAndUnknownFreeIsLoggedAndForwarded
+[       OK ] CaptureSessionTest.FreeErasesMapAndUnknownFreeIsLoggedAndForwarded (0 ms)
+[  PASSED  ] 1 test.
+
+Asserted expectations (cudaFree contract cited in the test comment):
+  - known ptr free: allocation map drops the pointer, free event remembers
+    the size (256) -> allocation_count()==0, allocs()[1].size==256
+  - unknown ptr free (0xDEADBEEF): unknown_frees()[0].ptr == 0xDEADBEEF,
+    forwarded == true, NO crash
+  - the same negative path through the shim (smoke): the mock-linked binary
+    calls cudaFree((void*)0x42424242) with the shim preloaded; the shim
+    forwards to the mock's cudaFree which returns cudaSuccess; process exits 0
+
+(2) smoke evidence (verbatim line from build/capture-smoke.log):
+--------------------------------------------------------------------------------
+unknown-free ptr=0x42424242 forwarded=true
+(and the smoke binary's self-check for this line PASSED -> exit 0)
+
+(3) failure-mode guarantee (code contract in intercept.cpp cudaFree wrapper):
+  - unknown pointer -> CaptureSession::record_free logs UnknownFreeRecord
+    {ptr, forwarded} and the wrapper returns the real cudaFree's result
+    (typed no-device error when no real runtime is present) - never a crash.
