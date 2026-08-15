@@ -19,3 +19,17 @@ The local sibling project at `/home/mei/projects/polykernel` (no public
 remote) is used as an **oracle-only** design reference: it may be consulted to
 compare expected analyzer/verifier behavior, but no code is copied from it
 into kernscope.
+
+## capture-hip (todo 45) additions
+
+| Project | License | Role |
+|---|---|---|
+| [rocprofiler-sdk](https://github.com/ROCm/rocprofiler-sdk) samples (intercept_table / code_object_tracing, ROCm 7.2.3) | MIT | API-usage reference for `rocprofiler_configure` + `rocprofiler_at_intercept_table_registration` (HipDispatchTable wrapping) and the callback-tracing service registration pattern. Pattern studied; implementation is original. |
+| Kerncap / intellikit (again) | MIT | The HSA-layer intercept-table pattern (wrap runtime dispatch-table entries for alloc hooks + launches) is the direct design precedent for libs/capture-hip §1. Pattern studied only; no code copied. |
+
+`hsa_amd_queue_intercept_create` (per-AQL-packet interception) was considered
+and DOCUMENTED as the alternative kernel-dispatch mechanism (see
+docs/research/capture-replay-research-brief.md §7); libs/capture-hip uses the
+rocprofiler-sdk kernel-dispatch callback-tracing service instead, which
+exposes the same grid/workgroup data with less plumbing. roctracer is NOT
+used (deprecated).

@@ -58,6 +58,11 @@ add_subdirectory(libs/gpuruntime)
 # shim (libkernscope_intercept.so) + its mock-runtime unit/smoke suites.
 # Must stay after libs/gpuruntime (the tests consume the todo-21 mock).
 add_subdirectory(libs/capture-core)
+# capture-hip: todo-45 LIVE HIP capture tool (rocprofiler-sdk intercept-table
+# registration + kernel-dispatch/code-object tracing) + the gpu-amd live test
+# against the todo-5 layernorm_fused fixture. Must stay after libs/capture-core
+# (consumes kernscope::capture_core + its v0 BundleWriter).
+add_subdirectory(libs/capture-hip)
 # bench: nvbench/Triton-style benchmarking harness + gfx1101 roofline peak
 # microbenches (todo 22), consumed by tools/bench and the tune track.
 add_subdirectory(libs/bench)
