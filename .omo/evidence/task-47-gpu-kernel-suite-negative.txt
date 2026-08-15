@@ -1,0 +1,47 @@
+task-47-gpu-kernel-suite: standalone C++ reproducer generator (NEGATIVE QA)
+============================================================================
+Scenario: a bundle with a size-unknown buffer (device pointer neither in the
+captured allocation map nor fixed by a copy record with a known size) must
+NOT crash the generator; the emitted reproducer carries a CLEARLY-MARKED
+synthetic input + warning header, COMPILES, and never misrepresents the
+buffer as captured.
+
+Fixture: tests/fixtures/capture/negative-size-unknown.bundle (hand-written
+v0 text):
+  * launch arg #0 = 0xdead0000: NOT in the alloc map; the only copy touching
+    it is H2D with dst-size=0 (the v0 size-unknown convention the todo-45
+    capture emits for allocations via unhooked APIs, e.g. hipMallocPitch).
+  * launch arg #1 = 0x7f0000000000: a KNOWN allocation (1024 B) with NO
+    captured blob (H2D content not dumped).
+
+Asserted (ctest capture_repro_negative, no-gpu, exit 0):
+  [PASS] emit-repro exited 0 on size-unknown bundle (no crash)
+  [PASS] reproducer emitted
+  [PASS] source carries the KERNSCOPE_SYNTHETIC_INPUT marker
+  [PASS] source carries a WARNING header
+  [PASS] warning names the size-unknown buffer explicitly
+  [PASS] synthetic buffer identified by original VA
+  [PASS] reproducer cmake configure exit 0
+  [PASS] synthetic-input reproducer compiles (flagged, no crash)
+  100% tests passed, 0 tests failed out of 1
+
+Evidence in the emitted main.hip (from the generator, deterministic):
+  #define KERNSCOPE_SYNTHETIC_INPUT 1
+  // WARNING: this bundle contains size-unknown / unblobbed buffers.
+  //--- embedded input buffer 0xdead0000 (4096 bytes, SYNTHETIC) ----
+  { "0xdead0000", BufKind::kSynthetic, 4096, kInput_0, true, 0xdead0000 },
+  { "0x7f0000000000", BufKind::kInput, 1024, kInput_1, true, 0x7f0000000000 },
+  runtime: [repro] WARNING: buffer size-unknown (ptr=0xdead0000): not
+           allocated via a captured allocation API and no copy record fixes
+           its size - SYNTHETIC input ...
+           [repro] WARNING: input buffer has no captured blob ... - SYNTHETIC
+           input ...
+
+The synthetic fill is deterministic (0xA5); the buffer is flagged at the
+source level (marker + warning header) AND at runtime, and the README
+carries a "Synthetic inputs (warning)" section stating the output cannot
+match the original for these buffers. The reproducer compiles with hipcc
+(the kernel binary for neg_kernel is absent from the fixture, so the
+launch is compile-only by design; the generator warns at emit time).
+
+Exit: 0 (no crash, no misrepresentation, compiles).

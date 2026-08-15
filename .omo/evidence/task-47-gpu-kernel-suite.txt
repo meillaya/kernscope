@@ -1,0 +1,86 @@
+task-47-gpu-kernel-suite: standalone C++ reproducer generator (HAPPY PATH)
+===========================================================================
+Commit: feat(capture): standalone C++ reproducer generator
+Date:   2026-08-14 (devenv shell, ROCm 7.2.3 / gfx1101; CUDA 12.6 compile-only)
+
+FILES CREATED (todo 47; no libs/capture-core, libs/capture-hip, libs/cupti-sub
+or existing tools/* modified - consumed via headers/CLI):
+  tools/capture/CMakeLists.txt             kernscope-capture CLI target +
+                                           check-reproducers compile gate +
+                                           capture_repro_gen (gpu-amd) +
+                                           capture_repro_negative (no-gpu)
+  tools/capture/src/main.cpp               CLI: kernscope-capture emit-repro
+  tools/capture/src/repro_gen.h            ReproduceOptions + emit_reproducer
+  tools/capture/src/repro_gen.cpp          generator: v0 (permissive text
+                                           parser + sidecar blobs) and v1
+                                           (BundleReader + blob VAs) paths;
+                                           buffer model from allocs/copies;
+                                           arg pointer re-pointing; synthetic
+                                           input handling (QA negative)
+  tools/capture/tests/capture_repro_check.py        LIVE acceptance (gpu-amd)
+  tools/capture/tests/capture_repro_negative_check.py  size-unknown QA (no-gpu)
+  tests/fixtures/capture/layernorm-live/   committed todo-45 live capture of
+                                           layernorm_fused on gfx1101:
+                                           bundle.v0 + blobs/ (3 input blobs +
+                                           2 hsaco) + output.bin + manifest.json
+  tests/fixtures/capture/negative-size-unknown.bundle  hand-written size-unknown
+                                           v0 fixture (QA negative)
+  tools/CMakeLists.txt                     one-line capture hook (designed
+                                           registration point)
+
+What emit-repro emits (STANDALONE, zero repo deps):
+  main.hip / main.cu  embeds the captured kernel binary (kernel_binary.inc)
+                      + input buffers (input_<n>.inc hex dumps), loads the
+                      code object via hipModuleLoadData/cuModuleLoadData,
+                      marshals the captured args (pointer slots re-pointed
+                      to freshly allocated device buffers; scalars byte-
+                      exact), launches with captured grid/block/shared and
+                      dumps the captured output buffers.
+  CMakeLists.txt      pinned vendor+arch from the bundle (v1 manifest / CLI
+                      for v0); HIP -> full hipcc executable, CUDA -> nvcc
+                      compile-only object (NVIDIA runtime validation is
+                      owner-gated). No kernscope targets/headers anywhere.
+  README.md           provenance (bundle, capture tool, kernel, grid/block,
+                      kernel-binary sha256).
+
+ACCEPTANCE (all pass, run inside `devenv shell`):
+  1) cmake --build build --target check-reproducers
+     exit 0. Emits + builds BOTH emitted reproducers from committed fixtures
+     (GPU-less): layernorm-hip (hipcc --offload-arch=gfx1101 full build) and
+     vecadd-cuda (nvcc -arch=sm_80 compile-only object).
+     Output: Built target kernscope_repro_standalone (x2), exit 0.
+
+  2) ctest -R capture_repro_gen -L gpu-amd
+     exit 0. Live flow on gfx1101: build layernorm_fused app -> run under
+     LD_PRELOAD=libkernscope_capture_hip.so (todo-45 capture, FRESH bundle +
+     blobs + output) -> kernscope-capture emit-repro -> plain cmake build ->
+     run the reproducer -> assert output hash == captured output hash.
+     Key lines:
+       [INFO] captured output sha256=a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec
+       [repro] dumped .../repro_output.bin (262144 bytes)
+       [INFO] reproducer output sha256=a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec
+       [PASS] OUTPUT HASH MATCH: reproducer a0027ed9a8ef2e34... == captured a0027ed9a8ef2e34...
+       100% tests passed, 0 tests failed out of 1
+
+  3) cmake --build build
+     exit 0 (project-wide -Werror clean).
+
+STANDALONE VERIFICATION (asserted in the acceptance test): the emitted
+project contains no kernscope dependency markers (#include <kernscope,
+kernscope/capture.h, kernscope::, capture_core, libkernscope) - checked
+against main.hip + CMakeLists.txt + README.md; verified on both emitted
+projects (build/repros/*: "none").
+
+HASH-MATCH on the committed fixture (check-reproducers path): the v1 writer
+path was also validated end-to-end (scratch v1 bundle written with
+write_bundle_v1 from the same capture; emit-repro -> build -> run) ->
+a0027ed9... == a0027ed9... (the v1 blob-VA association path).
+
+NOTES:
+  * v0 bundles are parsed with a permissive grammar inside the generator:
+    BundleReader's v0 compatibility mode rejects the real todo-45 output
+    (runtime-internal __amd_rocclr_* dispatches carry empty-byte arg slots
+    `[48:]`). Those launches are never reproducer targets. libs/capture-core
+    was NOT modified (off-limits for this todo).
+  * The todo-45 live capture is re-run by the gpu-amd test (fresh bundle);
+    the committed fixture makes check-reproducers GPU-less.
