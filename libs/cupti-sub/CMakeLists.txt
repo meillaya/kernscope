@@ -136,7 +136,10 @@ if(KERNSCOPE_CUPTI_NVCC AND TARGET kernscope_capture_hip)
             ${CMAKE_SOURCE_DIR}/kernels/templates/reference/elementwise_add.hip
             ${CMAKE_SOURCE_DIR}/kernels/templates/include/kernscope/kernel_traits.h
     COMMENT "hipcc gfx1101: equiv_hip_app (equivalence test)")
-  add_custom_target(equiv_hip_app_build DEPENDS
+  # ALL: the capture_equiv ctest requires this artifact at test time, so the
+  # default build must produce it — a clean checkout (ci.sh from zero state,
+  # todo 57) must not depend on a prior explicit --target build.
+  add_custom_target(equiv_hip_app_build ALL DEPENDS
     ${CMAKE_CURRENT_BINARY_DIR}/equiv_hip_app)
   add_dependencies(equiv_hip_app_build kernscope_capture_hip)
 
