@@ -9,3 +9,8 @@ add_subdirectory(verify)
 # out-of-tree LLVM 21 pass-plugin). Owns its lit wiring for tests/pass/
 # inside tools/pass/CMakeLists.txt.
 add_subdirectory(pass)
+# One-time addition (todo 47): the capture track (kernscope-capture, the
+# C4 CLI). Owns emit-repro + check-reproducers + the reproducer ctests
+# inside tools/capture/CMakeLists.txt. Must stay after libs/capture-core
+# (the CLI links kernscope::capture_core for BundleReader).
+add_subdirectory(capture)
