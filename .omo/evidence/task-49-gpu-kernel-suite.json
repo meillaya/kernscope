@@ -1,0 +1,73 @@
+{
+  "todo": 49,
+  "track": "gpu-kernel-suite",
+  "title": "profile: tracers - CUPTI CONCURRENT_KERNEL (compile-only local) + rocprofiler-sdk (live local)",
+  "date": "2026-08-15",
+  "executor": "implementation worker (todo 49 of gpu-kernel-suite plan)",
+  "commits": [
+    "1c23412 feat(profile): tracer skeleton + versioned record adapter + parser units (todo 49)",
+    "0893bdc feat(profile): CUPTI activity tracer with kineto enable-set + reuse of cupti-sub (todo 49)",
+    "abd05f3 feat(profile): AMD rocprofiler-sdk buffer-tracing tracer + live gfx1101 check (todo 49)",
+    "this commit: feat(profile): CUPTI + rocprofiler-sdk tracers with versioned record adapter (evidence force-added here)"
+  ],
+  "files_created": [
+    "tools/profile/CMakeLists.txt",
+    "tools/profile/include/kernscope/profile/record_adapter.h (the versioned Kernel9/10 adapter - todo-49 deliverable)",
+    "tools/profile/include/kernscope/profile/kernel_record.h (vendor-neutral record model + JSONL, CUPTI-free for the AMD tool)",
+    "tools/profile/src/cupti_tracer.h",
+    "tools/profile/src/cupti_tracer.cpp",
+    "tools/profile/src/amd_tracer.cpp",
+    "tools/profile/tests/cupti_tracer_test.cpp",
+    "tools/profile/tests/profile_amd_check.py"
+  ],
+  "files_modified": [
+    "tools/CMakeLists.txt (wired tools/profile)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "ctest -R profile_tracer",
+      "exit": 0,
+      "result": "11/11 passed (10 gtest cases, 1 skipped: DriverlessBoxDegradesGracefully skips when libcupti is present)",
+      "key_evidence": {
+        "field_extraction": "SyntheticKernel9FieldExtraction: parse_kernel_record extracts name/start/end/duration/grid/block/static smem/registers/correlation_id etc. from a synthetic CONCURRENT_KERNEL (kind 10) record - PASSED",
+        "adapter_mapping": "AdapterMapsKernel10FieldSet: the SAME parser template over Kernel10View (Kernel9 field set + isDeviceLaunched tail) extracts the identical field set and reads is_device_launched=1; Kernel9 path reports 0 - PASSED",
+        "field_map_pin": "AdapterPinsKernelFieldMap: every kKernelFieldMap entry matches offsetof(ActivityKernelT, ...) (compile-time static_asserts in record_adapter.h pin the 12.6 layout: start@16, end@24, correlationId@92, name@104, localMemoryTotal_v2@192, sizeof 208) - PASSED",
+        "buffer_iteration": "IterateSyntheticBufferDeliversKernelAndApiRecords: kernel+API+overhead records iterated at 8-byte alignment; correlation id joins kernel<->API - PASSED",
+        "reuse": "ReuseRoutesMemoryRecordsToCuptiSub: MEMORY record routed through kernscope::cupti::handle_activity_record (libs/cupti-sub, todo 44) lands in the shared CaptureSession allocation map (ptr 0x1F0000 -> 65536 bytes) - PASSED",
+        "concurrent_only": "KernelAndConcurrentKernelParseIdentically: kind 3 never enabled, only parsed-if-seen; the tracer's kEnabledKinds = {CONCURRENT_KERNEL(10), RUNTIME, DRIVER, OVERHEAD} - no serialization"
+      }
+    },
+    {
+      "command": "ctest -R profile_tracer_amd -L gpu-amd",
+      "exit": 0,
+      "result": "1/1 passed: layernorm_fused profiled LIVE on gfx1101 under libkernscope_profile_hip.so",
+      "key_evidence": {
+        "kernel_record": "kernel _Z15layernorm_fusedPKtS0_S0_Ptfi.kd: duration_ns=9160 (>0), grid=[1024,1,1] (M=1024 blocks, matches launch), workgroup=[128,1,1] (128 threads, matches launch), lds_bytes=1024 (2x128x4B smem), scratch_bytes=0",
+        "counts": "3 kernel dispatch records (2x __amd_rocclr_copyBuffer.kd + layernorm_fused), 15 HIP API records",
+        "correlation_link": "kernel dispatch correlation_id=8 == hipLaunchKernel API record correlation_id=8 (the enqueueing call) - JOINED"
+      }
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "Werror clean (0 errors, 0 warnings); tools/profile targets: kernscope_profile_cupti (static), kernscope_profile_hip (.so), profile-cupti-test"
+    }
+  ],
+  "qa_negative": {
+    "evidence_file": ".omo/evidence/task-49-gpu-kernel-suite-negative.txt",
+    "asserted": "TruncatedRecordIsReportedAndSkipped: valid kernel record parsed (records_parsed=1) then a CONCURRENT_KERNEL record truncated to 16/208 bytes -> malformed=1, ok=false (SKIP), no crash; UnknownKindRecordIsReportedAndSkipped identical for an unsupported kind"
+  },
+  "adapter_summary": {
+    "mechanism": "parse_cupti_kernel_record is a template over the DELIVERED struct (member-name access): CUPTI 12.6 -> CUpti_ActivityKernel9; CUDA 13 -> CUpti_ActivityKernel10 via the ActivityKernelT typedef (CUPTI_API_VERSION > 24). Kernel10 == Kernel9 + isDeviceLaunched (uint8_t) + 3 pad bytes at the tail; NO field moved, NO field removed (kKernel10TailDelta asserted). isDeviceLaunched read through SFINAE member detection.",
+    "layout_pin": "23 kKernelFieldMap entries static_asserted to their 12.6 offsets (kind@0 .. localMemoryTotal_v2@192, sizeof 208) so a CUPTI header bump fails loudly instead of mis-parsing (Metis L-5)",
+    "cuda13_migration": "Event/Metric/PC-sampling-activity APIs removed (CUPTI_ERROR_LEGACY_PROFILER_NOT_SUPPORTED=38) - tracer uses Activity API only, never nvprof/Event/Metric; nvprof removed in 13.0; Profiling/PerfWorks deprecated -> Range Profiler/PM Sampling; multi-subscriber V2 APIs (cuptiSubscribe_v2 etc.) 13.3+ - 12.x single-tool scope documented (Metis H-2); CUPTI_API_VERSION 24==12.6, 13.0==130001",
+    "enable_set": "CONCURRENT_KERNEL (kind 10) + RUNTIME + DRIVER + OVERHEAD (kineto); KERNEL kind 3 NEVER enabled (serializes kernels); forced flush cuptiActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED) at stop; latency timestamps off by default",
+    "reuse": "libs/cupti-sub (todo 44) reused: every buffer record first routed through kernscope::cupti::handle_activity_record (MEMORY -> shared allocation map), kFallbackLogLine degradation contract shared"
+  },
+  "risks_deviations": [
+    "Record iteration is our own iterator mirroring cuptiActivityGetNextRecord (kind->size table + 8-byte alignment) so truncation is DETECTABLE; the real CUPTI path returns CUPTI_ERROR_INVALID_KIND for incomplete records - behavior documented in record_adapter.h; rental run should cross-check alignment",
+    "DriverlessBoxDegradesGracefully skips when libcupti.so is dlopen-able (this host has the runtime lib but no NVIDIA driver; the start path is rental-validated per scripts/rental-validate.sh)",
+    "AMD grid_size reported both raw (work items, grid_size) and converted to blocks (grid); conversion documented as in todo-45 (blocks = grid/wg per dim)",
+    "AMD tracer links librocprofiler-sdk.so by path (ROCPROF_SDK_OUT) - same pattern as libs/capture-hip; requires devenv env at configure"
+  ]
+}

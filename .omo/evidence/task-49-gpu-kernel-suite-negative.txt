@@ -1,0 +1,31 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+  CUPTI_HOME:   /nix/store/fxwhb6kzfnrw8fm7swbbzqvhh4lkkw9y-cuda-cupti-home (single root)
+  ROCPROF_SDK_DEV/OUT: /nix/store/hbbw8546ynrzbmp6d9pk98c7phwc4dj3-rocprofiler-sdk-7.2.3-dev / /nix/store/aqinr7xzr2qwnacrvy9ypaa3sz0k4qv9-rocprofiler-sdk-7.2.3
+todo 49 (gpu-kernel-suite) QA negative: TRUNCATED activity record -> parser reports malformed + SKIPS
+Contract: a buffer-completed callback delivering a CONCURRENT_KERNEL record with only 16 of 208 bytes
+present must NOT crash: the adapter's buffer iterator reports the record as malformed and stops
+(skips the remainder); an unknown-kind record behaves identically. Asserted in the unit suite
+(tests/cupti_tracer_test.cpp), evidence captured via the gtest filter below.
+Date: 2026-08-15T04:20:50Z
+
+=== gtest filter run (truncated + unknown-kind records) ===
+Running main() from /build/source/googletest/src/gtest_main.cc
+Note: Google Test filter = profile_tracer.TruncatedRecordIsReportedAndSkipped:profile_tracer.UnknownKindRecordIsReportedAndSkipped
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from profile_tracer
+[ RUN      ] profile_tracer.TruncatedRecordIsReportedAndSkipped
+[       OK ] profile_tracer.TruncatedRecordIsReportedAndSkipped (0 ms)
+[ RUN      ] profile_tracer.UnknownKindRecordIsReportedAndSkipped
+[       OK ] profile_tracer.UnknownKindRecordIsReportedAndSkipped (0 ms)
+[----------] 2 tests from profile_tracer (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.
+exit code: 0
+
+=== assertions made by the negative tests (from cupti_tracer_test.cpp) ===
+TruncatedRecordIsReportedAndSkipped: valid record parsed (records_parsed==1), truncated record
+  reported malformed (malformed==1), iteration cut short (ok==false), 1 kernel delivered to sink
+UnknownKindRecordIsReportedAndSkipped: unknown kind reported malformed + skipped, no crash
