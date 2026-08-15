@@ -1,0 +1,40 @@
+kernscope todo 56 (integration: dashboard HTML + committed example reports)
+QA NEGATIVE EVIDENCE — missing module report -> "no data" + JSON flag, never a broken page
+=========================================================================================
+Date: 2026-08-15 | Machine: local gfx1101
+
+SCENARIO: two module reports are missing (simulated via
+kernscope-dashboard --missing verify,profile — the same path a genuinely
+absent module report takes: available=false, status=no_data). The page
+must render those sections as "no data" with a JSON flag (available:
+false) and stay a VALID self-contained page (embedded payload parses,
+exit 0).
+
+COMMAND + EXACT OUTPUT
+----------------------
+$ rm -rf /tmp/dash-qa && PATH="$PWD/build/bin:$PATH" kernscope-dashboard --out /tmp/dash-qa/dashboard.html --missing verify,profile
+kernscope-dashboard: wrote /tmp/dash-qa/dashboard.html (+ dashboard.json); sections ['analyzer', 'tune', 'verify', 'capture', 'profile', 'pass'] missing/no-data: ['verify', 'profile']
+exit: 0
+
+$ python3 tests/report/check_dashboard.py /tmp/dash-qa/dashboard.html --negative
+check_dashboard: PASS (negative (no-data)) — 6 module sections, provenance.measured on each, embedded JSON parses, zero external assets, loop diagram present
+exit: 0
+
+$ python3 tests/report/check_html.py /tmp/dash-qa/dashboard.html
+check_html: /tmp/dash-qa/dashboard.html embedded payload matches /tmp/dash-qa/dashboard.json
+exit: 0
+  (the embedded payload still parses + round-trips — never a broken page)
+
+ASSERTED IN THE NEGATIVE RUN (check_dashboard.py --negative)
+------------------------------------------------------------
+- sections verify + profile have "available": false and status "no_data"
+- their HTML panels carry data-available='false' + "no data" text
+  (grep: 2x data-available='false', 4x "no data" in the page)
+- the other four sections (analyzer/tune/capture/pass) stay available
+- provenance.measured present on ALL six sections (honesty discipline
+  holds even in the degraded state)
+- zero external assets, loop diagram present, exit 0
+
+Also covered by the committed ctest gate:
+$ ctest --test-dir build -R "dashboard-negative" --output-on-failure
+dashboard-negative .......... Passed

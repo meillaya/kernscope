@@ -1,0 +1,608 @@
+#!/usr/bin/env python3
+"""kernscope-dashboard — todo-56 aggregator: one self-contained dashboard HTML.
+
+Aggregates the ALREADY-COMMITTED per-module reports into a single static
+HTML page (polykernel/tt-flow convention — inline CSS/JS, embedded JSON
+payload in <script id="report-data" type="application/json">, zero network
+requests, opens offline from file://):
+
+    analyzer  tests/fixtures/expected_fused_attention.json (golden) +
+              reports/demo/stage-3-analyze.{json,html} (captured-ISA run)
+    tune      reports/tune/*.jsonl (measured gfx1101 search runs) +
+              reports/demo/stage-4-capture-tune.json +
+              reports/demo/stage-5-verify-tune.json
+    verify    tests/verify/manifest.json (corpus: 8 check classes)
+    capture   tests/fixtures/capture/layernorm-live/manifest.json + bundle +
+              reports/demo/capture/replay.txt (bitwise PASS)
+    profile   reports/demo/stage-1-profile.json + reports/peaks/gfx1101-bench.jsonl
+    pass      reports/passes/*/report.json (todo 42/54 before/after deltas)
+
+HONESTY DISCIPLINE (MUST NOT present projected numbers as measured): every
+module section carries a provenance object whose `mode` is "measured" (live
+gfx1101 runs) or "projected" (static analysis / IR+PTX compile-only
+artifacts), plus a boolean `measured` mirror — asserted by
+tests/report/check_dashboard.py. LOCAL gfx1101 numbers only; rental numbers
+land under reports/rentals/ only when the owner produces them.
+
+MISSING-SECTION QA: --missing <sec1,sec2,...> renders those sections as a
+"no data" panel with the JSON flag `available: false` — NEVER a broken page
+(the embedded payload always parses; the tool still exits 0).
+
+Usage:
+    kernscope-dashboard [--out reports/dashboard.html]
+                        [--missing verify,profile] [--version]
+Writes <out> plus a sibling <basename>.json holding the exact payload
+(check_html.py's expected-file convention).
+
+Exit codes: 0 = dashboard written, 2 = internal error.
+"""
+
+import argparse
+import html
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+TOOL_VERSION = "kernscope-dashboard 0.1.0"
+SCHEMA_VERSION = "1.0"
+REPORT_TYPE = "kernscope_dashboard"
+
+# The six module sections, in the tt-flow six-section report convention.
+SECTION_ORDER = ["analyzer", "tune", "verify", "capture", "profile", "pass"]
+
+SECTION_TITLES = {
+    "analyzer": "Static analyzer (C1)",
+    "tune": "Autotuner (C2)",
+    "verify": "Static verifier (C3)",
+    "capture": "Capture / replay (C4)",
+    "profile": "Profiler (C6)",
+    "pass": "LLVM passes + pass→analyzer delta (C5)",
+}
+
+
+def repo_root() -> Path:
+    """Resolve the repo root by walking up until tests/verify/manifest.json
+    is found. Works from tools/dashboard/ AND from build/bin/ (the copied
+    CLI location), i.e. from any CWD."""
+    cur = Path(__file__).resolve().parent
+    for cand in [cur, *cur.parents]:
+        if (cand / "tests" / "verify" / "manifest.json").exists():
+            return cand
+    return cur
+
+
+def load_json(path: Path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def first_key(d, keys, default=None):
+    for k in keys:
+        if k in d:
+            return d[k]
+    return default
+
+
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+# --------------------------------------------------------------------------
+# Per-module summary builders. Each returns (available: bool, summary: dict).
+# Summaries carry ONLY machine-readable fields + evidence file paths that
+# exist on disk (asserted by the check script).
+# --------------------------------------------------------------------------
+
+def build_analyzer(root: Path) -> dict:
+    golden = root / "tests" / "fixtures" / "expected_fused_attention.json"
+    stage3 = root / "reports" / "demo" / "stage-3-analyze.json"
+    ptx = root / "tests" / "fixtures" / "fused_attention.ptx"
+    files = [golden, stage3, ptx,
+             root / "reports" / "demo" / "stage-3-analyze.html"]
+    if not all(f.exists() for f in files):
+        return {"available": False, "summary": {}, "files": []}
+    g = load_json(golden)
+    s3 = load_json(stage3)
+    m = g.get("metrics", {})
+    summary = {
+        "golden_kernel": g.get("kernel", "fused_attention"),
+        "golden_occupancy": m.get("occupancy"),
+        "golden_limiter": m.get("limiter"),
+        "golden_registers_per_thread": m.get("registers_per_thread"),
+        "golden_warnings": len(g.get("warnings", [])),
+        "golden_suggestions": len(g.get("suggestions", [])),
+        "captured_isa_findings": [f.get("id") for f in s3.get("warnings", [])],
+        "captured_isa_vectorized_ld_global": s3.get(
+            "metrics", {}).get("vectorized_ld_global"),
+        "captured_isa_spill_bytes": s3.get("metrics", {}).get("spill_bytes"),
+    }
+    return {"available": True, "summary": summary, "files": [str(f.relative_to(root)) for f in files]}
+
+
+def build_tune(root: Path) -> dict:
+    tune_dir = root / "reports" / "tune"
+    jsonl = sorted(tune_dir.glob("*.jsonl"))
+    files = list(jsonl) + [
+        root / "reports" / "demo" / "stage-4-capture-tune.json",
+        root / "reports" / "demo" / "stage-5-verify-tune.json",
+    ]
+    if not all(f.exists() for f in files):
+        return {"available": False, "summary": {}, "files": []}
+    families = {}
+    for p in jsonl:
+        rows = [json.loads(line) for line in p.read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+        if not rows:
+            continue
+        fam = rows[0].get("kernel_family", p.stem)
+        medians = [r.get("timings", {}).get("median")
+                   for r in rows if r.get("timings", {}).get("median")]
+        modes = {r.get("provenance", {}).get("mode")
+                 for r in rows if r.get("provenance", {}).get("mode")}
+        families[fam] = {
+            "variants": len(rows),
+            "best_median_us": round(min(medians) * 1e6, 3) if medians else None,
+            "worst_median_us": round(max(medians) * 1e6, 3) if medians else None,
+            "provenance_modes": sorted(modes),
+        }
+    ct = load_json(root / "reports" / "demo" / "stage-4-capture-tune.json")
+    vt = load_json(root / "reports" / "demo" / "stage-5-verify-tune.json")
+    summary = {
+        "families": families,
+        "capture_tune_validated": ct.get("validated"),
+        "capture_tune_best_block": ct.get("best", {}).get(
+            "config", {}).get("block", [None])[0],
+        "capture_tune_speedup": ct.get("speedup"),
+        "verify_gate": vt.get("verify_gate"),
+        "verifier_gated_variants": vt.get("verifier_gated"),
+        "compiled_variants": vt.get("compiled"),
+    }
+    return {"available": True, "summary": summary, "files": [str(f.relative_to(root)) for f in files]}
+
+
+def build_verify(root: Path) -> dict:
+    manifest = root / "tests" / "verify" / "manifest.json"
+    corpus = root / "tests" / "verify" / "corpus"
+    if not manifest.exists() or not corpus.is_dir():
+        return {"available": False, "summary": {}, "files": []}
+    entries = load_json(manifest)
+    by_check = {}
+    by_verdict = {}
+    for e in entries:
+        c = e.get("check")
+        by_check[str(c)] = by_check.get(str(c), 0) + 1
+        v = e.get("expected_verdict")
+        by_verdict[v] = by_verdict.get(v, 0) + 1
+    files = [manifest, corpus]
+    summary = {
+        "manifest_entries": len(entries),
+        "corpus_source_files": len(list(corpus.glob("*.cu"))),
+        "entries_by_check_class": by_check,
+        "entries_by_verdict": by_verdict,
+        "check_classes": 8,
+    }
+    return {"available": True, "summary": summary,
+            "files": [str(manifest.relative_to(root)), "tests/verify/corpus/"]}
+
+
+def build_capture(root: Path) -> dict:
+    live = root / "tests" / "fixtures" / "capture" / "layernorm-live"
+    manifest = live / "manifest.json"
+    demo_bundle = root / "reports" / "demo" / "capture" / "bundle.v0"
+    replay = root / "reports" / "demo" / "capture" / "replay.txt"
+    sample = root / "tests" / "fixtures" / "capture" / "v0-sample.bundle"
+    files = [manifest, live / "bundle.v0", sample, demo_bundle, replay,
+             root / "reports" / "demo" / "capture" / "output.bin"]
+    if not all(f.exists() for f in files):
+        return {"available": False, "summary": {}, "files": []}
+    m = load_json(manifest)
+    replay_txt = read_text(replay)
+    summary = {
+        "mechanism": m.get("capture", {}).get("mechanism"),
+        "bundle_kernel": m.get("bundle", {}).get("kernel"),
+        "grid": m.get("bundle", {}).get("grid"),
+        "block": m.get("bundle", {}).get("block"),
+        "output_sha256": m.get("output", {}).get("sha256"),
+        "blob_count": len(m.get("blobs", {}).get("inputs", [])),
+        "replay_verdict": "PASS" if "PASS" in replay_txt else "UNKNOWN",
+        "replay_bitwise_equal": "bitwise EQUAL" in replay_txt,
+        "fixture_bundle": "bundle.v0",
+        "demo_bundle_replay": "PASS" if "validation: PASS" in replay_txt else "UNKNOWN",
+    }
+    return {"available": True, "summary": summary, "files": [str(f.relative_to(root)) for f in files]}
+
+
+def build_profile(root: Path) -> dict:
+    stage1 = root / "reports" / "demo" / "stage-1-profile.json"
+    stage1_html = root / "reports" / "demo" / "stage-1-profile.html"
+    peaks = root / "reports" / "peaks" / "gfx1101-bench.jsonl"
+    files = [stage1, stage1_html, peaks]
+    if not all(f.exists() for f in files):
+        return {"available": False, "summary": {}, "files": []}
+    s1 = load_json(stage1)
+    hot = None
+    for k in s1.get("kernels", []):
+        if k.get("kernel_name", "").startswith("_Z"):
+            hot = k
+    rows = [json.loads(line) for line in peaks.read_text(
+        encoding="utf-8").splitlines() if line.strip()]
+    peak_fams = {}
+    for r in rows:
+        fam = r.get("kernel_family")
+        if fam:
+            peak_fams[fam] = {
+                "median_us": round(r.get("timings", {}).get("median", 0) * 1e6, 3),
+                "size_bytes": r.get("config", {}).get("size_bytes"),
+                "mode": r.get("provenance", {}).get("mode"),
+            }
+    summary = {
+        "kernel_count": s1.get("kernel_count"),
+        "wall_time_ns": s1.get("wall_time_ns"),
+        "hot_kernel": hot.get("kernel_name") if hot else None,
+        "hot_kernel_duration_ns": hot.get("duration_ns") if hot else None,
+        "hot_kernel_occupancy": hot.get("occupancy") if hot else None,
+        "hot_kernel_registers": hot.get("registers_per_thread") if hot else None,
+        "hot_kernel_hints": hot.get("hints", []),
+        "profiler_hint_ids": [h.get("id") for h in s1.get("ranking", [])],
+        "peak_bench_families": peak_fams,
+    }
+    return {"available": True, "summary": summary, "files": [str(f.relative_to(root)) for f in files]}
+
+
+def build_pass(root: Path) -> dict:
+    delta = root / "reports" / "demo" / "stage-5-pass-delta.json"
+    pdirs = sorted((root / "reports" / "passes").glob("*/report.json"))
+    files = [delta] + list(pdirs)
+    if not all(f.exists() for f in files):
+        return {"available": False, "summary": {}, "files": []}
+    kernels = {}
+    for p in pdirs:
+        r = load_json(p)
+        kernels[r.get("kernel", p.parent.name)] = {
+            "transform": r.get("transform"),
+            "vector_width_before": r.get("vector_width_before"),
+            "vector_width_after": r.get("vector_width_after"),
+            "vector_width_increased": r.get("vector_width_increased"),
+            "smem_bytes_before": r.get("smem_bytes_before"),
+            "smem_bytes_after": r.get("smem_bytes_after"),
+            "uncoalesced_before": r.get("coalescing_class_before", {}).get("uncoalesced"),
+            "uncoalesced_after": r.get("coalescing_class_after", {}).get("uncoalesced"),
+            "ptx_compile_all_exit0": r.get("ptx_compile_all_exit0"),
+        }
+    d = load_json(delta)
+    summary = {
+        "kernels": kernels,
+        "showcase_delta": d.get("delta", {}),
+        "showcase_kernel": d.get("kernel", {}).get("name"),
+    }
+    return {"available": True, "summary": summary, "files": [str(f.relative_to(root)) for f in files]}
+
+
+BUILDERS = {
+    "analyzer": build_analyzer,
+    "tune": build_tune,
+    "verify": build_verify,
+    "capture": build_capture,
+    "profile": build_profile,
+    "pass": build_pass,
+}
+
+# mode: "measured" = live gfx1101 run; "projected" = static analysis or
+# compile-only IR/PTX artifacts. The check script asserts provenance.measured.
+PROVENANCE = {
+    "analyzer": {"mode": "projected", "measured": False,
+                 "tool": "kernscope-analyze",
+                 "note": "static analysis of committed PTX/ISA; numbers are "
+                         "analytic estimates, not wall-clock performance."},
+    "tune": {"mode": "measured", "measured": True,
+             "tool": "kernscope-tune",
+             "note": "live gfx1101 benchmark timings (reports/tune/*.jsonl "
+                     "provenance.mode=measured) + capture->tune + verifier-gated runs."},
+    "verify": {"mode": "projected", "measured": False,
+               "tool": "kernscope-verify",
+               "note": "static clang->LLVM-IR verdicts over the committed "
+                       "corpus manifest; no runtime execution."},
+    "capture": {"mode": "measured", "measured": True,
+                "tool": "kernscope-capture",
+                "note": "live gfx1101 capture (rocprofiler-sdk intercept) + "
+                        "replay with bitwise-equal validation."},
+    "profile": {"mode": "measured", "measured": True,
+                "tool": "kernscope-profile",
+                "note": "live gfx1101 launch tracing + kernscope-bench peak "
+                        "bandwidth runs."},
+    "pass": {"mode": "projected", "measured": False,
+             "tool": "kernscope-pass",
+             "note": "static IR/PTX before/after deltas (llc compile-only); "
+                     "measured numbers are the gfx1101 analog in libs/db "
+                     "records (mode: measured)."},
+}
+
+
+def build_model(root: Path, missing: set) -> dict:
+    sections = {}
+    for name in SECTION_ORDER:
+        result = BUILDERS[name](root)
+        avail = result["available"]
+        summary = result["summary"]
+        files = result["files"]
+        if name in missing:
+            avail, summary, files = False, {}, []
+        sections[name] = {
+            "title": SECTION_TITLES[name],
+            "available": avail,
+            "status": "ok" if avail else "no_data",
+            "provenance": dict(PROVENANCE[name], sources=files),
+            "summary": summary,
+            "files": files,
+        }
+    machine = {"arch": "gfx1101", "device": "AMD Radeon RX 7800 XT",
+               "note": "LOCAL numbers only; rental numbers land under "
+                       "reports/rentals/ only when the owner produces them."}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "report_type": REPORT_TYPE,
+        "tool_version": TOOL_VERSION,
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "machine": machine,
+        "honesty": {
+            "rule": "projected numbers are never presented as measured; "
+                    "every module section carries provenance.mode + "
+                    "provenance.measured (asserted by "
+                    "tests/report/check_dashboard.py)",
+            "modes": {name: sections[name]["provenance"]["mode"]
+                      for name in SECTION_ORDER},
+        },
+        "loop": {
+            "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+            "diagram": "static inline SVG (profile -> capture -> analyze -> "
+                       "tune -> verify -> pass -> benchmark; dashed edge "
+                       "closes the loop back to profile)",
+            "modules": SECTION_ORDER,
+        },
+        "sections": sections,
+    }
+
+
+# --------------------------------------------------------------------------
+# HTML rendering: self-contained (inline CSS, static SVG diagram, embedded
+# JSON payload in <script id="report-data" type="application/json">), zero
+# network requests. Rendered statically from the model — the payload is the
+# EXACT model JSON (check_html.py round-trips it).
+# --------------------------------------------------------------------------
+
+def render_section(name: str, sec: dict) -> str:
+    title = html.escape(sec.get("title", name))
+    if not sec.get("available"):
+        return (f"<section class='module' id='module-{name}' "
+                f"data-available='false'>"
+                f"<h2>{title} <span class='status no_data'>no data</span></h2>"
+                f"<p class='nodata'>no data — module report not found on this "
+                f"machine (provenance.mode {sec.get('provenance', {}).get('mode', '?')})"
+                f"</p></section>")
+    prov = sec.get("provenance", {})
+    mode = html.escape(prov.get("mode", "unknown"))
+    files = "".join(f"<li><code>{html.escape(f)}</code></li>"
+                    for f in sec.get("files", []))
+    summary = html.escape(json.dumps(sec.get("summary", {}), indent=2))
+    return (f"<section class='module' id='module-{name}' data-available='true'>"
+            f"<h2>{title} <span class='status {mode}'>{mode}</span></h2>"
+            f"<pre class='summary'>{summary}</pre>"
+            f"<p class='prov'>provenance: mode=<code>{mode}</code>, "
+            f"measured=<code>{prov.get('measured')}</code> — "
+            f"{html.escape(prov.get('note', ''))}</p>"
+            f"<ul class='evidence'>{files}</ul></section>")
+
+
+def loop_svg(modes: dict) -> str:
+    """Static inline SVG loop: profile -> capture -> analyze (row 1),
+    tune -> verify -> pass (row 2, right-to-left), dashed edge closes the
+    loop pass -> profile. Colors encode provenance: measured green,
+    projected amber, no_data gray. Zero network."""
+    color = {"measured": "#3fb950", "projected": "#d29922",
+             "no_data": "#8b949e"}
+    box_w, box_h, gap = 180, 56, 30
+    x1, x2, x3 = 30, 30 + box_w + gap, 30 + 2 * (box_w + gap)
+    y1, y2 = 50, 170
+    pos = {"profile": (x1, y1), "capture": (x2, y1), "analyze": (x3, y1),
+           "tune": (x3, y2), "verify": (x2, y2), "pass": (x1, y2)}
+    label = {"profile": "profile", "capture": "capture", "analyze": "analyze",
+             "tune": "tune", "verify": "verify", "pass": "pass"}
+    parts = ["<svg id='loop-diagram' viewBox='0 0 600 270' "
+             "xmlns='http://www.w3.org/2000/svg' role='img' "
+             "aria-label='kernscope loop: profile to capture to analyze to "
+             "tune to verify to pass and back'>"]
+    # arrows between consecutive stages (right arrow on row1, left on row2,
+    # down on the analyze->tune wrap).
+    def arrow(xa, ya, xb, yb, dashed=False):
+        d = ("stroke-dasharray='5,4' " if dashed else "")
+        parts.append(f"<line x1='{xa}' y1='{ya}' x2='{xb}' y2='{yb}' "
+                     f"stroke='#58a6ff' stroke-width='2' {d}/>")
+        # arrowhead
+        import math
+        ang = math.atan2(yb - ya, xb - xa)
+        for da in (0.45, -0.45):
+            ax = xb - 10 * math.cos(ang + da)
+            ay = yb - 10 * math.sin(ang + da)
+            parts.append(f"<line x1='{xb}' y1='{yb}' x2='{ax:.1f}' "
+                         f"y2='{ay:.1f}' stroke='#58a6ff' stroke-width='2'/>")
+    arrow(x1 + box_w, y1 + box_h / 2, x2, y1 + box_h / 2)
+    arrow(x2 + box_w, y1 + box_h / 2, x3, y1 + box_h / 2)
+    arrow(x3 + box_w / 2, y1 + box_h, x3 + box_w / 2, y2)  # analyze -> tune
+    arrow(x3, y2 + box_h / 2, x2 + box_w, y2 + box_h / 2)  # tune -> verify (L)
+    arrow(x2, y2 + box_h / 2, x1 + box_w, y2 + box_h / 2)  # verify -> pass (L)
+    arrow(x1 + 10, y2, x1 + 10, y1 + box_h, dashed=True)   # pass -> profile
+    for name, (bx, by) in pos.items():
+        c = color.get(modes.get(name, "no_data"), "#8b949e")
+        parts.append(f"<rect x='{bx}' y='{by}' width='{box_w}' height='{box_h}' "
+                     f"rx='8' fill='#161b22' stroke='{c}' stroke-width='2'/>")
+        parts.append(f"<text x='{bx + box_w / 2}' y='{by + 24}' "
+                     f"text-anchor='middle' fill='#e6edf3' font-size='14' "
+                     f"font-weight='600'>{label[name]}</text>")
+        parts.append(f"<text x='{bx + box_w / 2}' y='{by + 42}' "
+                     f"text-anchor='middle' fill='{c}' font-size='11'>"
+                     f"{modes.get(name, 'no_data')}</text>")
+    parts.append(f"<text x='300' y='252' text-anchor='middle' fill='#9198a1' "
+                 f"font-size='11'>gfx1101 (local) — measured vs projected "
+                 f"provenance per module; zero network</text>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def escape_payload(payload: str) -> str:
+    r"""Escape '</' as '<\/' (valid JSON escape) so a closing </script> can
+    never appear inside the payload (same discipline as libs/report)."""
+    return payload.replace("</", "<\\/")
+
+
+def build_html(model: dict) -> str:
+    payload = json.dumps(model, indent=2)
+    modes = model["honesty"]["modes"]
+    sections = "".join(render_section(n, model["sections"][n])
+                       for n in SECTION_ORDER)
+    machine = model["machine"]
+    honesty_rows = "".join(
+        f"<tr><td>{html.escape(n)}</td><td><span class='status "
+        f"{html.escape(m)}'>{html.escape(m)}</span></td></tr>"
+        for n, m in modes.items())
+    return f"""<!DOCTYPE html>
+<!--
+  kernscope dashboard (todo 56). Aggregates the committed per-module reports
+  (analyzer goldens, tuning runs, verify corpus, capture/replay evidence,
+  profile traces, pass deltas) into ONE self-contained page.
+  STATIC + SELF-CONTAINED: inline CSS + inline JS + the embedded JSON payload
+  in <script id="report-data" type="application/json">; zero network
+  requests -> opens offline from file:// (polykernel/tt-flow convention).
+  HONESTY: every module section carries provenance.mode (measured/projected)
+  + provenance.measured; projected numbers are never presented as measured.
+  LOCAL gfx1101 numbers only; rental numbers live under reports/rentals/.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kernscope dashboard — six-module loop on gfx1101</title>
+<style>
+:root {{
+  --bg: #0d1117; --panel: #161b22; --ink: #e6edf3; --muted: #9198a1;
+  --line: #30363d; --accent: #58a6ff; --warn: #d29922; --good: #3fb950;
+}}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }}
+header {{ padding: 20px 28px 14px; border-bottom: 1px solid var(--line); }}
+header h1 {{ margin: 0 0 6px; font-size: 20px; letter-spacing: .2px; }}
+header .meta {{ margin: 0; color: var(--muted); font-size: 12.5px; }}
+main {{ padding: 20px 28px 48px; max-width: 1100px; margin: 0 auto; }}
+section {{ margin: 22px 0; }}
+section > h2 {{ font-size: 14px; margin: 0 0 10px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--line); text-transform: uppercase;
+  letter-spacing: .6px; color: var(--muted); }}
+.status {{ font-weight: 650; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .4px; }}
+.status.measured {{ color: var(--good); }}
+.status.projected {{ color: var(--warn); }}
+.status.no_data {{ color: var(--muted); }}
+.module {{ background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px 16px; }}
+.module pre {{ background: #0d1117; border: 1px solid var(--line);
+  padding: .6rem; border-radius: 6px; overflow-x: auto; font-size: 12.5px; }}
+.module .prov {{ color: var(--muted); font-size: 12px; margin: 8px 0; }}
+ul.evidence {{ list-style: none; padding-left: .5rem; margin: 6px 0 0; }}
+ul.evidence li {{ margin: .15rem 0; font-size: 12px; }}
+.nodata {{ color: var(--muted); font-style: italic; padding: 10px 0; }}
+.loopbox {{ background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px 16px; }}
+table.honesty {{ border-collapse: collapse; margin-top: 10px; }}
+table.honesty td, table.honesty th {{ border: 1px solid var(--line);
+  padding: 4px 12px; font-size: 12.5px; text-align: left; }}
+footer {{ padding: 14px 28px 30px; color: var(--muted); font-size: 12px;
+  border-top: 1px solid var(--line); }}
+</style>
+</head>
+<body>
+<header>
+<h1>kernscope dashboard — six-module loop</h1>
+<p class="meta">{html.escape(str(machine.get('device', machine.get('arch', 'unknown'))))}
+({html.escape(str(machine.get('arch', '?')))}); generated
+{model.get('generated', '?')} by {html.escape(model.get('tool_version', ''))}.</p>
+<p class="meta">{html.escape(machine.get('note', ''))}</p>
+</header>
+<main>
+<section class="loopbox" id="loop-diagram-section">
+<h2>The loop</h2>
+{loop_svg(modes)}
+<p>One-command end-to-end loop (scripts/demo.sh): profile → capture →
+analyze → capture→tune → verifier-gated tune + pass→analyzer delta;
+hot kernel <code>{html.escape(model['loop']['hot_kernel'])}</code>.
+Six module sections aggregate the committed per-module reports below.</p>
+<table class="honesty">
+<tr><th>module</th><th>provenance mode</th></tr>
+{honesty_rows}
+</table>
+</section>
+{sections}
+</main>
+<footer>kernscope — self-contained dashboard (zero network requests); embedded
+JSON payload in &lt;script id="report-data"&gt; = the full model
+(parse with python3 html.parser; tests/report/check_dashboard.py asserts the
+six module sections + provenance.measured on each).</footer>
+<script id="report-data" type="application/json">{escape_payload(payload)}</script>
+</body>
+</html>
+"""
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(
+        prog="kernscope-dashboard",
+        description="Aggregate the committed per-module kernscope reports "
+                    "into one self-contained dashboard HTML (todo 56).")
+    ap.add_argument("--out", default="reports/dashboard.html",
+                    help="output HTML path (default reports/dashboard.html); "
+                         "a sibling .json file holds the exact payload")
+    ap.add_argument("--missing", default="",
+                    help="comma-separated module sections to render as "
+                         "'no data' (QA negative): e.g. verify,profile")
+    ap.add_argument("--version", action="store_true",
+                    help="print version and exit")
+    args = ap.parse_args(argv)
+
+    if args.version:
+        print(TOOL_VERSION)
+        return 0
+
+    root = repo_root()
+    missing = {s.strip() for s in args.missing.split(",") if s.strip()}
+    unknown = missing - set(SECTION_ORDER)
+    if unknown:
+        print(f"kernscope-dashboard: unknown module(s) in --missing: "
+              f"{sorted(unknown)} (known: {SECTION_ORDER})", file=sys.stderr)
+        return 2
+
+    model = build_model(root, missing)
+    out_html = Path(args.out)
+    try:
+        out_html.parent.mkdir(parents=True, exist_ok=True)
+        out_html.write_text(build_html(model), encoding="utf-8")
+        out_json = out_html.with_suffix(".json")
+        out_json.write_text(json.dumps(model, indent=2), encoding="utf-8")
+    except OSError as e:
+        print(f"kernscope-dashboard: cannot write {out_html}: {e}",
+              file=sys.stderr)
+        return 2
+
+    missing_reported = [n for n in SECTION_ORDER if n in missing]
+    print(f"kernscope-dashboard: wrote {out_html} "
+          f"(+ {out_json.name}); sections "
+          f"{[n for n in SECTION_ORDER]} "
+          f"missing/no-data: {missing_reported or 'none'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

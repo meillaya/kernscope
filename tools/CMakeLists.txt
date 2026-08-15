@@ -20,3 +20,8 @@ add_subdirectory(capture)
 # gfx1101) inside tools/profile/CMakeLists.txt. Must stay after
 # libs/cupti-sub (the CUPTI tracer reuses the todo-44 subscription library).
 add_subdirectory(profile)
+# One-time addition (todo 56): the dashboard track (kernscope-dashboard, the
+# report AGGREGATOR). Pure-Python CLI copied to build/bin; consumes the
+# committed per-module reports (never regenerates them). Must stay after the
+# six module tracks it aggregates.
+add_subdirectory(dashboard)

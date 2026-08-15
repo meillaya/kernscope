@@ -1,0 +1,351 @@
+{
+  "schema_version": "1.0",
+  "report_type": "kernscope_dashboard",
+  "tool_version": "kernscope-dashboard 0.1.0",
+  "generated": "2026-08-15T07:00:12Z",
+  "machine": {
+    "arch": "gfx1101",
+    "device": "AMD Radeon RX 7800 XT",
+    "note": "LOCAL numbers only; rental numbers land under reports/rentals/ only when the owner produces them."
+  },
+  "honesty": {
+    "rule": "projected numbers are never presented as measured; every module section carries provenance.mode + provenance.measured (asserted by tests/report/check_dashboard.py)",
+    "modes": {
+      "analyzer": "projected",
+      "tune": "measured",
+      "verify": "projected",
+      "capture": "measured",
+      "profile": "measured",
+      "pass": "projected"
+    }
+  },
+  "loop": {
+    "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+    "diagram": "static inline SVG (profile -> capture -> analyze -> tune -> verify -> pass -> benchmark; dashed edge closes the loop back to profile)",
+    "modules": [
+      "analyzer",
+      "tune",
+      "verify",
+      "capture",
+      "profile",
+      "pass"
+    ]
+  },
+  "sections": {
+    "analyzer": {
+      "title": "Static analyzer (C1)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-analyze",
+        "note": "static analysis of committed PTX/ISA; numbers are analytic estimates, not wall-clock performance.",
+        "sources": [
+          "tests/fixtures/expected_fused_attention.json",
+          "reports/demo/stage-3-analyze.json",
+          "tests/fixtures/fused_attention.ptx",
+          "reports/demo/stage-3-analyze.html"
+        ]
+      },
+      "summary": {
+        "golden_kernel": {
+          "name": "fused_attention",
+          "source_file": "fused_attention.cu",
+          "ptx_file": "fused_attention.ptx",
+          "ptx_version": "8.5",
+          "arch": "sm_86",
+          "block_size": 64,
+          "warps_per_block": 2,
+          "dynamic_shared_bytes": 67584,
+          "opt_in_shared_bytes": 67584
+        },
+        "golden_occupancy": 0.375,
+        "golden_limiter": "registers",
+        "golden_registers_per_thread": 102,
+        "golden_warnings": 3,
+        "golden_suggestions": 3,
+        "captured_isa_findings": [
+          "possibly_divergent_branch"
+        ],
+        "captured_isa_vectorized_ld_global": 0,
+        "captured_isa_spill_bytes": 0
+      },
+      "files": [
+        "tests/fixtures/expected_fused_attention.json",
+        "reports/demo/stage-3-analyze.json",
+        "tests/fixtures/fused_attention.ptx",
+        "reports/demo/stage-3-analyze.html"
+      ]
+    },
+    "tune": {
+      "title": "Autotuner (C2)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-tune",
+        "note": "live gfx1101 benchmark timings (reports/tune/*.jsonl provenance.mode=measured) + capture->tune + verifier-gated runs.",
+        "sources": [
+          "reports/tune/flash_attention-fnv1a64:653b3d31ee5b3803.jsonl",
+          "reports/tune/matmul-fnv1a64:e93d312338ce8fd7.jsonl",
+          "reports/demo/stage-4-capture-tune.json",
+          "reports/demo/stage-5-verify-tune.json"
+        ]
+      },
+      "summary": {
+        "families": {
+          "matmul": {
+            "variants": 15,
+            "best_median_us": 415324.003,
+            "worst_median_us": 3106305.48,
+            "provenance_modes": [
+              "measured"
+            ]
+          }
+        },
+        "capture_tune_validated": null,
+        "capture_tune_best_block": 128,
+        "capture_tune_speedup": 1,
+        "verify_gate": true,
+        "verifier_gated_variants": null,
+        "compiled_variants": null
+      },
+      "files": [
+        "reports/tune/flash_attention-fnv1a64:653b3d31ee5b3803.jsonl",
+        "reports/tune/matmul-fnv1a64:e93d312338ce8fd7.jsonl",
+        "reports/demo/stage-4-capture-tune.json",
+        "reports/demo/stage-5-verify-tune.json"
+      ]
+    },
+    "verify": {
+      "title": "Static verifier (C3)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-verify",
+        "note": "static clang->LLVM-IR verdicts over the committed corpus manifest; no runtime execution.",
+        "sources": [
+          "tests/verify/manifest.json",
+          "tests/verify/corpus/"
+        ]
+      },
+      "summary": {
+        "manifest_entries": 34,
+        "corpus_source_files": 19,
+        "entries_by_check_class": {
+          "1": 4,
+          "2": 5,
+          "6": 1,
+          "3": 3,
+          "4": 6,
+          "5": 7,
+          "8": 3,
+          "7": 5
+        },
+        "entries_by_verdict": {
+          "SAFE": 18,
+          "MAY_OOB": 4,
+          "DIVERGENT_BARRIER": 1,
+          "BARRIER_MISMATCH": 1,
+          "MAY_RACE": 2,
+          "UNKNOWN_RACE": 1,
+          "PTR_OOB": 4,
+          "INVALID_ADDRSPACE_CAST": 1,
+          "MAY_UNINIT_READ": 2
+        },
+        "check_classes": 8
+      },
+      "files": [
+        "tests/verify/manifest.json",
+        "tests/verify/corpus/"
+      ]
+    },
+    "capture": {
+      "title": "Capture / replay (C4)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-capture",
+        "note": "live gfx1101 capture (rocprofiler-sdk intercept) + replay with bitwise-equal validation.",
+        "sources": [
+          "tests/fixtures/capture/layernorm-live/manifest.json",
+          "tests/fixtures/capture/layernorm-live/bundle.v0",
+          "tests/fixtures/capture/v0-sample.bundle",
+          "reports/demo/capture/bundle.v0",
+          "reports/demo/capture/replay.txt",
+          "reports/demo/capture/output.bin"
+        ]
+      },
+      "summary": {
+        "mechanism": "LD_PRELOAD=libkernscope_capture_hip.so (rocprofiler-sdk intercept)",
+        "bundle_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+        "grid": "1024x1x1",
+        "block": "128x1x1",
+        "output_sha256": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+        "blob_count": 3,
+        "replay_verdict": "PASS",
+        "replay_bitwise_equal": true,
+        "fixture_bundle": "bundle.v0",
+        "demo_bundle_replay": "PASS"
+      },
+      "files": [
+        "tests/fixtures/capture/layernorm-live/manifest.json",
+        "tests/fixtures/capture/layernorm-live/bundle.v0",
+        "tests/fixtures/capture/v0-sample.bundle",
+        "reports/demo/capture/bundle.v0",
+        "reports/demo/capture/replay.txt",
+        "reports/demo/capture/output.bin"
+      ]
+    },
+    "profile": {
+      "title": "Profiler (C6)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-profile",
+        "note": "live gfx1101 launch tracing + kernscope-bench peak bandwidth runs.",
+        "sources": [
+          "reports/demo/stage-1-profile.json",
+          "reports/demo/stage-1-profile.html",
+          "reports/peaks/gfx1101-bench.jsonl"
+        ]
+      },
+      "summary": {
+        "kernel_count": 3,
+        "wall_time_ns": 22120,
+        "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+        "hot_kernel_duration_ns": 9040,
+        "hot_kernel_occupancy": 1,
+        "hot_kernel_registers": 24,
+        "hot_kernel_hints": [
+          {
+            "id": "memory_bound",
+            "severity": "suggestion",
+            "evidence": {
+              "arithmetic_intensity": "1.375",
+              "bound_class": "memory",
+              "bytes_moved_estimate": "1048576",
+              "family": "layernorm",
+              "ridge_point": "27.6142132",
+              "text": "likely memory/traffic-bound (arithmetic intensity below the ridge point; see the roofline position evidence)"
+            }
+          }
+        ],
+        "profiler_hint_ids": [
+          null,
+          null
+        ],
+        "peak_bench_families": {
+          "peak_bw_d2d": {
+            "median_us": 2262130.022,
+            "size_bytes": 1073741824.0,
+            "mode": "measured"
+          },
+          "peak_bw_read": {
+            "median_us": 907123.983,
+            "size_bytes": 536870912.0,
+            "mode": "measured"
+          },
+          "peak_flops": {
+            "median_us": 13510065.556,
+            "size_bytes": 0,
+            "mode": "measured"
+          },
+          "peak_lds": {
+            "median_us": 10321864.128,
+            "size_bytes": 98304000000.0,
+            "mode": "measured"
+          }
+        }
+      },
+      "files": [
+        "reports/demo/stage-1-profile.json",
+        "reports/demo/stage-1-profile.html",
+        "reports/peaks/gfx1101-bench.jsonl"
+      ]
+    },
+    "pass": {
+      "title": "LLVM passes + pass\u2192analyzer delta (C5)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-pass",
+        "note": "static IR/PTX before/after deltas (llc compile-only); measured numbers are the gfx1101 analog in libs/db records (mode: measured).",
+        "sources": [
+          "reports/demo/stage-5-pass-delta.json",
+          "reports/passes/gemm/report.json",
+          "reports/passes/layernorm/report.json",
+          "reports/passes/softmax/report.json"
+        ]
+      },
+      "summary": {
+        "kernels": {
+          "gemm": {
+            "transform": "no-transform",
+            "vector_width_before": 1,
+            "vector_width_after": 1,
+            "vector_width_increased": false,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 0,
+            "uncoalesced_after": 0,
+            "ptx_compile_all_exit0": true
+          },
+          "layernorm": {
+            "transform": "vectorize",
+            "vector_width_before": 1,
+            "vector_width_after": 4,
+            "vector_width_increased": true,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 64,
+            "uncoalesced_after": 16,
+            "ptx_compile_all_exit0": true
+          },
+          "softmax": {
+            "transform": "no-transform",
+            "vector_width_before": 1,
+            "vector_width_after": 1,
+            "vector_width_increased": false,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 0,
+            "uncoalesced_after": 0,
+            "ptx_compile_all_exit0": true
+          }
+        },
+        "showcase_delta": {
+          "bank_conflict_way_delta": null,
+          "improved_metrics": [
+            "vectorized_ld_global",
+            "vector_width",
+            "coalescing"
+          ],
+          "no_transform": false,
+          "registers_estimate_delta": 0,
+          "smem_bytes_delta": 0,
+          "uncoalesced_delta": -48,
+          "vector_width_delta": 3,
+          "vectorized_ld_global_delta": 12
+        },
+        "showcase_kernel": "layernorm"
+      },
+      "files": [
+        "reports/demo/stage-5-pass-delta.json",
+        "reports/passes/gemm/report.json",
+        "reports/passes/layernorm/report.json",
+        "reports/passes/softmax/report.json"
+      ]
+    }
+  }
+}

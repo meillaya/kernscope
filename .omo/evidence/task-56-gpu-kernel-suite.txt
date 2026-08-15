@@ -1,0 +1,76 @@
+kernscope todo 56 (integration: dashboard HTML + committed example reports)
+HAPPY-PATH EVIDENCE — kernscope-dashboard + committed example reports
+=====================================================================
+Date: 2026-08-15 | Machine: local gfx1101 (AMD Radeon RX 7800 XT)
+Commit: feat(integration): dashboard + committed example reports
+
+WHAT WAS BUILT
+--------------
+- tools/dashboard/kernscope-dashboard  : pure-Python3 aggregator CLI (copied
+  to build/bin/ by CMake like every kernscope-* binary). Folds the
+  ALREADY-COMMITTED per-module reports into ONE self-contained HTML:
+    analyzer  tests/fixtures/expected_fused_attention.json (golden,
+              occupancy 0.375 @ limiter "registers") + reports/demo/stage-3-analyze.{json,html}
+    tune      reports/tune/*.jsonl (measured gfx1101: matmul + flash_attention)
+              + reports/demo/stage-4-capture-tune.json + stage-5-verify-tune.json
+    verify    tests/verify/manifest.json (34 entries, 8 check classes)
+    capture   tests/fixtures/capture/layernorm-live/manifest.json + bundle.v0
+              + v0-sample.bundle + reports/demo/capture/replay.txt (bitwise PASS)
+    profile   reports/demo/stage-1-profile.json (hot kernel layernorm_fused)
+              + reports/peaks/gfx1101-bench.jsonl (measured peak-bw families)
+    pass      reports/passes/{gemm,layernorm,softmax}/report.json (todo 42/54
+              before/after deltas) + reports/demo/stage-5-pass-delta.json
+  Six module sections + static inline SVG loop diagram (profile -> capture ->
+  analyze -> tune -> verify -> pass -> back), inline CSS/JS, embedded JSON
+  payload in <script id="report-data" type="application/json">, ZERO network.
+- tests/report/check_dashboard.py      : validator (html.parser payload
+  extraction — the todo-7 check_html.py discipline): six section presence,
+  provenance.measured bool on every section, evidence files exist on disk,
+  zero external assets (no script src / link / img / fetch), loop-diagram
+  marker, and the --negative no-data path.
+- tools/dashboard/CMakeLists.txt       : build/bin copy + 3 no-gpu ctests
+  (dashboard-version, dashboard-html happy, dashboard-negative).
+- reports/dashboard.html + reports/dashboard.json : committed example
+  dashboard (payload == sibling .json, check_html.py round-trip).
+
+ACCEPTANCE COMMANDS + EXACT OUTPUT
+----------------------------------
+$ PATH="$PWD/build/bin:$PATH" kernscope-dashboard --out reports/dashboard.html
+kernscope-dashboard: wrote reports/dashboard.html (+ dashboard.json); sections ['analyzer', 'tune', 'verify', 'capture', 'profile', 'pass'] missing/no-data: none
+exit: 0
+
+$ python3 tests/report/check_html.py reports/dashboard.html
+check_html: reports/dashboard.html embedded payload matches reports/dashboard.json
+exit: 0
+  (embedded JSON parses; the SIX module sections present in the model:
+   analyzer / tune / verify / capture / profile / pass — asserted by
+   tests/report/check_dashboard.py below)
+
+$ python3 tests/report/check_dashboard.py reports/dashboard.html
+check_dashboard: PASS (happy) — 6 module sections, provenance.measured on each, embedded JSON parses, zero external assets, loop diagram present
+exit: 0
+
+$ git ls-files reports/ | wc -l
+64
+(>= 5 committed example artifacts: reports/demo/*, reports/passes/*,
+ reports/tune/*, reports/peaks/gfx1101-bench.jsonl from todos 42/53/54/55,
+ plus dashboard.html + dashboard.json from this todo)
+
+provenance discipline (projected-vs-measured, asserted by
+check_dashboard.py): every embedded module section carries
+provenance.{mode,measured}:
+  analyzer -> projected/False (static analysis of committed PTX/ISA)
+  tune     -> measured/True   (live gfx1101 timings, reports/tune provenance.mode=measured)
+  verify   -> projected/False (static clang->LLVM-IR verdicts, no runtime)
+  capture  -> measured/True   (live gfx1101 rocprofiler-sdk intercept + bitwise replay)
+  profile  -> measured/True   (live gfx1101 launch tracing + kernscope-bench runs)
+  pass     -> projected/False (static IR/PTX llc compile-only deltas)
+Projected numbers are NEVER presented as measured; local gfx1101 numbers
+only (rental numbers land under reports/rentals/ only when the owner
+produces them).
+
+$ cmake --build build -j$(nproc)
+build exit: 0 (Werror clean; no errors/warnings)
+
+$ ctest --test-dir build -R "dashboard" --output-on-failure
+100% tests passed, 0 tests failed out of 3   (dashboard-version, dashboard-html, dashboard-negative)

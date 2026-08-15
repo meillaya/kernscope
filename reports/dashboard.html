@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<!--
+  kernscope dashboard (todo 56). Aggregates the committed per-module reports
+  (analyzer goldens, tuning runs, verify corpus, capture/replay evidence,
+  profile traces, pass deltas) into ONE self-contained page.
+  STATIC + SELF-CONTAINED: inline CSS + inline JS + the embedded JSON payload
+  in <script id="report-data" type="application/json">; zero network
+  requests -> opens offline from file:// (polykernel/tt-flow convention).
+  HONESTY: every module section carries provenance.mode (measured/projected)
+  + provenance.measured; projected numbers are never presented as measured.
+  LOCAL gfx1101 numbers only; rental numbers live under reports/rentals/.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kernscope dashboard — six-module loop on gfx1101</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #161b22; --ink: #e6edf3; --muted: #9198a1;
+  --line: #30363d; --accent: #58a6ff; --warn: #d29922; --good: #3fb950;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 20px 28px 14px; border-bottom: 1px solid var(--line); }
+header h1 { margin: 0 0 6px; font-size: 20px; letter-spacing: .2px; }
+header .meta { margin: 0; color: var(--muted); font-size: 12.5px; }
+main { padding: 20px 28px 48px; max-width: 1100px; margin: 0 auto; }
+section { margin: 22px 0; }
+section > h2 { font-size: 14px; margin: 0 0 10px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--line); text-transform: uppercase;
+  letter-spacing: .6px; color: var(--muted); }
+.status { font-weight: 650; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .4px; }
+.status.measured { color: var(--good); }
+.status.projected { color: var(--warn); }
+.status.no_data { color: var(--muted); }
+.module { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px 16px; }
+.module pre { background: #0d1117; border: 1px solid var(--line);
+  padding: .6rem; border-radius: 6px; overflow-x: auto; font-size: 12.5px; }
+.module .prov { color: var(--muted); font-size: 12px; margin: 8px 0; }
+ul.evidence { list-style: none; padding-left: .5rem; margin: 6px 0 0; }
+ul.evidence li { margin: .15rem 0; font-size: 12px; }
+.nodata { color: var(--muted); font-style: italic; padding: 10px 0; }
+.loopbox { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px 16px; }
+table.honesty { border-collapse: collapse; margin-top: 10px; }
+table.honesty td, table.honesty th { border: 1px solid var(--line);
+  padding: 4px 12px; font-size: 12.5px; text-align: left; }
+footer { padding: 14px 28px 30px; color: var(--muted); font-size: 12px;
+  border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+<h1>kernscope dashboard — six-module loop</h1>
+<p class="meta">AMD Radeon RX 7800 XT
+(gfx1101); generated
+2026-08-15T07:00:12Z by kernscope-dashboard 0.1.0.</p>
+<p class="meta">LOCAL numbers only; rental numbers land under reports/rentals/ only when the owner produces them.</p>
+</header>
+<main>
+<section class="loopbox" id="loop-diagram-section">
+<h2>The loop</h2>
+<svg id='loop-diagram' viewBox='0 0 600 270' xmlns='http://www.w3.org/2000/svg' role='img' aria-label='kernscope loop: profile to capture to analyze to tune to verify to pass and back'><line x1='210' y1='78.0' x2='240' y2='78.0' stroke='#58a6ff' stroke-width='2' /><line x1='240' y1='78.0' x2='231.0' y2='73.7' stroke='#58a6ff' stroke-width='2'/><line x1='240' y1='78.0' x2='231.0' y2='82.3' stroke='#58a6ff' stroke-width='2'/><line x1='420' y1='78.0' x2='450' y2='78.0' stroke='#58a6ff' stroke-width='2' /><line x1='450' y1='78.0' x2='441.0' y2='73.7' stroke='#58a6ff' stroke-width='2'/><line x1='450' y1='78.0' x2='441.0' y2='82.3' stroke='#58a6ff' stroke-width='2'/><line x1='540.0' y1='106' x2='540.0' y2='170' stroke='#58a6ff' stroke-width='2' /><line x1='540.0' y1='170' x2='544.3' y2='161.0' stroke='#58a6ff' stroke-width='2'/><line x1='540.0' y1='170' x2='535.7' y2='161.0' stroke='#58a6ff' stroke-width='2'/><line x1='450' y1='198.0' x2='420' y2='198.0' stroke='#58a6ff' stroke-width='2' /><line x1='420' y1='198.0' x2='429.0' y2='202.3' stroke='#58a6ff' stroke-width='2'/><line x1='420' y1='198.0' x2='429.0' y2='193.7' stroke='#58a6ff' stroke-width='2'/><line x1='240' y1='198.0' x2='210' y2='198.0' stroke='#58a6ff' stroke-width='2' /><line x1='210' y1='198.0' x2='219.0' y2='202.3' stroke='#58a6ff' stroke-width='2'/><line x1='210' y1='198.0' x2='219.0' y2='193.7' stroke='#58a6ff' stroke-width='2'/><line x1='40' y1='170' x2='40' y2='106' stroke='#58a6ff' stroke-width='2' stroke-dasharray='5,4' /><line x1='40' y1='106' x2='35.7' y2='115.0' stroke='#58a6ff' stroke-width='2'/><line x1='40' y1='106' x2='44.3' y2='115.0' stroke='#58a6ff' stroke-width='2'/><rect x='30' y='50' width='180' height='56' rx='8' fill='#161b22' stroke='#3fb950' stroke-width='2'/><text x='120.0' y='74' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>profile</text><text x='120.0' y='92' text-anchor='middle' fill='#3fb950' font-size='11'>measured</text><rect x='240' y='50' width='180' height='56' rx='8' fill='#161b22' stroke='#3fb950' stroke-width='2'/><text x='330.0' y='74' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>capture</text><text x='330.0' y='92' text-anchor='middle' fill='#3fb950' font-size='11'>measured</text><rect x='450' y='50' width='180' height='56' rx='8' fill='#161b22' stroke='#8b949e' stroke-width='2'/><text x='540.0' y='74' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>analyze</text><text x='540.0' y='92' text-anchor='middle' fill='#8b949e' font-size='11'>no_data</text><rect x='450' y='170' width='180' height='56' rx='8' fill='#161b22' stroke='#3fb950' stroke-width='2'/><text x='540.0' y='194' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>tune</text><text x='540.0' y='212' text-anchor='middle' fill='#3fb950' font-size='11'>measured</text><rect x='240' y='170' width='180' height='56' rx='8' fill='#161b22' stroke='#d29922' stroke-width='2'/><text x='330.0' y='194' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>verify</text><text x='330.0' y='212' text-anchor='middle' fill='#d29922' font-size='11'>projected</text><rect x='30' y='170' width='180' height='56' rx='8' fill='#161b22' stroke='#d29922' stroke-width='2'/><text x='120.0' y='194' text-anchor='middle' fill='#e6edf3' font-size='14' font-weight='600'>pass</text><text x='120.0' y='212' text-anchor='middle' fill='#d29922' font-size='11'>projected</text><text x='300' y='252' text-anchor='middle' fill='#9198a1' font-size='11'>gfx1101 (local) — measured vs projected provenance per module; zero network</text></svg>
+<p>One-command end-to-end loop (scripts/demo.sh): profile → capture →
+analyze → capture→tune → verifier-gated tune + pass→analyzer delta;
+hot kernel <code>_Z15layernorm_fusedPKtS0_S0_Ptfi.kd</code>.
+Six module sections aggregate the committed per-module reports below.</p>
+<table class="honesty">
+<tr><th>module</th><th>provenance mode</th></tr>
+<tr><td>analyzer</td><td><span class='status projected'>projected</span></td></tr><tr><td>tune</td><td><span class='status measured'>measured</span></td></tr><tr><td>verify</td><td><span class='status projected'>projected</span></td></tr><tr><td>capture</td><td><span class='status measured'>measured</span></td></tr><tr><td>profile</td><td><span class='status measured'>measured</span></td></tr><tr><td>pass</td><td><span class='status projected'>projected</span></td></tr>
+</table>
+</section>
+<section class='module' id='module-analyzer' data-available='true'><h2>Static analyzer (C1) <span class='status projected'>projected</span></h2><pre class='summary'>{
+  &quot;golden_kernel&quot;: {
+    &quot;name&quot;: &quot;fused_attention&quot;,
+    &quot;source_file&quot;: &quot;fused_attention.cu&quot;,
+    &quot;ptx_file&quot;: &quot;fused_attention.ptx&quot;,
+    &quot;ptx_version&quot;: &quot;8.5&quot;,
+    &quot;arch&quot;: &quot;sm_86&quot;,
+    &quot;block_size&quot;: 64,
+    &quot;warps_per_block&quot;: 2,
+    &quot;dynamic_shared_bytes&quot;: 67584,
+    &quot;opt_in_shared_bytes&quot;: 67584
+  },
+  &quot;golden_occupancy&quot;: 0.375,
+  &quot;golden_limiter&quot;: &quot;registers&quot;,
+  &quot;golden_registers_per_thread&quot;: 102,
+  &quot;golden_warnings&quot;: 3,
+  &quot;golden_suggestions&quot;: 3,
+  &quot;captured_isa_findings&quot;: [
+    &quot;possibly_divergent_branch&quot;
+  ],
+  &quot;captured_isa_vectorized_ld_global&quot;: 0,
+  &quot;captured_isa_spill_bytes&quot;: 0
+}</pre><p class='prov'>provenance: mode=<code>projected</code>, measured=<code>False</code> — static analysis of committed PTX/ISA; numbers are analytic estimates, not wall-clock performance.</p><ul class='evidence'><li><code>tests/fixtures/expected_fused_attention.json</code></li><li><code>reports/demo/stage-3-analyze.json</code></li><li><code>tests/fixtures/fused_attention.ptx</code></li><li><code>reports/demo/stage-3-analyze.html</code></li></ul></section><section class='module' id='module-tune' data-available='true'><h2>Autotuner (C2) <span class='status measured'>measured</span></h2><pre class='summary'>{
+  &quot;families&quot;: {
+    &quot;matmul&quot;: {
+      &quot;variants&quot;: 15,
+      &quot;best_median_us&quot;: 415324.003,
+      &quot;worst_median_us&quot;: 3106305.48,
+      &quot;provenance_modes&quot;: [
+        &quot;measured&quot;
+      ]
+    }
+  },
+  &quot;capture_tune_validated&quot;: null,
+  &quot;capture_tune_best_block&quot;: 128,
+  &quot;capture_tune_speedup&quot;: 1,
+  &quot;verify_gate&quot;: true,
+  &quot;verifier_gated_variants&quot;: null,
+  &quot;compiled_variants&quot;: null
+}</pre><p class='prov'>provenance: mode=<code>measured</code>, measured=<code>True</code> — live gfx1101 benchmark timings (reports/tune/*.jsonl provenance.mode=measured) + capture-&gt;tune + verifier-gated runs.</p><ul class='evidence'><li><code>reports/tune/flash_attention-fnv1a64:653b3d31ee5b3803.jsonl</code></li><li><code>reports/tune/matmul-fnv1a64:e93d312338ce8fd7.jsonl</code></li><li><code>reports/demo/stage-4-capture-tune.json</code></li><li><code>reports/demo/stage-5-verify-tune.json</code></li></ul></section><section class='module' id='module-verify' data-available='true'><h2>Static verifier (C3) <span class='status projected'>projected</span></h2><pre class='summary'>{
+  &quot;manifest_entries&quot;: 34,
+  &quot;corpus_source_files&quot;: 19,
+  &quot;entries_by_check_class&quot;: {
+    &quot;1&quot;: 4,
+    &quot;2&quot;: 5,
+    &quot;6&quot;: 1,
+    &quot;3&quot;: 3,
+    &quot;4&quot;: 6,
+    &quot;5&quot;: 7,
+    &quot;8&quot;: 3,
+    &quot;7&quot;: 5
+  },
+  &quot;entries_by_verdict&quot;: {
+    &quot;SAFE&quot;: 18,
+    &quot;MAY_OOB&quot;: 4,
+    &quot;DIVERGENT_BARRIER&quot;: 1,
+    &quot;BARRIER_MISMATCH&quot;: 1,
+    &quot;MAY_RACE&quot;: 2,
+    &quot;UNKNOWN_RACE&quot;: 1,
+    &quot;PTR_OOB&quot;: 4,
+    &quot;INVALID_ADDRSPACE_CAST&quot;: 1,
+    &quot;MAY_UNINIT_READ&quot;: 2
+  },
+  &quot;check_classes&quot;: 8
+}</pre><p class='prov'>provenance: mode=<code>projected</code>, measured=<code>False</code> — static clang-&gt;LLVM-IR verdicts over the committed corpus manifest; no runtime execution.</p><ul class='evidence'><li><code>tests/verify/manifest.json</code></li><li><code>tests/verify/corpus/</code></li></ul></section><section class='module' id='module-capture' data-available='true'><h2>Capture / replay (C4) <span class='status measured'>measured</span></h2><pre class='summary'>{
+  &quot;mechanism&quot;: &quot;LD_PRELOAD=libkernscope_capture_hip.so (rocprofiler-sdk intercept)&quot;,
+  &quot;bundle_kernel&quot;: &quot;_Z15layernorm_fusedPKtS0_S0_Ptfi.kd&quot;,
+  &quot;grid&quot;: &quot;1024x1x1&quot;,
+  &quot;block&quot;: &quot;128x1x1&quot;,
+  &quot;output_sha256&quot;: &quot;a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec&quot;,
+  &quot;blob_count&quot;: 3,
+  &quot;replay_verdict&quot;: &quot;PASS&quot;,
+  &quot;replay_bitwise_equal&quot;: true,
+  &quot;fixture_bundle&quot;: &quot;bundle.v0&quot;,
+  &quot;demo_bundle_replay&quot;: &quot;PASS&quot;
+}</pre><p class='prov'>provenance: mode=<code>measured</code>, measured=<code>True</code> — live gfx1101 capture (rocprofiler-sdk intercept) + replay with bitwise-equal validation.</p><ul class='evidence'><li><code>tests/fixtures/capture/layernorm-live/manifest.json</code></li><li><code>tests/fixtures/capture/layernorm-live/bundle.v0</code></li><li><code>tests/fixtures/capture/v0-sample.bundle</code></li><li><code>reports/demo/capture/bundle.v0</code></li><li><code>reports/demo/capture/replay.txt</code></li><li><code>reports/demo/capture/output.bin</code></li></ul></section><section class='module' id='module-profile' data-available='true'><h2>Profiler (C6) <span class='status measured'>measured</span></h2><pre class='summary'>{
+  &quot;kernel_count&quot;: 3,
+  &quot;wall_time_ns&quot;: 22120,
+  &quot;hot_kernel&quot;: &quot;_Z15layernorm_fusedPKtS0_S0_Ptfi.kd&quot;,
+  &quot;hot_kernel_duration_ns&quot;: 9040,
+  &quot;hot_kernel_occupancy&quot;: 1,
+  &quot;hot_kernel_registers&quot;: 24,
+  &quot;hot_kernel_hints&quot;: [
+    {
+      &quot;id&quot;: &quot;memory_bound&quot;,
+      &quot;severity&quot;: &quot;suggestion&quot;,
+      &quot;evidence&quot;: {
+        &quot;arithmetic_intensity&quot;: &quot;1.375&quot;,
+        &quot;bound_class&quot;: &quot;memory&quot;,
+        &quot;bytes_moved_estimate&quot;: &quot;1048576&quot;,
+        &quot;family&quot;: &quot;layernorm&quot;,
+        &quot;ridge_point&quot;: &quot;27.6142132&quot;,
+        &quot;text&quot;: &quot;likely memory/traffic-bound (arithmetic intensity below the ridge point; see the roofline position evidence)&quot;
+      }
+    }
+  ],
+  &quot;profiler_hint_ids&quot;: [
+    null,
+    null
+  ],
+  &quot;peak_bench_families&quot;: {
+    &quot;peak_bw_d2d&quot;: {
+      &quot;median_us&quot;: 2262130.022,
+      &quot;size_bytes&quot;: 1073741824.0,
+      &quot;mode&quot;: &quot;measured&quot;
+    },
+    &quot;peak_bw_read&quot;: {
+      &quot;median_us&quot;: 907123.983,
+      &quot;size_bytes&quot;: 536870912.0,
+      &quot;mode&quot;: &quot;measured&quot;
+    },
+    &quot;peak_flops&quot;: {
+      &quot;median_us&quot;: 13510065.556,
+      &quot;size_bytes&quot;: 0,
+      &quot;mode&quot;: &quot;measured&quot;
+    },
+    &quot;peak_lds&quot;: {
+      &quot;median_us&quot;: 10321864.128,
+      &quot;size_bytes&quot;: 98304000000.0,
+      &quot;mode&quot;: &quot;measured&quot;
+    }
+  }
+}</pre><p class='prov'>provenance: mode=<code>measured</code>, measured=<code>True</code> — live gfx1101 launch tracing + kernscope-bench peak bandwidth runs.</p><ul class='evidence'><li><code>reports/demo/stage-1-profile.json</code></li><li><code>reports/demo/stage-1-profile.html</code></li><li><code>reports/peaks/gfx1101-bench.jsonl</code></li></ul></section><section class='module' id='module-pass' data-available='true'><h2>LLVM passes + pass→analyzer delta (C5) <span class='status projected'>projected</span></h2><pre class='summary'>{
+  &quot;kernels&quot;: {
+    &quot;gemm&quot;: {
+      &quot;transform&quot;: &quot;no-transform&quot;,
+      &quot;vector_width_before&quot;: 1,
+      &quot;vector_width_after&quot;: 1,
+      &quot;vector_width_increased&quot;: false,
+      &quot;smem_bytes_before&quot;: 0,
+      &quot;smem_bytes_after&quot;: 0,
+      &quot;uncoalesced_before&quot;: 0,
+      &quot;uncoalesced_after&quot;: 0,
+      &quot;ptx_compile_all_exit0&quot;: true
+    },
+    &quot;layernorm&quot;: {
+      &quot;transform&quot;: &quot;vectorize&quot;,
+      &quot;vector_width_before&quot;: 1,
+      &quot;vector_width_after&quot;: 4,
+      &quot;vector_width_increased&quot;: true,
+      &quot;smem_bytes_before&quot;: 0,
+      &quot;smem_bytes_after&quot;: 0,
+      &quot;uncoalesced_before&quot;: 64,
+      &quot;uncoalesced_after&quot;: 16,
+      &quot;ptx_compile_all_exit0&quot;: true
+    },
+    &quot;softmax&quot;: {
+      &quot;transform&quot;: &quot;no-transform&quot;,
+      &quot;vector_width_before&quot;: 1,
+      &quot;vector_width_after&quot;: 1,
+      &quot;vector_width_increased&quot;: false,
+      &quot;smem_bytes_before&quot;: 0,
+      &quot;smem_bytes_after&quot;: 0,
+      &quot;uncoalesced_before&quot;: 0,
+      &quot;uncoalesced_after&quot;: 0,
+      &quot;ptx_compile_all_exit0&quot;: true
+    }
+  },
+  &quot;showcase_delta&quot;: {
+    &quot;bank_conflict_way_delta&quot;: null,
+    &quot;improved_metrics&quot;: [
+      &quot;vectorized_ld_global&quot;,
+      &quot;vector_width&quot;,
+      &quot;coalescing&quot;
+    ],
+    &quot;no_transform&quot;: false,
+    &quot;registers_estimate_delta&quot;: 0,
+    &quot;smem_bytes_delta&quot;: 0,
+    &quot;uncoalesced_delta&quot;: -48,
+    &quot;vector_width_delta&quot;: 3,
+    &quot;vectorized_ld_global_delta&quot;: 12
+  },
+  &quot;showcase_kernel&quot;: &quot;layernorm&quot;
+}</pre><p class='prov'>provenance: mode=<code>projected</code>, measured=<code>False</code> — static IR/PTX before/after deltas (llc compile-only); measured numbers are the gfx1101 analog in libs/db records (mode: measured).</p><ul class='evidence'><li><code>reports/demo/stage-5-pass-delta.json</code></li><li><code>reports/passes/gemm/report.json</code></li><li><code>reports/passes/layernorm/report.json</code></li><li><code>reports/passes/softmax/report.json</code></li></ul></section>
+</main>
+<footer>kernscope — self-contained dashboard (zero network requests); embedded
+JSON payload in &lt;script id="report-data"&gt; = the full model
+(parse with python3 html.parser; tests/report/check_dashboard.py asserts the
+six module sections + provenance.measured on each).</footer>
+<script id="report-data" type="application/json">{
+  "schema_version": "1.0",
+  "report_type": "kernscope_dashboard",
+  "tool_version": "kernscope-dashboard 0.1.0",
+  "generated": "2026-08-15T07:00:12Z",
+  "machine": {
+    "arch": "gfx1101",
+    "device": "AMD Radeon RX 7800 XT",
+    "note": "LOCAL numbers only; rental numbers land under reports/rentals/ only when the owner produces them."
+  },
+  "honesty": {
+    "rule": "projected numbers are never presented as measured; every module section carries provenance.mode + provenance.measured (asserted by tests/report/check_dashboard.py)",
+    "modes": {
+      "analyzer": "projected",
+      "tune": "measured",
+      "verify": "projected",
+      "capture": "measured",
+      "profile": "measured",
+      "pass": "projected"
+    }
+  },
+  "loop": {
+    "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+    "diagram": "static inline SVG (profile -> capture -> analyze -> tune -> verify -> pass -> benchmark; dashed edge closes the loop back to profile)",
+    "modules": [
+      "analyzer",
+      "tune",
+      "verify",
+      "capture",
+      "profile",
+      "pass"
+    ]
+  },
+  "sections": {
+    "analyzer": {
+      "title": "Static analyzer (C1)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-analyze",
+        "note": "static analysis of committed PTX/ISA; numbers are analytic estimates, not wall-clock performance.",
+        "sources": [
+          "tests/fixtures/expected_fused_attention.json",
+          "reports/demo/stage-3-analyze.json",
+          "tests/fixtures/fused_attention.ptx",
+          "reports/demo/stage-3-analyze.html"
+        ]
+      },
+      "summary": {
+        "golden_kernel": {
+          "name": "fused_attention",
+          "source_file": "fused_attention.cu",
+          "ptx_file": "fused_attention.ptx",
+          "ptx_version": "8.5",
+          "arch": "sm_86",
+          "block_size": 64,
+          "warps_per_block": 2,
+          "dynamic_shared_bytes": 67584,
+          "opt_in_shared_bytes": 67584
+        },
+        "golden_occupancy": 0.375,
+        "golden_limiter": "registers",
+        "golden_registers_per_thread": 102,
+        "golden_warnings": 3,
+        "golden_suggestions": 3,
+        "captured_isa_findings": [
+          "possibly_divergent_branch"
+        ],
+        "captured_isa_vectorized_ld_global": 0,
+        "captured_isa_spill_bytes": 0
+      },
+      "files": [
+        "tests/fixtures/expected_fused_attention.json",
+        "reports/demo/stage-3-analyze.json",
+        "tests/fixtures/fused_attention.ptx",
+        "reports/demo/stage-3-analyze.html"
+      ]
+    },
+    "tune": {
+      "title": "Autotuner (C2)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-tune",
+        "note": "live gfx1101 benchmark timings (reports/tune/*.jsonl provenance.mode=measured) + capture->tune + verifier-gated runs.",
+        "sources": [
+          "reports/tune/flash_attention-fnv1a64:653b3d31ee5b3803.jsonl",
+          "reports/tune/matmul-fnv1a64:e93d312338ce8fd7.jsonl",
+          "reports/demo/stage-4-capture-tune.json",
+          "reports/demo/stage-5-verify-tune.json"
+        ]
+      },
+      "summary": {
+        "families": {
+          "matmul": {
+            "variants": 15,
+            "best_median_us": 415324.003,
+            "worst_median_us": 3106305.48,
+            "provenance_modes": [
+              "measured"
+            ]
+          }
+        },
+        "capture_tune_validated": null,
+        "capture_tune_best_block": 128,
+        "capture_tune_speedup": 1,
+        "verify_gate": true,
+        "verifier_gated_variants": null,
+        "compiled_variants": null
+      },
+      "files": [
+        "reports/tune/flash_attention-fnv1a64:653b3d31ee5b3803.jsonl",
+        "reports/tune/matmul-fnv1a64:e93d312338ce8fd7.jsonl",
+        "reports/demo/stage-4-capture-tune.json",
+        "reports/demo/stage-5-verify-tune.json"
+      ]
+    },
+    "verify": {
+      "title": "Static verifier (C3)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-verify",
+        "note": "static clang->LLVM-IR verdicts over the committed corpus manifest; no runtime execution.",
+        "sources": [
+          "tests/verify/manifest.json",
+          "tests/verify/corpus/"
+        ]
+      },
+      "summary": {
+        "manifest_entries": 34,
+        "corpus_source_files": 19,
+        "entries_by_check_class": {
+          "1": 4,
+          "2": 5,
+          "6": 1,
+          "3": 3,
+          "4": 6,
+          "5": 7,
+          "8": 3,
+          "7": 5
+        },
+        "entries_by_verdict": {
+          "SAFE": 18,
+          "MAY_OOB": 4,
+          "DIVERGENT_BARRIER": 1,
+          "BARRIER_MISMATCH": 1,
+          "MAY_RACE": 2,
+          "UNKNOWN_RACE": 1,
+          "PTR_OOB": 4,
+          "INVALID_ADDRSPACE_CAST": 1,
+          "MAY_UNINIT_READ": 2
+        },
+        "check_classes": 8
+      },
+      "files": [
+        "tests/verify/manifest.json",
+        "tests/verify/corpus/"
+      ]
+    },
+    "capture": {
+      "title": "Capture / replay (C4)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-capture",
+        "note": "live gfx1101 capture (rocprofiler-sdk intercept) + replay with bitwise-equal validation.",
+        "sources": [
+          "tests/fixtures/capture/layernorm-live/manifest.json",
+          "tests/fixtures/capture/layernorm-live/bundle.v0",
+          "tests/fixtures/capture/v0-sample.bundle",
+          "reports/demo/capture/bundle.v0",
+          "reports/demo/capture/replay.txt",
+          "reports/demo/capture/output.bin"
+        ]
+      },
+      "summary": {
+        "mechanism": "LD_PRELOAD=libkernscope_capture_hip.so (rocprofiler-sdk intercept)",
+        "bundle_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+        "grid": "1024x1x1",
+        "block": "128x1x1",
+        "output_sha256": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec",
+        "blob_count": 3,
+        "replay_verdict": "PASS",
+        "replay_bitwise_equal": true,
+        "fixture_bundle": "bundle.v0",
+        "demo_bundle_replay": "PASS"
+      },
+      "files": [
+        "tests/fixtures/capture/layernorm-live/manifest.json",
+        "tests/fixtures/capture/layernorm-live/bundle.v0",
+        "tests/fixtures/capture/v0-sample.bundle",
+        "reports/demo/capture/bundle.v0",
+        "reports/demo/capture/replay.txt",
+        "reports/demo/capture/output.bin"
+      ]
+    },
+    "profile": {
+      "title": "Profiler (C6)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "measured",
+        "measured": true,
+        "tool": "kernscope-profile",
+        "note": "live gfx1101 launch tracing + kernscope-bench peak bandwidth runs.",
+        "sources": [
+          "reports/demo/stage-1-profile.json",
+          "reports/demo/stage-1-profile.html",
+          "reports/peaks/gfx1101-bench.jsonl"
+        ]
+      },
+      "summary": {
+        "kernel_count": 3,
+        "wall_time_ns": 22120,
+        "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+        "hot_kernel_duration_ns": 9040,
+        "hot_kernel_occupancy": 1,
+        "hot_kernel_registers": 24,
+        "hot_kernel_hints": [
+          {
+            "id": "memory_bound",
+            "severity": "suggestion",
+            "evidence": {
+              "arithmetic_intensity": "1.375",
+              "bound_class": "memory",
+              "bytes_moved_estimate": "1048576",
+              "family": "layernorm",
+              "ridge_point": "27.6142132",
+              "text": "likely memory/traffic-bound (arithmetic intensity below the ridge point; see the roofline position evidence)"
+            }
+          }
+        ],
+        "profiler_hint_ids": [
+          null,
+          null
+        ],
+        "peak_bench_families": {
+          "peak_bw_d2d": {
+            "median_us": 2262130.022,
+            "size_bytes": 1073741824.0,
+            "mode": "measured"
+          },
+          "peak_bw_read": {
+            "median_us": 907123.983,
+            "size_bytes": 536870912.0,
+            "mode": "measured"
+          },
+          "peak_flops": {
+            "median_us": 13510065.556,
+            "size_bytes": 0,
+            "mode": "measured"
+          },
+          "peak_lds": {
+            "median_us": 10321864.128,
+            "size_bytes": 98304000000.0,
+            "mode": "measured"
+          }
+        }
+      },
+      "files": [
+        "reports/demo/stage-1-profile.json",
+        "reports/demo/stage-1-profile.html",
+        "reports/peaks/gfx1101-bench.jsonl"
+      ]
+    },
+    "pass": {
+      "title": "LLVM passes + pass\u2192analyzer delta (C5)",
+      "available": true,
+      "status": "ok",
+      "provenance": {
+        "mode": "projected",
+        "measured": false,
+        "tool": "kernscope-pass",
+        "note": "static IR/PTX before/after deltas (llc compile-only); measured numbers are the gfx1101 analog in libs/db records (mode: measured).",
+        "sources": [
+          "reports/demo/stage-5-pass-delta.json",
+          "reports/passes/gemm/report.json",
+          "reports/passes/layernorm/report.json",
+          "reports/passes/softmax/report.json"
+        ]
+      },
+      "summary": {
+        "kernels": {
+          "gemm": {
+            "transform": "no-transform",
+            "vector_width_before": 1,
+            "vector_width_after": 1,
+            "vector_width_increased": false,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 0,
+            "uncoalesced_after": 0,
+            "ptx_compile_all_exit0": true
+          },
+          "layernorm": {
+            "transform": "vectorize",
+            "vector_width_before": 1,
+            "vector_width_after": 4,
+            "vector_width_increased": true,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 64,
+            "uncoalesced_after": 16,
+            "ptx_compile_all_exit0": true
+          },
+          "softmax": {
+            "transform": "no-transform",
+            "vector_width_before": 1,
+            "vector_width_after": 1,
+            "vector_width_increased": false,
+            "smem_bytes_before": 0,
+            "smem_bytes_after": 0,
+            "uncoalesced_before": 0,
+            "uncoalesced_after": 0,
+            "ptx_compile_all_exit0": true
+          }
+        },
+        "showcase_delta": {
+          "bank_conflict_way_delta": null,
+          "improved_metrics": [
+            "vectorized_ld_global",
+            "vector_width",
+            "coalescing"
+          ],
+          "no_transform": false,
+          "registers_estimate_delta": 0,
+          "smem_bytes_delta": 0,
+          "uncoalesced_delta": -48,
+          "vector_width_delta": 3,
+          "vectorized_ld_global_delta": 12
+        },
+        "showcase_kernel": "layernorm"
+      },
+      "files": [
+        "reports/demo/stage-5-pass-delta.json",
+        "reports/passes/gemm/report.json",
+        "reports/passes/layernorm/report.json",
+        "reports/passes/softmax/report.json"
+      ]
+    }
+  }
+}</script>
+</body>
+</html>
