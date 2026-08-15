@@ -1,0 +1,47 @@
+
+kernscope todo 30 — verify core pipeline — QA negative evidence (syntax error)
+===============================================================================
+Date: 2026-08-14
+Executor: implementation worker (todo 30 of gpu-kernel-suite plan)
+Commit: 7102e2b feat(verify): core pipeline with host+device ingestion + launch-config tiers
+
+QA NEGATIVE SCENARIO (plan): source with a syntax error -> clang diagnostic
+forwarded, exit 2, NO verifier crash.
+
+Fixture: tools/verify/tests/fixtures/bad_syntax.cu (deliberately missing
+semicolon: `out[i] = i` without ';').
+
+COMMAND + EXACT RESULT (inside `devenv shell`)
+  >>> build/bin/kernscope-verify-core tools/verify/tests/fixtures/bad_syntax.cu
+  kernscope-verify-core: ingestion failed (exit 2)
+  clang (pass --cuda-host-only) exited 1
+  tools/verify/tests/fixtures/bad_syntax.cu:19:19: error: expected ';' after expression
+     19 |         out[i] = i
+        |                   ^
+        |                   ;
+  1 error generated when compiling for host.
+  >>> exit=2
+
+ASSERTIONS
+  - exit code 2 (ingestion failure path)           PASS
+  - clang diagnostic forwarded verbatim (file:line:col + caret + note)  PASS
+  - no verifier crash (no segfault/abort; the process exits cleanly)    PASS
+  - the same contract is asserted in gtest:
+    VerifyCore.IngestionFailureForwardsClangDiagnostics (ctest no-gpu)
+    EXPECT_FALSE(result.success); EXPECT_EQ(result.module, nullptr);
+    ASSERT_FALSE(result.clang_diagnostics.empty());
+    EXPECT_NE(result.clang_diagnostics[0].find("error"), npos);
+    -> PASSED
+
+FULL QA-NEGATIVE LOG
+  >>> build/bin/kernscope-verify-core tools/verify/tests/fixtures/bad_syntax.cu
+  kernscope-verify-core: ingestion failed (exit 2)
+  clang (pass --cuda-host-only) exited 1
+  tools/verify/tests/fixtures/bad_syntax.cu:19:19: error: expected ';' after expression
+     19 |         out[i] = i
+        |                   ^
+        |                   ;
+  1 error generated when compiling for host.
+  >>> exit=2
+  >>> echo $?
+  2
