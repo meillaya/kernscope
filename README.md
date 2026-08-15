@@ -276,15 +276,3 @@ procedure is in `docs/reproducibility.md`.
   at build time.
 - Rental runbook: `scripts/rental-validate.sh` (with `--dry-run` first) and
   `docs/reproducibility.md`.
-
-## Resume bullets
-
-The six tools, in resume form. Single source of truth:
-`docs/research/owner-examples.md`.
-
-- "Developed a C++ PTX/AMDGPU static analyzer that models register pressure, occupancy, memory coalescing, bank conflicts, and warp divergence, producing optimization reports for generated CUDA/ROCm kernels."
-- "Built a C++ CUDA/HIP autotuning kernel generator for GEMM, softmax, layernorm, and fused transformer ops, exploring tile sizes, warp mappings, vector widths, and shared-memory layouts to select architecture-specific kernels."
-- "Designed a C++ static verifier for GPU kernels that analyzes LLVM/MLIR-level memory accesses, synchronization, address spaces, and barrier safety before lowering to CUDA/ROCm backends."
-- "Built a CUDA/HIP kernel capture-and-replay system that intercepts runtime launches, snapshots device inputs, and emits standalone C++ reproducers for isolated benchmarking, debugging, and compiler optimization."
-- "Implemented MLIR/LLVM GPU optimization passes for shared-memory promotion, vectorized memory access, loop tiling, and redundant load elimination, with FileCheck tests and CUDA benchmark validation."
-- "Created a C++ CUDA/ROCm profiler that correlates kernel runtime, register pressure, shared-memory usage, occupancy, and emitted PTX/AMDGPU assembly to produce compiler-aware optimization diagnostics."
