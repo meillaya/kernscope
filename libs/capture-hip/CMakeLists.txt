@@ -51,7 +51,7 @@ if(NOT DEFINED ENV{ROCPROF_SDK_DEV} OR
   return()
 endif()
 
-add_library(kernscope_capture_hip SHARED src/capture_hip.cpp)
+add_library(kernscope_capture_hip SHARED src/capture_hip.cpp src/amdgpu_metadata.cpp)
 target_include_directories(kernscope_capture_hip PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # HIP + rocprofiler-sdk headers are SYSTEM so the project-wide -Werror never

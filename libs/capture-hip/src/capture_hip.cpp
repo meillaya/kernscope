@@ -33,6 +33,8 @@
 
 #include "kernscope/capture.h"
 
+#include "amdgpu_metadata.h"
+
 #include <rocprofiler-sdk/callback_tracing.h>
 #include <rocprofiler-sdk/context.h>
 #include <rocprofiler-sdk/intercept_table.h>
@@ -121,6 +123,48 @@ struct KernelSymbol {
 };
 std::unordered_map<std::uint64_t, KernelSymbol> g_kernels; // kernel_id -> symbol
 std::unordered_map<std::uint64_t, std::uint64_t> g_co_to_mod; // code_object_id -> module reg id
+// Per-kernel argument layout from the code object's AMDGPU metadata note
+// (keyed by the mangled kernel name, ".kd" suffix stripped): drives the
+// byte-exact per-argument capture of the launch path.
+std::unordered_map<std::string, std::vector<kernscope::AmdArgLayout>>
+    g_arg_layouts;
+std::uint64_t g_input_buffer_seq = 0; // input-buffer-<n>.bin numbering
+
+void WriteBlob(const std::string &name, const void *data, std::size_t size); // fwd
+
+/// Kernel-name key for the layout map: the dispatch-layer name carries a
+/// trailing ".kd" (kernel descriptor suffix) the metadata ".name" does not.
+std::string LayoutKey(std::string_view dispatch_name) {
+  std::string key(dispatch_name);
+  constexpr std::string_view kKd = ".kd";
+  if (key.size() > kKd.size() && key.compare(key.size() - kKd.size(), kKd.size(), kKd) == 0) {
+    key.resize(key.size() - kKd.size());
+  }
+  return key;
+}
+
+/// Dumps the host-side source of a hipMemcpyHostToDevice call to
+/// input-buffer-<n>.bin (v0-scope of the Kerncap address-space closure): the
+/// acceptance hash-matches these blobs against the app's known inputs. The
+/// host source is valid at the API boundary (for the async variant the app
+/// must keep it alive until completion by contract, so reading it at call
+/// time is sound). Best-effort; capped so a runaway app cannot fill the disk.
+void DumpH2DInput(const void *src, std::size_t bytes) {
+  constexpr std::size_t kMaxDumpBytes = 512u << 20; // 512 MiB sanity cap
+  if (src == nullptr || bytes == 0) {
+    return;
+  }
+  if (bytes > kMaxDumpBytes) {
+    std::fprintf(stderr,
+                 "[kernscope-capture-hip] warning: H2D input dump skipped "
+                 "(%zu bytes > 512 MiB cap)\n", bytes);
+    return;
+  }
+  std::lock_guard<std::mutex> lock(g_mu);
+  const std::string name =
+      "input-buffer-" + std::to_string(++g_input_buffer_seq) + ".bin";
+  WriteBlob(name, src, bytes);
+}
 
 //===--- blob output ----------------------------------------------------------===//
 // Blob directory for code-object-<id>.hsaco and input-buffer-<n>.bin.
@@ -196,6 +240,9 @@ hipError_t WrapHipMemcpy(void *dst, const void *src, size_t sizeBytes,
   if (g_in_memcpy) { // runtime re-dispatch of the async variant
     return g_real.hipMemcpy(dst, src, sizeBytes, kind);
   }
+  if (kind == hipMemcpyHostToDevice) {
+    DumpH2DInput(src, sizeBytes);
+  }
   g_in_memcpy = true;
   hipError_t rc = g_real.hipMemcpy(dst, src, sizeBytes, kind);
   g_in_memcpy = false;
@@ -217,6 +264,9 @@ hipError_t WrapHipMemcpyAsync(void *dst, const void *src, size_t sizeBytes,
   Session().note_api(ApiKind::kCudaMemcpyAsync);
   if (g_in_memcpy) { // sync variant already recorded this logical copy
     return g_real.hipMemcpyAsync(dst, src, sizeBytes, kind, stream);
+  }
+  if (kind == hipMemcpyHostToDevice) {
+    DumpH2DInput(src, sizeBytes);
   }
   g_in_memcpy = true;
   hipError_t rc = g_real.hipMemcpyAsync(dst, src, sizeBytes, kind, stream);
@@ -277,19 +327,33 @@ hipError_t WrapHipLaunchKernel(const void *function_address, dim3 numBlocks,
                                dim3 dimBlocks, void **args,
                                size_t sharedMemBytes, hipStream_t stream) {
   Session().note_api(ApiKind::kCudaLaunchKernel);
-  hipError_t rc =
+  // The pending launch is queued BEFORE the forward: the kernel-dispatch
+  // callback fires while the real hipLaunchKernel is still enqueueing (the
+  // SDK processes the packet on its own thread), so recording after the
+  // return races the dispatch. On failure the entry is removed again.
+  PendingLaunch p;
+  p.grid_x = numBlocks.x; p.grid_y = numBlocks.y; p.grid_z = numBlocks.z;
+  p.block_x = dimBlocks.x; p.block_y = dimBlocks.y; p.block_z = dimBlocks.z;
+  p.shared_mem_bytes = static_cast<std::uint32_t>(sharedMemBytes);
+  p.stream = reinterpret_cast<std::uint64_t>(stream);
+  p.kernel_params = args;
+  p.seq = ++g_pending_seq;
+  {
+    std::lock_guard<std::mutex> lock(g_mu);
+    g_pending_launches.push_back(p);
+  }
+  const hipError_t rc =
       g_real.hipLaunchKernel(function_address, numBlocks, dimBlocks, args,
                              sharedMemBytes, stream);
-  if (rc == hipSuccess) {
-    PendingLaunch p;
-    p.grid_x = numBlocks.x; p.grid_y = numBlocks.y; p.grid_z = numBlocks.z;
-    p.block_x = dimBlocks.x; p.block_y = dimBlocks.y; p.block_z = dimBlocks.z;
-    p.shared_mem_bytes = static_cast<std::uint32_t>(sharedMemBytes);
-    p.stream = reinterpret_cast<std::uint64_t>(stream);
-    p.kernel_params = args;
-    p.seq = ++g_pending_seq;
+  if (rc != hipSuccess) {
     std::lock_guard<std::mutex> lock(g_mu);
-    g_pending_launches.push_back(std::move(p));
+    for (auto it = g_pending_launches.begin(); it != g_pending_launches.end();
+         ++it) {
+      if (it->seq == p.seq) {
+        g_pending_launches.erase(it);
+        break;
+      }
+    }
   }
   return rc;
 }
@@ -421,10 +485,47 @@ void KernelDispatchCallback(rocprofiler_callback_tracing_record_t record,
   if (have_pending) {
     launch.shared_mem_bytes = pending.shared_mem_bytes;
     launch.stream = pending.stream;
-    // Arg capture: code-object metadata-driven per-arg sizes are applied by
-    // the metadata layer (todo-45 commit 2); v0 fallback records the raw
-    // kernarg segment as a single slot when the size is known.
-    if (kit != g_kernels.end() && kit->second.kernarg_segment_size > 0) {
+    // Per-argument byte-exact capture: the code object's AMDGPU metadata
+    // gives each argument's size; the wrapped hipLaunchKernel exposed the
+    // host-side argument pointer array (pending.kernel_params). Copy
+    // size bytes from each pointer - the same layout the toolchain uses to
+    // build the kernarg segment. Pointer-valued args whose pointee is NOT in
+    // the allocation map trigger the size-unknown warning (QA negative), but
+    // the slot still carries the raw pointer value bytes.
+    const auto layout_it = g_arg_layouts.find(LayoutKey(launch.kernel_name));
+    if (layout_it != g_arg_layouts.end() && pending.kernel_params != nullptr) {
+      std::size_t idx = 0;
+      for (const kernscope::AmdArgLayout &a : layout_it->second) {
+        if (a.size == 0) {
+          continue;
+        }
+        kernscope::KernelArgSlot slot;
+        slot.size = static_cast<std::size_t>(a.size);
+        if (idx < 64 && pending.kernel_params[idx] != nullptr) {
+          const auto *bytes = static_cast<const std::uint8_t *>(
+              pending.kernel_params[idx]);
+          slot.bytes.assign(bytes, bytes + slot.size);
+          if (a.is_pointer) {
+            std::uint64_t pointee = 0;
+            if (a.size >= sizeof(std::uint64_t)) {
+              std::memcpy(&pointee, bytes, sizeof(pointee));
+            }
+            if (!Session().allocation_size(pointee).has_value()) {
+              std::fprintf(stderr,
+                           "[kernscope-capture-hip] warning: buffer "
+                           "size-unknown (kernel arg #%zu, ptr=0x%llx): not "
+                           "allocated via a captured HIP allocation API\n",
+                           idx, static_cast<unsigned long long>(pointee));
+            }
+          }
+        }
+        launch.args.push_back(std::move(slot));
+        ++idx;
+      }
+    } else if (kit != g_kernels.end() &&
+               kit->second.kernarg_segment_size > 0) {
+      // No metadata layout: fall back to the raw kernarg segment size as a
+      // single slot (sizes unavailable - bytes stay empty).
       kernscope::KernelArgSlot slot;
       slot.size = kit->second.kernarg_segment_size;
       launch.args.push_back(std::move(slot));
@@ -490,7 +591,12 @@ void CodeObjectCallback(rocprofiler_callback_tracing_record_t record,
                    static_cast<int>(data->storage_type));
       return;
     }
+    const std::vector<kernscope::AmdKernelLayout> layouts =
+        kernscope::parse_amdgpu_metadata(blob);
     std::lock_guard<std::mutex> lock(g_mu);
+    for (const kernscope::AmdKernelLayout &k : layouts) {
+      g_arg_layouts[k.name] = k.args;
+    }
     const std::uint64_t mod =
         Session().register_fatbinary(blob); // sha256 module record
     g_co_to_mod[data->code_object_id] = mod;

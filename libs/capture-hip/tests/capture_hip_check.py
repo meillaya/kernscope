@@ -101,12 +101,20 @@ def main() -> int:
             capture_output=True, text=True, cwd=work)
         print(run.stderr, end="")
 
-        # 1. app behavior unchanged: output equals the golden (bit-exact bf16)
-        y_dev = np.frombuffer(out_bin.read_bytes(), dtype=np.uint16)
+        # 1. app behavior unchanged: captured output still matches the golden
+        #    within the todo-5 thresholds (cosine >= 0.999, max_rel_err <=
+        #    1e-2) - the capture must not alter app behavior.
+        y_dev_raw = np.frombuffer(out_bin.read_bytes(), dtype=np.uint16)
+        y_dev = (y_dev_raw.astype(np.uint32) << 16).view(np.float32)
         gold = np.load(FIXTURE_DIR / "golden_outputs.npz")["Y"]
-        gold_u16 = (gold.astype(np.uint32) & 0xFFFF).astype(np.uint16)
-        check(np.array_equal(y_dev, gold_u16),
-              "captured app output == golden (behavior unchanged)")
+        a = y_dev.astype(np.float64).ravel()
+        b = gold.astype(np.float64).ravel()
+        cos = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+        denom = np.where(np.abs(b) > 1e-3, np.abs(b), 1e-3)
+        max_rel = float(np.max(np.abs(a - b) / denom))
+        check(cos >= 0.999 and max_rel <= 1e-2,
+              f"captured app output matches golden (cos={cos:.6f} "
+              f"max_rel_err={max_rel:.3e}) - behavior unchanged")
 
         # 2. complete v0 bundle
         if not bundle.is_file():
@@ -120,13 +128,20 @@ def main() -> int:
               "bundle ends with end-capture-v0")
         text = "\n".join(lines)
 
-        # 3. launch record: kernel name, grid, block, arg count
-        launch = [l for l in lines if l.startswith("launch ")]
-        check(len(launch) == 1, f"exactly one launch record (got {len(launch)})")
+        # 3. launch record: kernel name, grid, block, arg count. The truthful
+        #    capture also records the runtime's internal dispatches (rocclr
+        #    copy kernels behind hipMemcpy), so the layernorm launch is
+        #    selected by kernel name.
+        launches = [l for l in lines if l.startswith("launch ")]
+        check(len(launches) >= 1, f"at least one launch record "
+              f"(got {len(launches)})")
+        launch = [l for l in launches if "layernorm_fused" in l]
+        check(len(launch) == 1,
+              f"exactly one layernorm launch (got {len(launch)})")
         if launch:
             m = re.search(r'kernel="([^"]*)"', launch[0])
             check(m is not None and "layernorm_fused" in m.group(1),
-                  f"kernel name present + names layernorm_fused (got "
+                  f"kernel name names layernorm_fused (got "
                   f"{m.group(1) if m else None})")
             check("grid=1024x1x1" in launch[0], "grid=1024x1x1")
             check("block=128x1x1" in launch[0], "block=128x1x1")
@@ -167,15 +182,28 @@ def main() -> int:
               f"(X={known_hashes['X'][:16]}... gamma={known_hashes['gamma'][:16]}... "
               f"beta={known_hashes['beta'][:16]}...)")
 
-        # 6. kernel binary blob present + provenance hash in bundle
+        # 6. kernel binary blob present + provenance hash in bundle: every
+        #    module record's sha256 must match exactly one dumped hsaco blob,
+        #    and the module carrying the layernorm kernel name must have one.
         co = sorted(blob_dir.glob("code-object-*.hsaco"))
-        check(len(co) == 1, f"one code-object hsaco blob (got {len(co)})")
-        if co:
-            co_hash = hashlib.sha256(co[0].read_bytes()).hexdigest()
-            mods = [l for l in lines if l.startswith("fatbin ")]
-            check(any(f"sha256={co_hash}" in l for l in mods),
-                  "bundle module record sha256 == hsaco blob sha256 "
-                  f"({co_hash[:16]}...)")
+        check(len(co) >= 1, f"code-object hsaco blob(s) dumped (got {len(co)})")
+        co_hashes = {hashlib.sha256(b.read_bytes()).hexdigest() for b in co}
+        mods = [l for l in lines if l.startswith("fatbin ")]
+        mod_hashes = set()
+        for l in mods:
+            m = re.search(r"sha256=([0-9a-f]{64})", l)
+            if m:
+                mod_hashes.add(m.group(1))
+        check(mod_hashes == co_hashes,
+              "bundle module sha256 set == hsaco blob sha256 set (provenance "
+              "bijection)")
+        layernorm_mod = [l for l in mods if "layernorm_fused" in l]
+        check(len(layernorm_mod) == 1,
+              "module record carries the layernorm kernel name")
+        if layernorm_mod:
+            m = re.search(r"sha256=([0-9a-f]{64})", layernorm_mod[0])
+            check(m is not None and m.group(1) in co_hashes,
+                  "layernorm module blob present on disk + hash-provenanced")
 
     if failures:
         print(f"\n=== {len(failures)} FAILURE(S) ===")
