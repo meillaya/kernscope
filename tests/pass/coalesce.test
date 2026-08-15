@@ -28,6 +28,19 @@
 
 ; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/fully_coalesced.ll -o %t.rep 2>&1 | FileCheck %s --check-prefix=REPORT
 
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/strided.ll -o %t.str 2>&1 | FileCheck %s --check-prefix=REPORT-STRIDED
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/unknown.ll -o %t.unk 2>&1 | FileCheck %s --check-prefix=REPORT-UNKNOWN
+
 ; The analysis must be a no-op on the IR (byte-identical llvm-diff above).
-; REPORT: kernscope-coalesce: coalesce_kernel: 2 global accesses
-; REPORT: widest access 4 B
+; Fully coalesced (stride-1 float): 32 lanes x 4 B = 128 B = 4 sectors ->
+; efficiency 1.0 (the brief §3.1 golden, same counts as the todo-15 PTX
+; analyzer asserts).
+; REPORT: kernscope-coalesce: coalesce_kernel: 2 global accesses (2 fully, 0 partial, 0 uncoalesced, 0 unknown); widest access 4 B; vectorized 0
+
+; Stride-8 float: 32 sectors per warp for 128 B of useful data (the todo-15
+; 32-sector golden) -> strided.
+; REPORT-STRIDED: kernscope-coalesce: strided_kernel: 2 global accesses (0 fully, 0 partial, 2 uncoalesced, 0 unknown); widest access 4 B; vectorized 0
+
+; Indirect (loaded) index: the gather load stays affine (fully), the two
+; data-dependent accesses are unknown-pattern — never claimed coalesced.
+; REPORT-UNKNOWN: kernscope-coalesce: unknown_kernel: 3 global accesses (1 fully, 0 partial, 0 uncoalesced, 2 unknown); widest access 8 B; vectorized 0

@@ -5,10 +5,15 @@
 // KERNSCOPE_COALESCE_AS_LIB skips the registrar). Fixtures live in
 // tests/pass/Inputs/coalesce/ (COALESCE_FIXTURES_DIR).
 //
-// Skeleton stage: the classifier is not yet SCEV-aware, so every access is
-// conservatively unknown-pattern (the honesty rule — never claim coalesced
-// without proof). The full classification assertions land with the SCEV
-// classifier commit.
+// Acceptance-relevant assertions:
+//   * fully_coalesced.ll — tid-stride-1 float load+store -> contiguous-128B
+//     (efficiency 1.0, 4 sectors — the brief §3.1 fully-coalesced golden,
+//     same exact counts the todo-15 analyzer asserts at PTX level).
+//   * strided.ll        — tid-stride-8 float -> strided (32 sectors,
+//     12.5% efficiency — the todo-15 32-sector golden).
+//   * unknown.ll        — indirect (loaded) index -> unknown-pattern, never
+//     claimed coalesced (the analyzer's coalescing_unknown honesty rule).
+//     The gather-load itself stays affine (contiguous-128B).
 
 #include <gtest/gtest.h>
 
@@ -68,21 +73,59 @@ kernscope::pass::CoalesceStats runAnalyze(llvm::Module &M) {
     kernscope::pass::CoalesceStats S =
         kernscope::pass::analyzeFunction(F, SE);
     Total.total += S.total;
+    Total.fully += S.fully;
+    Total.partial += S.partial;
+    Total.uncoalesced += S.uncoalesced;
+    Total.unknown += S.unknown;
+    Total.vectorized += S.vectorized;
     Total.maxWidthBytes = std::max(Total.maxWidthBytes, S.maxWidthBytes);
   }
   return Total;
 }
 
-TEST(CoalesceClassify, SkeletonCountsFullyCoalescedFixture) {
+TEST(CoalesceClassify, FullyCoalescedStride1) {
   llvm::LLVMContext Ctx;
   std::unique_ptr<llvm::Module> M = loadModule(Ctx, "fully_coalesced.ll");
   ASSERT_NE(M, nullptr);
 
-  // Skeleton stage: the analyzer collects the raw counts (2 global ops,
-  // widest access 4 B) before the SCEV classifier lands.
   kernscope::pass::CoalesceStats Stats = runAnalyze(*M);
+  // 2 float ops (load + store), both contiguous-128B: 32 lanes x 4 B = 128 B
+  // = exactly 4 sectors of 32 B -> efficiency 1.0 (brief §3.1 golden).
   EXPECT_EQ(Stats.total, 2u);
+  EXPECT_EQ(Stats.fully, 2u);
+  EXPECT_EQ(Stats.partial, 0u);
+  EXPECT_EQ(Stats.uncoalesced, 0u);
+  EXPECT_EQ(Stats.unknown, 0u);
   EXPECT_EQ(Stats.maxWidthBytes, 4u);
+}
+
+TEST(CoalesceClassify, Strided8IsUncoalesced) {
+  llvm::LLVMContext Ctx;
+  std::unique_ptr<llvm::Module> M = loadModule(Ctx, "strided.ll");
+  ASSERT_NE(M, nullptr);
+
+  kernscope::pass::CoalesceStats Stats = runAnalyze(*M);
+  // tid-stride-8 float: per-lane stride 32 B -> 32 sectors per warp for
+  // 128 B of useful data (the todo-15 32-sector golden) -> 12.5% efficiency.
+  EXPECT_EQ(Stats.total, 2u);
+  EXPECT_EQ(Stats.fully, 0u);
+  EXPECT_EQ(Stats.uncoalesced, 2u);
+  EXPECT_EQ(Stats.unknown, 0u);
+}
+
+TEST(CoalesceClassify, IndirectIndexIsUnknown) {
+  llvm::LLVMContext Ctx;
+  std::unique_ptr<llvm::Module> M = loadModule(Ctx, "unknown.ll");
+  ASSERT_NE(M, nullptr);
+
+  kernscope::pass::CoalesceStats Stats = runAnalyze(*M);
+  // The gather load (%idx[tid]) is affine -> fully; the two a[%j] accesses
+  // through a LOADED index are data-dependent -> unknown-pattern. The
+  // honesty rule: unresolvable accesses are NEVER claimed coalesced.
+  EXPECT_EQ(Stats.total, 3u);
+  EXPECT_EQ(Stats.fully, 1u);
+  EXPECT_EQ(Stats.unknown, 2u);
+  EXPECT_EQ(Stats.uncoalesced, 0u);
 }
 
 }  // namespace

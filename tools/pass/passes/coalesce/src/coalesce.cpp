@@ -32,6 +32,9 @@
 // unknown-pattern — never optimistically claimed coalesced.
 
 #include <llvm/Analysis/ScalarEvolution.h>
+#include <llvm/Analysis/ScalarEvolutionExpressions.h>
+#include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Passes/OptimizationLevel.h>
@@ -39,6 +42,8 @@
 #include <llvm/Passes/PassPlugin.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
+
+#include <set>
 
 #include <kernscope/pass/coalesce.h>
 #include <kernscope/pass/register_pass.h>
@@ -57,25 +62,255 @@ cl::opt<bool> CoalesceReportFlag(
 
 namespace kernscope {
 namespace pass {
+namespace {
+
+// Backend lane intrinsics: threadIdx.x on NVPTX, workitem.id.x on AMDGCN —
+// the IR analog of the analyzer's %tid.x register (analyze_coalescing.cpp:
+// tid_expr()).
+bool isLaneIntrinsic(const CallBase &CB) {
+  const Function *F = CB.getCalledFunction();
+  if (!F) {
+    return false;
+  }
+  // Backend lane intrinsics by name (the per-target intrinsic enum tables
+  // are TableGen-gated; name matching mirrors the analyzer's %tid.x
+  // mnemonic matching on PTX).
+  return F->getName() == "llvm.nvvm.read.ptx.sreg.tid.x" ||
+         F->getName() == "llvm.amdgcn.workitem.id.x";
+}
+
+// The function's lane value (the tid intrinsic call), or nullptr when the
+// function has none (then every access is uniform across the warp — the
+// analyzer's coeff==0 case).
+Value *findLaneValue(Function &F) {
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+      auto *CB = dyn_cast<CallBase>(&I);
+      if (CB && isLaneIntrinsic(*CB)) {
+        return CB;
+      }
+    }
+  }
+  return nullptr;
+}
+
+// A value that is safe to treat as a uniform (warp-invariant) address
+// term: kernel parameters (the analyzer's ld.param -> base_pointer_expr),
+// globals (cvta.to.global) and constants. Anything data-derived (loads,
+// calls, computed pointers, ...) makes the per-lane affine UNRESOLVABLE —
+// the analyzer's !e.known -> unknown-pattern honesty rule
+// (analyze_coalescing.cpp: "indirect/data-dependent index; coalescing not
+// assumed"). NEVER claimed coalesced without proof.
+bool isUniformTerm(const Value *V) {
+  if (isa<Argument>(V) || isa<GlobalValue>(V) || isa<Constant>(V)) {
+    return true;
+  }
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
+    return isUniformTerm(GEP->getPointerOperand());
+  }
+  return false;
+}
+
+// Does the SCEV node mention the lane value at all?
+bool mentionsLane(const SCEV *S, const Value *LaneValue) {
+  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+    return U->getValue() == LaneValue;
+  }
+  for (const SCEV *Op : S->operands()) {
+    if (mentionsLane(Op, LaneValue)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The bare lane term, possibly through zext/sext/trunc (clang emits
+// zext(tid.x) before the GEP index arithmetic).
+bool isBareLaneTerm(const SCEV *S, const Value *LaneValue) {
+  while (auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
+    S = Ext->getOperand();
+  }
+  while (auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
+    S = Ext->getOperand();
+  }
+  while (auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
+    S = T->getOperand();
+  }
+  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+    return U->getValue() == LaneValue;
+  }
+  return false;
+}
+
+// A SCEV node with no lane inside and no data-dependent unknown inside —
+// a warp-uniform address component (constants, args, globals, canonical
+// loop AddRecs). Such components shift the whole warp by the same amount
+// and never affect the per-lane stride.
+bool isKnownUniformSCEV(const SCEV *S) {
+  if (isa<SCEVConstant>(S) || isa<SCEVCouldNotCompute>(S)) {
+    return true;
+  }
+  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+    return isUniformTerm(U->getValue());
+  }
+  for (const SCEV *Op : S->operands()) {
+    if (!isKnownUniformSCEV(Op)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Collect the lane coefficient from one SCEV node: bytes per lane that the
+// access address advances per tid unit. `ok` flips false when the SCEV is
+// not affine in the lane (or depends on data), which classifies the access
+// unknown-pattern.
+void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
+                      bool &Ok) {
+  if (!Ok) {
+    return;
+  }
+  if (isa<SCEVConstant>(S) || isa<SCEVCouldNotCompute>(S)) {
+    return;
+  }
+  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+    if (U->getValue() == LaneValue) {
+      Coeff += 1;  // a bare lane term: coefficient 1 (bytes)
+      return;
+    }
+    if (!isUniformTerm(U->getValue())) {
+      Ok = false;  // data-dependent term -> per-lane affine unresolvable
+    }
+    return;
+  }
+  if (auto *Add = dyn_cast<SCEVAddExpr>(S)) {
+    for (const SCEV *Op : Add->operands()) {
+      collectLaneCoeff(Op, LaneValue, Coeff, Ok);
+    }
+    return;
+  }
+  if (auto *Mul = dyn_cast<SCEVMulExpr>(S)) {
+    // The canonical affine shape: one factor is the bare lane term (or its
+    // extension), every other factor a constant. A factor that is
+    // warp-uniform (e.g. a loop AddRec — both lanes of a warp see the same
+    // iteration) shifts the base, not the stride; when the lane IS present
+    // such a factor would make the per-lane stride iteration-dependent, so
+    // it must be a constant.
+    const bool HasLane = mentionsLane(S, LaneValue);
+    int64_t Factor = 1;
+    bool SeenLane = false;
+    bool LaneShapeOk = true;
+    for (const SCEV *Op : Mul->operands()) {
+      if (auto *C = dyn_cast<SCEVConstant>(Op)) {
+        Factor *= C->getAPInt().getSExtValue();
+        continue;
+      }
+      if (isBareLaneTerm(Op, LaneValue) && !SeenLane) {
+        SeenLane = true;
+        continue;
+      }
+      if (HasLane) {
+        LaneShapeOk = false;  // lane inside a non-bare factor
+        break;
+      }
+      // No lane in the term: the factor must still be known-uniform
+      // (arguments/globals/constants/AddRecs), else the address is
+      // data-dependent.
+      if (!isKnownUniformSCEV(Op)) {
+        Ok = false;
+        return;
+      }
+    }
+    if (HasLane) {
+      if (!LaneShapeOk || !SeenLane) {
+        Ok = false;  // per-lane stride not a compile-time constant
+        return;
+      }
+      Coeff += Factor;
+    }
+    return;
+  }
+  // Any other node (AddRec, min/max, ...): lane inside -> the per-lane
+  // stride is not a compile-time constant; no lane -> the node must still
+  // be free of data-dependent unknowns, else the address is unresolvable.
+  if (mentionsLane(S, LaneValue)) {
+    Ok = false;
+    return;
+  }
+  if (!isKnownUniformSCEV(S)) {
+    Ok = false;
+  }
+}
+
+constexpr int kSectorSizeBytes = 32;  // brief §3.1 (L218)
+constexpr int kWarpSize = 32;         // NVIDIA warp (CPG Table 30)
+
+}  // namespace
 
 CoalescingClass classifyGlobalAccess(Value *Ptr, unsigned WidthBytes,
                                      ScalarEvolution &SE, Value *LaneValue) {
-  // SKELETON: full SCEV classifier lands in the next commit. For now every
-  // access is conservatively unknown-pattern (never claimed coalesced).
-  (void)Ptr;
-  (void)WidthBytes;
-  (void)SE;
-  (void)LaneValue;
   CoalescingClass C;
-  C.pattern = "unknown-pattern";
-  C.cls = "unknown";
+  if (WidthBytes == 0) {
+    WidthBytes = 4;
+  }
+
+  const SCEV *S = SE.getSCEV(Ptr);
+
+  // No lane value in the function: every access is uniform across the warp.
+  int64_t Coeff = 0;
+  bool Ok = true;
+  collectLaneCoeff(S, LaneValue, Coeff, Ok);
+  if (!Ok) {
+    // Per-lane affine unresolvable -> unknown-pattern (honesty rule).
+    C.pattern = "unknown-pattern";
+    C.cls = "unknown";
+    return C;
+  }
+
+  if (Coeff == 0) {
+    // Uniform / broadcast: all lanes hit the same address (analyzer's
+    // coeff==0 case — analyze_coalescing.cpp classify_pattern). A single
+    // span of WidthBytes, efficiency 1.0.
+    C.sectors = (WidthBytes + kSectorSizeBytes - 1) / kSectorSizeBytes;
+    C.efficiency = 1.0;
+    C.lane_stride_elements = 0;
+    C.pattern = "contiguous-128B";
+    C.cls = "fully";
+    return C;
+  }
+
+  // Per-lane stride Coeff bytes: simulate one warp under the 32B-sector
+  // model (brief §3.1, analyzer classify_pattern).
+  std::set<int64_t> Sectors;
+  for (int Lane = 0; Lane < kWarpSize; ++Lane) {
+    const int64_t Base = Coeff * Lane;
+    Sectors.insert(Base / kSectorSizeBytes);
+    Sectors.insert((Base + WidthBytes - 1) / kSectorSizeBytes);
+  }
+  C.sectors = static_cast<int>(Sectors.size());
+  const double Used = static_cast<double>(kWarpSize) * WidthBytes;
+  const double Transferred = static_cast<double>(C.sectors) * kSectorSizeBytes;
+  C.efficiency = Transferred > 0.0 ? Used / Transferred : 0.0;
+  C.lane_stride_elements = 0;
+
+  if (C.efficiency >= 1.0 - 1e-12) {
+    C.pattern = "contiguous-128B";
+    C.cls = "fully";
+  } else if (C.efficiency >= 0.5) {
+    C.pattern = "contiguous-partial";
+    C.cls = "partial";
+  } else {
+    C.pattern = "strided";
+    C.cls = "uncoalesced";
+  }
   return C;
 }
 
 CoalesceStats analyzeFunction(Function &F, ScalarEvolution &SE) {
-  (void)SE;  // consumed by the SCEV classifier (next commit)
   CoalesceStats Stats;
   const DataLayout &DL = F.getParent()->getDataLayout();
+  Value *LaneValue = findLaneValue(F);
+
   for (BasicBlock &BB : F) {
     for (Instruction &I : BB) {
       Value *Ptr = nullptr;
@@ -99,17 +334,28 @@ CoalesceStats analyzeFunction(Function &F, ScalarEvolution &SE) {
         continue;
       }
       const unsigned Width = DL.getTypeStoreSize(EltTy);
+      const unsigned ScalarWidth = DL.getTypeStoreSize(EltTy->getScalarType());
       ++Stats.total;
       Stats.maxWidthBytes = std::max(Stats.maxWidthBytes, Width);
-      if (Width > DL.getTypeStoreSize(EltTy->getScalarType())) {
+      if (Width > ScalarWidth) {
         ++Stats.vectorized;
       }
-      // Skeleton: classification counts filled by the classifier commit.
+
+      const CoalescingClass C =
+          classifyGlobalAccess(Ptr, Width, SE, LaneValue);
+      if (C.cls == "fully") {
+        ++Stats.fully;
+      } else if (C.cls == "partial") {
+        ++Stats.partial;
+      } else if (C.cls == "uncoalesced") {
+        ++Stats.uncoalesced;
+      } else {
+        ++Stats.unknown;
+      }
     }
   }
   return Stats;
 }
-
 llvm::PreservedAnalyses CoalescePass::run(llvm::Function &F,
                                           llvm::FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
