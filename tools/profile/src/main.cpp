@@ -210,21 +210,11 @@ int render(const Options &opt, const kernscope::profile::cli::ProfileReport &rep
       out = kernscope::profile::cli::report_to_json(report);
       break;
     case Format::kHtml: {
-      // libs/report reuse (todo 7): the hottest kernel's report model, HTML
+      // libs/report reuse (todo 7): the showcase kernel's report model, HTML
       // with the embedded JSON payload (parses via tests/report/check_html.py
       // extraction).
-      const std::size_t hot_index = [&report] {
-        if (report.kernels.empty()) {
-          return std::size_t{0};
-        }
-        const std::string &hot_name = report.ranking.front().kernel_name;
-        for (std::size_t i = 0; i < report.kernels.size(); ++i) {
-          if (report.kernels[i].record.kernel_name == hot_name) {
-            return i;
-          }
-        }
-        return std::size_t{0};
-      }();
+      const std::size_t hot_index =
+          kernscope::profile::cli::showcase_kernel_index(report);
       const kernscope::KernelReport model =
           kernscope::profile::cli::build_kernel_report_model(report,
                                                              hot_index);

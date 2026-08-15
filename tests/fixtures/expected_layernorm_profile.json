@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "arch": "gfx1101",
+  "note": "Expected RANGES for the kernscope-profile layernorm_fused e2e golden (todo 52). RANGES ONLY — absolute durations are machine-dependent and MUST NOT be pinned (Metis C-3 discipline). Occupancy/limiter contract from libs/occupancy (todo 11): occupancy in (0,1], limiter in {registers, shared, threads, blocks}. Resource ranges from the todo-5 fixture contract + the observed gfx1101 code-object facts (vgpr 24, static LDS 1024 B = 2 x THREADS x 4 B fp32 arrays). Grid/workgroup are the LAUNCH CONTRACT (M=1024 blocks x THREADS=128), pinned by todos 49/50 already.",
+  "kernel_name_contains": "layernorm",
+  "duration_ns_min": 1,
+  "wall_time_ns_min": 1,
+  "occupancy_min_exclusive": 0.0,
+  "occupancy_max_inclusive": 1.0,
+  "limiter_set": ["registers", "shared", "threads", "blocks"],
+  "registers_min": 1,
+  "registers_max": 256,
+  "shared_bytes_min": 1024,
+  "blocks_per_sm_min": 1,
+  "grid": [1024, 1, 1],
+  "workgroup": [128, 1, 1],
+  "min_compiler_hints": 1,
+  "hint_evidence_required": true,
+  "min_hot_kernels": 1
+}

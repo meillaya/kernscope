@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -244,6 +245,23 @@ TraceResult run_trace(const TraceOptions &options) {
   }
   if (pid == 0) {
     // Child: env + cwd, then exec. 5-minute guard against a hung target.
+    // The app's stdout/stderr are CAPTURED to files (never inherited): the
+    // CLI's own stdout must stay reserved for the report stream (a noisy
+    // target would corrupt --json/--text output).
+    const std::string out_log = (scratch / "app_stdout.log").string();
+    const std::string err_log = (scratch / "app_stderr.log").string();
+    const int fd_out = ::open(out_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+                              0644);
+    if (fd_out >= 0) {
+      (void)::dup2(fd_out, STDOUT_FILENO);
+      (void)::close(fd_out);
+    }
+    const int fd_err = ::open(err_log.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+                              0644);
+    if (fd_err >= 0) {
+      (void)::dup2(fd_err, STDERR_FILENO);
+      (void)::close(fd_err);
+    }
     ::setenv("LD_PRELOAD", options.hip_tool.c_str(), 1);
     ::setenv("KERNSCOPE_PROFILE_OUT", jsonl_path.c_str(), 1);
     (void)::chdir(scratch.c_str());
@@ -266,11 +284,20 @@ TraceResult run_trace(const TraceOptions &options) {
   const bool killed_by_alarm =
       WIFSIGNALED(status) && (WTERMSIG(status) == SIGALRM);
   if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+    // Surface the tail of the captured stderr so the failure is debuggable.
+    const std::string err_log = (scratch / "app_stderr.log").string();
+    const std::string err_text = ReadFile(err_log);
+    const std::string tail =
+        err_text.size() > 2000 ? err_text.substr(err_text.size() - 2000)
+                               : err_text;
     out.error = "target exited abnormally (status " +
                 std::to_string(WIFEXITED(status) ? WEXITSTATUS(status)
                                                  : -WTERMSIG(status)) +
                 (killed_by_alarm ? "; killed by the 300s timeout" : "") +
                 ") — a partial trace is never trusted";
+    if (!tail.empty()) {
+      out.error += "; captured stderr tail: " + tail;
+    }
     (void)std::filesystem::remove_all(scratch);
     return out;
   }
@@ -441,6 +468,41 @@ ProfileReport build_report(const std::vector<EnrichedKernel> &kernels,
 
 //===--- JSON renderer -------------------------------------------------------------===//
 
+//===--- JSON renderer -------------------------------------------------------------===//
+
+namespace {
+
+// The showcase kernel for the owner-style renderings (owner_example JSON
+// field + the --html page): the first hot kernel whose name contains
+// "layernorm" — the golden fixture's profiler example
+// (docs/research/owner-examples.md Section B) — falling back to the hottest
+// kernel. Internal runtime kernels (e.g. the rocclr memcpy helper) never
+// take the showcase.
+std::size_t ShowcaseIndex(const ProfileReport &report) {
+  if (report.ranking.empty()) {
+    return 0;
+  }
+  const std::string &fallback = report.ranking.front().kernel_name;
+  for (std::size_t i = 0; i < report.kernels.size(); ++i) {
+    if (report.kernels[i].record.kernel_name.find("layernorm") !=
+        std::string::npos) {
+      return i;
+    }
+  }
+  for (std::size_t i = 0; i < report.kernels.size(); ++i) {
+    if (report.kernels[i].record.kernel_name == fallback) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+} // namespace
+
+std::size_t showcase_kernel_index(const ProfileReport &report) {
+  return ShowcaseIndex(report);
+}
+
 std::string report_to_json(const ProfileReport &report) {
   std::ostringstream out;
   out << "{\n";
@@ -534,47 +596,38 @@ std::string report_to_json(const ProfileReport &report) {
   // internal runtime kernels like the rocclr memcpy never take the
   // showcase), falling back to the hottest kernel.
   out << "  \"owner_example\": ";
-  if (report.ranking.empty()) {
+  if (report.ranking.empty() || report.kernels.empty()) {
     out << "null\n";
   } else {
-    const HotKernelEntry *hot = &report.ranking.front();
+    const std::size_t idx = ShowcaseIndex(report);
+    const EnrichedKernel &show = report.kernels[idx];
+    const HotKernelEntry *hot = nullptr;
     for (const HotKernelEntry &e : report.ranking) {
-      if (e.kernel_name.find("layernorm") != std::string::npos) {
+      if (e.kernel_name == show.record.kernel_name) {
         hot = &e;
         break;
       }
     }
-    const EnrichedKernel *k = nullptr;
-    for (const EnrichedKernel &cand : report.kernels) {
-      if (cand.record.kernel_name == hot->kernel_name) {
-        k = &cand;
+    const KernelDiagnostics *d = nullptr;
+    for (const KernelDiagnostics &cand : report.diagnostics) {
+      if (cand.kernel_name == show.record.kernel_name) {
+        d = &cand;
         break;
       }
     }
-    const KernelDiagnostics *d = nullptr;
-    if (k != nullptr) {
-      for (const KernelDiagnostics &cand : report.diagnostics) {
-        if (cand.kernel_name == hot->kernel_name) {
-          d = &cand;
-          break;
-        }
-      }
-    }
+    const std::uint64_t time_ns =
+        hot != nullptr ? hot->median_ns : show.record.duration_ns;
     out << "{\n";
-    out << "    \"kernel\": \"" << json_escape(hot->kernel_name) << "\",\n";
-    out << "    \"time_us\": "
-        << FmtNumber(static_cast<double>(hot->median_ns) / 1000.0) << ",\n";
-    out << "    \"registers_per_thread\": "
-        << (k != nullptr ? static_cast<int>(k->record.registers_per_thread)
-                         : 0)
+    out << "    \"kernel\": \"" << json_escape(show.record.kernel_name)
+        << "\",\n";
+    out << "    \"time_us\": " << FmtNumber(static_cast<double>(time_ns) / 1000.0)
         << ",\n";
+    out << "    \"registers_per_thread\": "
+        << static_cast<int>(show.record.registers_per_thread) << ",\n";
     out << "    \"shared_memory_block_kb\": "
-        << (k != nullptr
-                ? FmtNumber((static_cast<double>(
-                                k->record.static_shared_bytes +
-                                k->record.dynamic_shared_bytes)) /
-                            1024.0)
-                : "0")
+        << FmtNumber(static_cast<double>(show.record.static_shared_bytes +
+                                        show.record.dynamic_shared_bytes) /
+                     1024.0)
         << ",\n";
     out << "    \"likely_limiter\": \"" << (d != nullptr ? d->limiter : "")
         << "\",\n";

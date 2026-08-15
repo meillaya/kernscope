@@ -127,6 +127,13 @@ std::string report_to_text(const ProfileReport &report);
 kernscope::KernelReport build_kernel_report_model(
     const ProfileReport &report, std::size_t kernel_index);
 
+/// The showcase kernel index for the owner-style renderings (the owner_example
+/// JSON field + the --html page): the first traced kernel whose name contains
+/// "layernorm" (the golden fixture's profiler example, owner-examples.md
+/// Section B), falling back to the hottest kernel. Internal runtime kernels
+/// (rocclr memcpy helpers, ...) never take the showcase.
+std::size_t showcase_kernel_index(const ProfileReport &report);
+
 /// Resolve a CLI target argument: a file is used as-is; a directory is
 /// scanned for its executable (prefers the committed fixture name
 /// "layernorm_app", then any executable file). Returns the resolved path or
