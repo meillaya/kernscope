@@ -357,6 +357,20 @@ add_test(NAME capture_tune_usage
           $<TARGET_FILE:kernscope-tune>)
 set_tests_properties(capture_tune_usage PROPERTIES LABELS "no-gpu")
 
+# --- todo 53 LIVE acceptance: layernorm_fused capture bundle -> tune --------
+# gpu-amd (todo 3 convention): runs the capture->tune pipeline on the
+# committed todo-45 layernorm-live bundle on this machine (gfx1101). Asserts
+# >= 3 candidates explored (baseline config ALWAYS first), validation PASS
+# for every explored config, best.speedup >= 1.0, the db record queryable
+# under (arch, kernel-name-hash, capture-bundle-hash), the injected
+# block-2048 config rejected PRE-REPLAY with a reason, and the QA negative
+# (garbage reference -> 'no valid config', exit 1, NO db write).
+add_test(NAME integ_capture_tune
+  COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integ_capture_tune_check.py
+          ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR})
+set_tests_properties(integ_capture_tune PROPERTIES LABELS "gpu-amd"
+  TIMEOUT 1800)
+
 # --- todo 28 acceptance suite ------------------------------------------------
 # tune_driver_test.cpp is compiled twice (the generators' shared pattern):
 # once without KERNSCOPE_TUNE_LIVE for the no-gpu negative test (every config
