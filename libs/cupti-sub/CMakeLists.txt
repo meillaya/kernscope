@@ -13,7 +13,7 @@
 # resolved by the dev shell) - compile+unit ONLY locally (no NVIDIA runtime
 # here; real-NVIDIA CUPTI is rental-gated per scripts/rental-validate.sh).
 # libcupti.so is NOT a link dependency: it is dlopened at runtime by
-# cupti_capture.cpp so the negative path (injection unavailable) degrades
+# capture_cupti.cpp so the negative path (injection unavailable) degrades
 # gracefully on a driverless box.
 #
 # ctest hardware-gating convention (todo 3): every registered test carries a
@@ -31,7 +31,7 @@ endif()
 # exported, so the .so links into a stub / into captured apps without symbol
 # conflicts (acceptance: link smoke).
 add_library(kernscope_cupti_sub SHARED
-  src/cupti_capture.cpp src/injection.cpp)
+  src/capture_cupti.cpp src/injection.cpp)
 target_include_directories(kernscope_cupti_sub PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # CUPTI headers are SYSTEM so the project-wide -Werror never trips on vendor
@@ -56,7 +56,7 @@ add_library(kernscope::cupti_sub ALIAS kernscope_cupti_sub)
 # (tests/synthetic_cupti.h) and drives the SAME dispatcher function CUPTI
 # calls on hardware - the mock style of the todo-43 mock-cudart.
 find_package(GTest REQUIRED)
-add_executable(cupti-sub-test tests/cupti_capture_test.cpp)
+add_executable(cupti-sub-test tests/capture_cupti_test.cpp)
 target_include_directories(cupti-sub-test SYSTEM PRIVATE
   "$ENV{CUPTI_HOME}/include")
 target_link_libraries(cupti-sub-test PRIVATE

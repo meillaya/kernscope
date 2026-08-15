@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "kernscope/cupti_capture.h"
+#include "kernscope/capture_cupti.h"
 
 #include <cstdio>
 

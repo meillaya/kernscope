@@ -1,9 +1,9 @@
-//===- cupti_capture.cpp - CUPTI subscription capture implementation -----*- C++ -*-===//
+//===- capture_cupti.cpp - CUPTI subscription capture implementation -----*- C++ -*-===//
 //
 // kernscope shared-core library tree.
 //
 // Implements libkernscope_cupti_sub.so (todo 44): the NVIDIA-PRIMARY capture
-// mechanism. See include/kernscope/cupti_capture.h for the mechanism
+// mechanism. See include/kernscope/capture_cupti.h for the mechanism
 // narrative, docs/research/capture-replay-research-brief.md §1 for the CUPTI
 // API contracts cited below, and docs/capture-mapping.md for the field
 // correspondence the equivalence test enforces.
@@ -19,7 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "kernscope/cupti_capture.h"
+#include "kernscope/capture_cupti.h"
 
 #include <dlfcn.h>
 

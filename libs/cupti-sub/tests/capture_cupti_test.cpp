@@ -1,4 +1,4 @@
-//===- cupti_capture_test.cpp - gtest suite for libs/cupti-sub ----------*- C++ -*-===//
+//===- capture_cupti_test.cpp - gtest suite for libs/cupti-sub ----------*- C++ -*-===//
 //
 // kernscope shared-core library tree.
 //
@@ -17,7 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "kernscope/cupti_capture.h"
+#include "kernscope/capture_cupti.h"
 
 #include "synthetic_cupti.h"
 

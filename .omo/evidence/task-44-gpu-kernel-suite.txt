@@ -60,3 +60,16 @@ cupti-stub-smoke: mechanism=0 initialized=0 app_helper=2 exported=42 allocs=1
 
 === (d) cmake --build build (Werror clean) ===
 ninja: no work to do.
+
+---
+FIX NOTE (2026-08-15): merged-tree CI-gate false positive - the NVIDIA-header
+filename guard (scripts/ci.sh) matched libs/cupti-sub/include/kernscope/cupti_capture.h
+(basename starts with cupti_). Fixed by renaming the project header to
+capture_cupti.h (and src/cupti_capture.cpp -> capture_cupti.cpp,
+tests/cupti_capture_test.cpp -> capture_cupti_test.cpp so no `cupti_capture`
+string remains in libs/cupti-sub/). Guard regex untouched. Verified after the
+rename: `grep -rn 'cupti_capture' libs/ tools/ tests/ scripts/ | grep -v build/`
+-> no output; `cmake --build build` exit 0 (Werror clean);
+`ctest -R "capture_cupti|capture_equiv"` -> 100% passed (8/8, incl. live gfx1101
+capture_equiv); `bash scripts/ci.sh` -> 10/10 stages PASS (NVIDIA-header guard
+now passes; ctest count guard 587 >= 550; ci-baseline.txt untouched).

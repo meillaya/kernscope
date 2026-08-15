@@ -17,12 +17,12 @@
 // captured process keeps running (QA negative contract).
 //
 // The injection .so deliberately does NOT link libcupti.so (it is dlopened by
-// cupti_capture.cpp): the same library binary therefore works as an injection
+// capture_cupti.cpp): the same library binary therefore works as an injection
 // library, an LD_PRELOAD'd capture and a directly-linked consumer.
 //
 //===----------------------------------------------------------------------===//
 
-#include "kernscope/cupti_capture.h"
+#include "kernscope/capture_cupti.h"
 
 extern "C" {
 

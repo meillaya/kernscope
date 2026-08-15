@@ -1,4 +1,4 @@
-//===- cupti_capture.h - cupti-sub: shared CUPTI subscription lib -*- C++ -*-===//
+//===- capture_cupti.h - cupti-sub: shared CUPTI subscription lib -*- C++ -*-===//
 //
 // kernscope shared-core library tree.
 //

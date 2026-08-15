@@ -17,7 +17,7 @@
 #ifndef KERNSCOPE_SYNTHETIC_CUPTI_H
 #define KERNSCOPE_SYNTHETIC_CUPTI_H
 
-#include "kernscope/cupti_capture.h"
+#include "kernscope/capture_cupti.h"
 
 #include <cstdint>
 #include <cstring>
