@@ -88,8 +88,12 @@ python3 - "$ROOT/reports/dashboard.json" <<'EOF'
 import json, sys
 d = json.load(open(sys.argv[1]))
 assert d.get("report_type") == "kernscope_dashboard", d.get("report_type")
-secs = [m.get("module") for m in d.get("modules", []) if m.get("available")]
-print(f"[reproduce-all]   dashboard ok: {len(secs)} module section(s) with data: {', '.join(secs)}")
+secs = d.get("sections", {})
+avail = [name for name, sec in secs.items() if sec.get("available")]
+missing = [name for name, sec in secs.items() if not sec.get("available")]
+print(f"[reproduce-all]   dashboard ok: {len(avail)} section(s) with data: {', '.join(avail)}")
+if missing:
+    print(f"[reproduce-all]   WARNING: no-data sections: {', '.join(missing)} (expected when module reports are absent)")
 EOF
 
 echo

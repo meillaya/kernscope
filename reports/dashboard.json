@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "report_type": "kernscope_dashboard",
   "tool_version": "kernscope-dashboard 0.1.0",
-  "generated": "2026-08-15T07:00:12Z",
+  "generated": "1980-01-01T00:00:00Z",
   "machine": {
     "arch": "gfx1101",
     "device": "AMD Radeon RX 7800 XT",
@@ -106,8 +106,8 @@
           }
         },
         "capture_tune_validated": null,
-        "capture_tune_best_block": 128,
-        "capture_tune_speedup": 1,
+        "capture_tune_best_block": 256,
+        "capture_tune_speedup": 1.0033222069683347,
         "verify_gate": true,
         "verifier_gated_variants": null,
         "compiled_variants": null
@@ -220,7 +220,7 @@
       },
       "summary": {
         "kernel_count": 3,
-        "wall_time_ns": 22120,
+        "wall_time_ns": 20120,
         "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
         "hot_kernel_duration_ns": 9040,
         "hot_kernel_occupancy": 1,

@@ -5,11 +5,11 @@
   "target": "/home/mei/projects/llvm.h/build/tests/fixtures/layernorm_fused",
   "no_kernels_traced": false,
   "kernel_count": 3,
-  "wall_time_ns": 22120,
+  "wall_time_ns": 20120,
   "kernels": [
     {
       "kernel_name": "__amd_rocclr_copyBuffer.kd",
-      "duration_ns": 9480,
+      "duration_ns": 7680,
       "grid": [1, 1, 1],
       "workgroup": [512, 1, 1],
       "registers_per_thread": 16,
@@ -24,7 +24,7 @@
     },
     {
       "kernel_name": "__amd_rocclr_copyBuffer.kd",
-      "duration_ns": 3600,
+      "duration_ns": 3400,
       "grid": [1, 1, 1],
       "workgroup": [512, 1, 1],
       "registers_per_thread": 16,
@@ -55,8 +55,8 @@
     }
   ],
   "ranking": [
-    {"kernel_name": "__amd_rocclr_copyBuffer.kd", "launches": 2, "total_ns": 13080, "median_ns": 6540, "pct_wall_time": 59.13200723},
-    {"kernel_name": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd", "launches": 1, "total_ns": 9040, "median_ns": 9040, "pct_wall_time": 40.86799277}
+    {"kernel_name": "__amd_rocclr_copyBuffer.kd", "launches": 2, "total_ns": 11080, "median_ns": 5540, "pct_wall_time": 55.0695825},
+    {"kernel_name": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd", "launches": 1, "total_ns": 9040, "median_ns": 9040, "pct_wall_time": 44.9304175}
   ],
   "owner_example": {
     "kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",

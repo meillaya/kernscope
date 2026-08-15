@@ -29,7 +29,7 @@ Machine: AMD Radeon RX 7800 XT
 <p class="meta">Hot kernel: <code>_Z15layernorm_fusedPKtS0_S0_Ptfi.kd</code></p>
 <section class='stage'><h2>Stage 1: profile (<span class='status ok'>ok</span>)</h2><p class='tool'>kernscope-profile build/tests/fixtures/layernorm_fused</p><pre class='summary'>{
   &quot;kernel_count&quot;: 3,
-  &quot;wall_time_ns&quot;: 22120,
+  &quot;wall_time_ns&quot;: 20120,
   &quot;hint_count&quot;: 1,
   &quot;hints&quot;: [
     &quot;memory_bound&quot;
@@ -64,8 +64,8 @@ Machine: AMD Radeon RX 7800 XT
   &quot;status&quot;: &quot;ok&quot;,
   &quot;mode&quot;: &quot;capture_tune&quot;,
   &quot;validated&quot;: 4,
-  &quot;speedup&quot;: 1,
-  &quot;best_block&quot;: 128
+  &quot;speedup&quot;: 1.0033222069683347,
+  &quot;best_block&quot;: 256
 }</pre><ul class='evidence'><li><code>reports/demo/stage-4-capture-tune.json</code></li><li><code>reports/demo/stage-4-tune.jsonl</code></li></ul></section><section class='stage'><h2>Stage 5: verify_tune_pass_delta (<span class='status ok'>ok</span>)</h2><p class='tool'>kernscope-tune --verify + kernscope-pass-report --report-pipeline</p><pre class='summary'>{
   &quot;verify_gate&quot;: true,
   &quot;verifier_gated&quot;: 1,
@@ -103,7 +103,7 @@ JSON payload in &lt;script id="report-data"&gt;.</footer>
         "tool": "kernscope-profile build/tests/fixtures/layernorm_fused",
         "summary": {
           "kernel_count": 3,
-          "wall_time_ns": 22120,
+          "wall_time_ns": 20120,
           "hint_count": 1,
           "hints": [
             "memory_bound"
@@ -174,8 +174,8 @@ JSON payload in &lt;script id="report-data"&gt;.</footer>
           "status": "ok",
           "mode": "capture_tune",
           "validated": 4,
-          "speedup": 1,
-          "best_block": 128
+          "speedup": 1.0033222069683347,
+          "best_block": 256
         },
         "evidence": [
           "reports/demo/stage-4-capture-tune.json",

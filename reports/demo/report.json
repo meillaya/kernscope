@@ -18,7 +18,7 @@
         "tool": "kernscope-profile build/tests/fixtures/layernorm_fused",
         "summary": {
           "kernel_count": 3,
-          "wall_time_ns": 22120,
+          "wall_time_ns": 20120,
           "hint_count": 1,
           "hints": [
             "memory_bound"
@@ -89,8 +89,8 @@
           "status": "ok",
           "mode": "capture_tune",
           "validated": 4,
-          "speedup": 1,
-          "best_block": 128
+          "speedup": 1.0033222069683347,
+          "best_block": 256
         },
         "evidence": [
           "reports/demo/stage-4-capture-tune.json",
