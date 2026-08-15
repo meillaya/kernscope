@@ -296,7 +296,8 @@ TEST(BundleV1Test, RoundtripIsFieldExact) {
   EXPECT_EQ(reader->total_blob_bytes(), 67u);
 
   // blob bytes read back + provenance verified
-  std::vector<std::uint8_t> in_bytes, kern_bytes;
+  std::vector<std::uint8_t> in_bytes;
+  std::vector<std::uint8_t> kern_bytes;
   std::string berr;
   ASSERT_TRUE(reader->read_blob(b0, in_bytes, &berr)) << berr;
   ASSERT_TRUE(reader->read_blob(b1, kern_bytes, &berr)) << berr;
@@ -468,11 +469,11 @@ TEST(BundleV0Test, ReaderLoadsV0BundleWithSidecarBlobs) {
   fs::create_directories(dir);
   const std::string v0 = ReadFile(KERNSCOPE_V0_FIXTURE);
   ASSERT_FALSE(v0.empty());
-  std::ofstream(dir / "capture.bundle").write(v0.data(), v0.size());
+  std::ofstream(dir / "capture.bundle").write(v0.data(), static_cast<std::streamsize>(v0.size()));
   const std::vector<std::uint8_t> blob_bytes = {0x01, 0x02, 0x03, 0x04};
   std::ofstream(dir / "input-buffer-1.bin", std::ios::binary)
       .write(reinterpret_cast<const char *>(blob_bytes.data()),
-             blob_bytes.size());
+             static_cast<std::streamsize>(blob_bytes.size()));
 
   std::string err;
   auto reader = BundleReader::open(dir.string(), &err);
@@ -557,7 +558,7 @@ TEST(BundleNegativeTest, TruncatedV1EventsJsonReportsByteOffset) {
   const fs::path events = bundle / "events.json";
   const std::string full = ReadFile(events);
   std::ofstream(events, std::ios::binary | std::ios::trunc)
-      .write(full.data(), full.size() * 4 / 10);
+      .write(full.data(), static_cast<std::streamsize>(full.size() * 4 / 10));
 
   // The reader must REJECT with a schema violation carrying a byte offset -
   // no UB, no crash.
@@ -579,7 +580,7 @@ TEST(BundleNegativeTest, TruncatedV0TextReportsLineAndByteOffset) {
   // Cut the file mid-record: the reader must reject with a schema violation
   // carrying the line + byte offset - no UB, no crash.
   std::ofstream(file, std::ios::binary | std::ios::trunc)
-      .write(full.data(), full.size() * 2 / 3);
+      .write(full.data(), static_cast<std::streamsize>(full.size() * 2 / 3));
 
   std::string err;
   auto reader = BundleReader::open(file.string(), &err);
@@ -601,7 +602,7 @@ TEST(BundleNegativeTest, TruncatedV0FixtureLastByteReportsTerminatorOffset) {
   ASSERT_EQ(full.back(), '\n') << "fixture must be newline-terminated";
   const fs::path file = TempDir() / "truncated-v0-last-byte.bundle";
   std::ofstream(file, std::ios::binary | std::ios::trunc)
-      .write(full.data(), full.size() - 1);
+      .write(full.data(), static_cast<std::streamsize>(full.size() - 1));
 
   std::string err;
   auto reader = BundleReader::open(file.string(), &err);
@@ -640,7 +641,7 @@ TEST(BundleNegativeTest, TruncatedV1BlobAnyByteFailsShaMismatch) {
     ASSERT_EQ(bytes.size(), full.size());
     bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(cut));
     std::ofstream(dir / blob_rel, std::ios::binary | std::ios::trunc)
-        .write(bytes.data(), bytes.size());
+        .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 
     std::string err;
     auto reader = BundleReader::open(dir.string(), &err);
@@ -686,7 +687,7 @@ TEST(BundleNegativeTest, CorruptedBlobFailsSha256Verification) {
   std::string bytes = ReadFile(blob_path);
   bytes[0] = static_cast<char>(0xFF);
   std::ofstream(blob_path, std::ios::binary | std::ios::trunc)
-      .write(bytes.data(), bytes.size());
+      .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 
   auto reader = BundleReader::open(bundle.string(), &err);
   EXPECT_EQ(reader, nullptr) << err;

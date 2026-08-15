@@ -16,8 +16,10 @@
 #ifndef KERNSCOPE_LIBS_ARCH_INCLUDE_KERNSCOPE_ARCH_H
 #define KERNSCOPE_LIBS_ARCH_INCLUDE_KERNSCOPE_ARCH_H
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 
@@ -228,9 +230,8 @@ inline const ArchInfo &get_arch(std::string_view name) {
 }
 
 inline bool has_arch(std::string_view name) noexcept {
-  for (std::string_view n : kArchNames)
-    if (n == name) return true;
-  return false;
+  return std::ranges::any_of(kArchNames,
+                             [&](std::string_view n) { return n == name; });
 }
 
 // Max resident warps: NVIDIA = warps/SM; AMD = max waves/SIMD x SIMDs/CU

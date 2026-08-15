@@ -150,7 +150,9 @@ TEST(GpuruntimeMock, LaunchRecordsByteExactArgs) {
   // Contract: cuLaunchKernel passes the kernelParams array to the kernel
   // unmodified (CUDA Driver API documentation, cuLaunchKernel) - the mock
   // records the argument blob byte-exactly so tests can assert it.
-  std::uint64_t a_ptr = 0x1234, b_ptr = 0x5678, out_ptr = 0x9ABC;
+  std::uint64_t a_ptr = 0x1234;
+  std::uint64_t b_ptr = 0x5678;
+  std::uint64_t out_ptr = 0x9ABC;
   std::int32_t n = 1024;
   std::vector<KernelArg> args = {
       KernelArg{&a_ptr, sizeof(a_ptr)},
@@ -179,9 +181,11 @@ TEST(GpuruntimeMock, LaunchRecordsByteExactArgs) {
   EXPECT_EQ(op.config.grid_x, 4);
   EXPECT_EQ(op.config.block_x, 256);
   // Byte-exact arg blob: 3 device pointers as uint64 LE, then the int32 n.
-  ASSERT_EQ(op.payload.size(), 3 * sizeof(std::uint64_t) + sizeof(std::int32_t));
+  ASSERT_EQ(op.payload.size(), (3 * sizeof(std::uint64_t)) + sizeof(std::int32_t));
   // Byte-exact arg blob: pointers as uint64 LE, then the int32 n.
-  std::uint64_t got_a = 0, got_b = 0, got_out = 0;
+  std::uint64_t got_a = 0;
+  std::uint64_t got_b = 0;
+  std::uint64_t got_out = 0;
   std::int32_t got_n = 0;
   std::memcpy(&got_a, op.payload.data(), sizeof(got_a));
   std::memcpy(&got_b, op.payload.data() + 8, sizeof(got_b));
@@ -217,7 +221,9 @@ TEST(GpuruntimeMock, OpOrderContract) {
   std::vector<float> host_in(kElems, 1.5f);
   ASSERT_TRUE(rt.value->memcpy_htod(in.value, host_in.data(), host_in.size() * sizeof(float)).ok());
 
-  std::uint64_t a = in.value.value, b = in.value.value, o = out.value.value;
+  std::uint64_t a = in.value.value;
+  std::uint64_t b = in.value.value;
+  std::uint64_t o = out.value.value;
   std::int32_t n = static_cast<std::int32_t>(kElems);
   std::vector<KernelArg> args = {
       KernelArg{&a, sizeof(a)}, KernelArg{&b, sizeof(b)},

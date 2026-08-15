@@ -286,7 +286,7 @@ std::vector<std::vector<ArgSlotInfo>> ClassifyArgSlots(
           slot.bytes.size() >= sizeof(std::uint64_t)) {
         std::uint64_t value = 0;
         std::memcpy(&value, slot.bytes.data(), sizeof(value));
-        if (known.count(value) != 0) {
+        if (known.contains(value)) {
           info.is_pointer = true;
           info.va = value;
         }
@@ -468,7 +468,7 @@ std::vector<PatchEntry> scan_embedded_pointers(
        ++offset) {
     std::uint64_t value = 0;
     std::memcpy(&value, blob.data() + offset, sizeof(value));
-    if (known.count(value) != 0) {
+    if (known.contains(value)) {
       patches.push_back(PatchEntry{static_cast<std::uint64_t>(offset), value});
     }
   }
@@ -849,7 +849,8 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
         e.calls = static_cast<std::uint64_t>(calls);
         model.api.push_back(e);
       } else if (parsed.keyword == "alloc" || parsed.keyword == "free") {
-        std::uint64_t ptr = 0, size = 0;
+        std::uint64_t ptr = 0;
+        std::uint64_t size = 0;
         if (!KvGetU64(parsed, "ptr", ptr, error) ||
             !KvGetU64(parsed, "size", size, error)) {
           error = V0Error(line_no, line_start, error);
@@ -869,9 +870,14 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
         model.unknown_frees.push_back(
             UnknownFreeRecord{ptr, forwarded == "true", ++seq});
       } else if (parsed.keyword == "launch") {
-        std::string kernel_name, via, grid_s, block_s;
+        std::string kernel_name;
+        std::string via;
+        std::string grid_s;
+        std::string block_s;
         std::int64_t shared = 0;
-        std::uint64_t stream = 0, graph = 0, args = 0;
+        std::uint64_t stream = 0;
+        std::uint64_t graph = 0;
+        std::uint64_t args = 0;
         if (!KvGet(parsed, "kernel", kernel_name, error) ||
             !KvGet(parsed, "via", via, error) ||
             !KvGet(parsed, "grid", grid_s, error) ||
@@ -985,8 +991,13 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
         model.arg_tables.push_back(std::move(table));
       } else if (parsed.keyword == "copy") {
         std::string kind;
-        std::uint64_t dst = 0, src = 0, bytes = 0, stream = 0;
-        std::int64_t cuda_kind = 0, dst_size = 0, src_size = 0;
+        std::uint64_t dst = 0;
+        std::uint64_t src = 0;
+        std::uint64_t bytes = 0;
+        std::uint64_t stream = 0;
+        std::int64_t cuda_kind = 0;
+        std::int64_t dst_size = 0;
+        std::int64_t src_size = 0;
         if (!KvGet(parsed, "kind", kind, error) ||
             !KvGetU64(parsed, "dst", dst, error) ||
             !KvGetU64(parsed, "src", src, error) ||
@@ -1012,8 +1023,11 @@ bool ParseV0Text(std::string_view text, V0Model &model, std::string &error) {
         rec.seq = ++seq;
         model.copies.push_back(rec);
       } else if (parsed.keyword == "memset") {
-        std::uint64_t ptr = 0, bytes = 0, stream = 0;
-        std::int64_t value = 0, ptr_size = 0;
+        std::uint64_t ptr = 0;
+        std::uint64_t bytes = 0;
+        std::uint64_t stream = 0;
+        std::int64_t value = 0;
+        std::int64_t ptr_size = 0;
         if (!KvGetU64(parsed, "ptr", ptr, error) ||
             !KvGetI64(parsed, "value", value, error) ||
             !KvGetU64(parsed, "bytes", bytes, error) ||
@@ -1303,7 +1317,8 @@ bool LoadManifest(const fs::path &root, BundleReader::Impl &impl,
             "\"size_governance\"";
     return false;
   }
-  std::int64_t max_bytes = 0, total = 0;
+  std::int64_t max_bytes = 0;
+  std::int64_t total = 0;
   if (!GetInt(*sg, "max_snapshot_bytes", max_bytes, error) ||
       !GetInt(*sg, "total_blob_bytes", total, error) ||
       !GetBool(*sg, "aborted", impl.aborted, error) ||
@@ -1367,7 +1382,8 @@ bool LoadEvents(const fs::path &root, BundleReader::Impl &impl,
       e.calls = static_cast<std::uint64_t>(calls);
       impl.api.push_back(e);
     } else if (type == "alloc" || type == "free") {
-      std::uint64_t ptr = 0, size = 0;
+      std::uint64_t ptr = 0;
+      std::uint64_t size = 0;
       bool is_alloc = type == "alloc";
       if (!GetU64(ev, "ptr", ptr, error) || !GetU64(ev, "size", size, error) ||
           !GetBool(ev, "is_alloc", is_alloc, error)) {
@@ -1430,7 +1446,8 @@ bool LoadEvents(const fs::path &root, BundleReader::Impl &impl,
       const json::Value *args = ev.find("args");
       if (args != nullptr && args->kind() == json::Kind::Array) {
         for (const json::Value &slot : args->as_array()) {
-          std::string kind, bytes;
+          std::string kind;
+          std::string bytes;
           std::int64_t size = 0;
           if (slot.kind() != json::Kind::Object ||
               !GetString(slot, "kind", kind, error) ||
@@ -1533,7 +1550,9 @@ bool LoadEvents(const fs::path &root, BundleReader::Impl &impl,
       impl.modules.push_back(rec);
     } else if (type == "param_info") {
       ParamInfoRecord rec;
-      std::int64_t param_index = 0, offset = 0, size = 0;
+      std::int64_t param_index = 0;
+      std::int64_t offset = 0;
+      std::int64_t size = 0;
       if (!GetU64(ev, "cufunction", rec.cufunction, error) ||
           !GetInt(ev, "param_index", param_index, error) ||
           !GetInt(ev, "offset", offset, error) ||
@@ -1755,8 +1774,9 @@ std::unique_ptr<BundleReader> BundleReader::open(const std::string &path,
       blob.sha256 = sha256_hex(std::span<const std::uint8_t>(
           reinterpret_cast<const std::uint8_t *>(bytes.data()), bytes.size()));
       blob.file = bins[i].filename().string();
+      const std::size_t blob_bytes = blob.size;
       impl.blobs.push_back(std::move(blob));
-      total += blob.size;
+      total += blob_bytes;
     }
     impl.total_blob_bytes = total;
     impl.max_snapshot_bytes = 0; // v0 bundles carry no governance

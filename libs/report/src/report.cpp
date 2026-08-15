@@ -11,6 +11,8 @@
 
 #include "kernscope/report.h"
 
+#include <algorithm>
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -133,11 +135,9 @@ bool validate(const KernelReport &report, std::string *error) {
     if (!ValidateFinding(warning, "warnings", error))
       return false;
   }
-  for (const auto &suggestion : report.suggestions) {
-    if (!ValidateFinding(suggestion, "suggestions", error))
-      return false;
-  }
-  return true;
+  return std::ranges::all_of(report.suggestions, [&](const auto &suggestion) {
+    return ValidateFinding(suggestion, "suggestions", error);
+  });
 }
 
 std::string to_text(const KernelReport &report) {

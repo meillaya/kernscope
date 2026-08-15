@@ -134,7 +134,9 @@ TEST_F(CuptiCaptureTest, CallbackDispatchRecordsLaunchWithArgs) {
   }
 
   // The kernel's four args, byte-identical values at the API boundary.
-  std::uint64_t a = 0x3000, b = 0x4000, out = 0x5000;
+  std::uint64_t a = 0x3000;
+  std::uint64_t b = 0x4000;
+  std::uint64_t out = 0x5000;
   std::int32_t n = 1024;
   void *args[] = {&a, &b, &out, &n};
 

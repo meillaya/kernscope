@@ -61,6 +61,7 @@
 
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -95,7 +96,7 @@ RealFn ResolveSymbol(const char *name, std::atomic<RealFn> &slot) {
 #define KERNSCOPE_REAL_SLOT(name)                                              \
   std::atomic<RealFn> g_real_##name{nullptr}
 #define KERNSCOPE_REAL(name)                                                   \
-  reinterpret_cast<decltype(&name)>(ResolveSymbol(#name, g_real_##name))
+  reinterpret_cast<decltype(&(name))>(ResolveSymbol(#name, g_real_##name))
 
 // The registration symbols are NOT declared by the CUDA 12.6 public headers
 // (see their wrappers below), so their real pointers are resolved with typed
@@ -203,10 +204,13 @@ std::size_t CubinImageSize(const std::uint8_t *base) {
   if (base[5] != 1) {                     // little-endian only
     return 0;
   }
-  std::size_t shoff = 0, shentsize = 0, shnum = 0;
+  std::size_t shoff = 0;
+  std::size_t shentsize = 0;
+  std::size_t shnum = 0;
   if (elf_class == 2) { // ELF64: e_shoff@0x28(8), e_shentsize@0x3A(2), e_shnum@0x3C(2)
     std::memcpy(&shoff, base + 0x28, 8);
-    std::uint16_t a = 0, b = 0;
+    std::uint16_t a = 0;
+    std::uint16_t b = 0;
     std::memcpy(&a, base + 0x3A, 2);
     std::memcpy(&b, base + 0x3C, 2);
     shentsize = a;
@@ -215,7 +219,8 @@ std::size_t CubinImageSize(const std::uint8_t *base) {
     std::uint32_t a = 0;
     std::memcpy(&a, base + 0x20, 4);
     shoff = a;
-    std::uint16_t c = 0, d = 0;
+    std::uint16_t c = 0;
+    std::uint16_t d = 0;
     std::memcpy(&c, base + 0x2E, 2);
     std::memcpy(&d, base + 0x30, 2);
     shentsize = c;
@@ -228,15 +233,17 @@ std::size_t CubinImageSize(const std::uint8_t *base) {
       shoff > kMaxCubinBytes) {
     return 0;
   }
-  std::size_t size = shoff + shnum * shentsize;
+  std::size_t size = shoff + (shnum * shentsize);
   for (std::size_t i = 0; i < shnum; ++i) {
-    const std::uint8_t *sh = base + shoff + i * shentsize;
-    std::size_t sh_offset = 0, sh_size = 0;
+    const std::uint8_t *sh = base + shoff + (i * shentsize);
+    std::size_t sh_offset = 0;
+    std::size_t sh_size = 0;
     if (elf_class == 2) { // sh_offset@0x18(8), sh_size@0x20(8)
       std::memcpy(&sh_offset, sh + 0x18, 8);
       std::memcpy(&sh_size, sh + 0x20, 8);
     } else {
-      std::uint32_t a = 0, b = 0;
+      std::uint32_t a = 0;
+      std::uint32_t b = 0;
       std::memcpy(&a, sh + 0x10, 4);
       std::memcpy(&b, sh + 0x14, 4);
       sh_offset = a;
@@ -244,9 +251,7 @@ std::size_t CubinImageSize(const std::uint8_t *base) {
     }
     if (sh_offset <= kMaxCubinBytes && sh_size <= kMaxCubinBytes) {
       const std::size_t end = sh_offset + sh_size;
-      if (end > size) {
-        size = end;
-      }
+      size = std::max(end, size);
     }
   }
   return size > kMaxCubinBytes ? 0 : size;
@@ -616,6 +621,7 @@ cudaStreamSynchronize(cudaStream_t stream) {
 // reimplementation (brief §2).
 
 extern "C" KERNSCOPE_INTERCEPT_EXPORT void **
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the shim MUST export
 __cudaRegisterFatBinary(void *fatCubin) {
   RecordApi(kernscope::ApiKind::kRegisterFatBinary);
   auto *slot = new FatBinSlot(); // leaked: registration handles outlive main
@@ -630,6 +636,7 @@ __cudaRegisterFatBinary(void *fatCubin) {
 }
 
 extern "C" KERNSCOPE_INTERCEPT_EXPORT void
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the shim MUST export
 __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun,
                        char *deviceFun, const char *deviceName,
                        int thread_limit, uint3 *tid, uint3 *blockDim,

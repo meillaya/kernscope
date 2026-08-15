@@ -37,7 +37,6 @@
 namespace kernscope {
 namespace {
 
-using kernscope::bench::Options;
 using kernscope::bench::Result;
 using kernscope::bench::device_l2_cache_bytes;
 using kernscope::bench::run;
@@ -61,7 +60,7 @@ struct ModuleRefs {
   std::unique_ptr<Kernel> lds;
 };
 
-#if !defined(KERNSCOPE_NO_LIVE_HIP)
+#ifndef KERNSCOPE_NO_LIVE_HIP
 
 TEST(BenchLive, DeviceQueryReturnsGfx1101) {
   auto rt = create_runtime(Backend::kAuto);

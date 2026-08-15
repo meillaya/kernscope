@@ -53,7 +53,7 @@ namespace kernscope {
 
 // Which backend the library was built with (set by the CMake target compile
 // definitions of kernscope_gpuruntime, PUBLIC so consumers/tests see it).
-#if defined(KERNSCOPE_HIP_BACKEND_BUILD)
+#ifdef KERNSCOPE_HIP_BACKEND_BUILD
 inline constexpr bool kHipBackendCompiled = true;
 inline constexpr bool kCudaBackendCompiled = false;
 inline constexpr bool kCompileOnlyBuild = false;
@@ -212,7 +212,7 @@ public:
   virtual GpuStatus synchronize() = 0;
 };
 
-enum class Backend { kAuto, kCuda, kHip, kMock, kCompileOnly };
+enum class Backend : std::uint8_t { kAuto, kCuda, kHip, kMock, kCompileOnly };
 
 /// Factory. kAuto: the first compiled backend that reports a live device wins;
 /// with no live backend a CompileOnlyRuntime is returned (ok(), never an error

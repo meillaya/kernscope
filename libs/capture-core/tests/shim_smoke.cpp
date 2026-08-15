@@ -39,7 +39,9 @@ extern "C" int kernscope_intercept_flush(const char *path);
 // The registration entry points are not declared by the CUDA 12.6 public
 // headers (toolkit-internal); declared here with the documented contract
 // (same declarations the shim's wrappers are built against).
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the shim exports
 extern "C" void **__cudaRegisterFatBinary(void *fatCubin);
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the shim exports
 extern "C" void __cudaRegisterFunction(void **fatCubinHandle,
                                        const char *hostFun, char *deviceFun,
                                        const char *deviceName, int thread_limit,
@@ -98,7 +100,10 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "smoke: cuModuleGetFunction failed\n");
     return 1;
   }
-  size_t off0 = 0, sz0 = 0, off1 = 0, sz1 = 0;
+  size_t off0 = 0;
+  size_t sz0 = 0;
+  size_t off1 = 0;
+  size_t sz1 = 0;
   if (cuFuncGetParamInfo(fn, 0, &off0, &sz0) != CUDA_SUCCESS ||
       cuFuncGetParamInfo(fn, 1, &off1, &sz1) != CUDA_SUCCESS) {
     std::fprintf(stderr, "smoke: cuFuncGetParamInfo failed\n");
@@ -134,7 +139,8 @@ int main(int argc, char **argv) {
   std::uint64_t ptr_arg = reinterpret_cast<std::uint64_t>(dptr);
   std::uint32_t count_arg = 512;
   void *args[] = {&ptr_arg, &count_arg};
-  dim3 grid(2, 1, 1), block(128, 1, 1);
+  dim3 grid(2, 1, 1);
+  dim3 block(128, 1, 1);
   if (cudaLaunchKernel(reinterpret_cast<const void *>(kHostStubName), grid,
                        block, args, 0, nullptr) != cudaSuccess) {
     std::fprintf(stderr, "smoke: cudaLaunchKernel failed\n");

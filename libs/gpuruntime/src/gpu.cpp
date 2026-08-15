@@ -63,7 +63,7 @@ namespace {
 /// Bare arch token of a gcnArchName: the "gfx<digits>[<letter>]" run up to the
 /// first non-alphanumeric (ROCm appends flags as "gfx1101:sramecc+:xnack-").
 /// Returns "" when the string has no leading gfx<digit> arch.
-#if defined(KERNSCOPE_HAVE_HIP)
+#ifdef KERNSCOPE_HAVE_HIP
 std::string ParseGcnArch(std::string_view arch) {
   const std::size_t pos = arch.find("gfx");
   if (pos == std::string_view::npos) {
@@ -85,7 +85,7 @@ std::string ParseGcnArch(std::string_view arch) {
 }
 #endif // KERNSCOPE_HAVE_HIP
 
-#if defined(KERNSCOPE_HAVE_CUDA)
+#ifdef KERNSCOPE_HAVE_CUDA
 std::string SmArch(int major, int minor) {
   return "sm_" + std::to_string(major) + std::to_string(minor);
 }
@@ -153,7 +153,7 @@ public:
     rt_.record(MockRuntime::Op::Type::kEventSynchronize, "event");
     return {};
   }
-  GpuResult<double> elapsed_ms(const Event &) const override {
+  GpuResult<double> elapsed_ms(const Event & /*other*/) const override {
     rt_.record(MockRuntime::Op::Type::kEventElapsed, "event");
     // Deterministic mock timing: the >0 contract is asserted against the live
     // backend (gpu-amd suite); the mock pins a fixed value so elapsed()-based
@@ -286,7 +286,8 @@ GpuStatus MockRuntime::memcpy_dtoh(void *dst, DevicePtr src, std::size_t bytes) 
   std::memcpy(dst, found.value->bytes.data(), bytes);
   record(Op::Type::kMemcpyDtoH, "", bytes, {},
          std::vector<std::uint8_t>(found.value->bytes.begin(),
-                                   found.value->bytes.begin() + bytes));
+                                   found.value->bytes.begin() +
+                                       static_cast<std::ptrdiff_t>(bytes)));
   return {};
 }
 
@@ -338,27 +339,27 @@ public:
   GpuResult<std::vector<DeviceInfo>> list_devices() override {
     return GpuResult<std::vector<DeviceInfo>>{NoDevice("list_devices")};
   }
-  GpuResult<DeviceProperties> device_properties(const std::string &) override {
+  GpuResult<DeviceProperties> device_properties(const std::string & /*name*/) override {
     return GpuResult<DeviceProperties>{NoDevice("device_properties")};
   }
-  GpuResult<std::unique_ptr<Module>> load_module(const std::string &) override {
+  GpuResult<std::unique_ptr<Module>> load_module(const std::string & /*path*/) override {
     return GpuResult<std::unique_ptr<Module>>{NoDevice("load_module")};
   }
   GpuResult<std::unique_ptr<Kernel>>
-  create_kernel(Module &, const std::string &) override {
+  create_kernel(Module & /*module*/, const std::string & /*name*/) override {
     return GpuResult<std::unique_ptr<Kernel>>{NoDevice("create_kernel")};
   }
-  GpuResult<DevicePtr> device_malloc(std::size_t) override {
+  GpuResult<DevicePtr> device_malloc(std::size_t /*bytes*/) override {
     return GpuResult<DevicePtr>{NoDevice("device_malloc")};
   }
-  GpuStatus device_free(DevicePtr) override { return NoDevice("device_free"); }
-  GpuStatus memcpy_htod(DevicePtr, const void *, std::size_t) override {
+  GpuStatus device_free(DevicePtr /*ptr*/) override { return NoDevice("device_free"); }
+  GpuStatus memcpy_htod(DevicePtr /*dst*/, const void * /*src*/, std::size_t /*bytes*/) override {
     return NoDevice("memcpy_htod");
   }
-  GpuStatus memcpy_dtoh(void *, DevicePtr, std::size_t) override {
+  GpuStatus memcpy_dtoh(void * /*dst*/, DevicePtr /*src*/, std::size_t /*bytes*/) override {
     return NoDevice("memcpy_dtoh");
   }
-  GpuStatus memset_device(DevicePtr, std::uint8_t, std::size_t) override {
+  GpuStatus memset_device(DevicePtr /*dst*/, std::uint8_t /*value*/, std::size_t /*bytes*/) override {
     return NoDevice("memset_device");
   }
   GpuResult<std::unique_ptr<Event>> create_event() override {
@@ -375,7 +376,7 @@ public:
 // typed errors (cudaErrorNoDevice / hipErrorNoDevice) map to kNoDevice, so the
 // real backends degrade to compile-only behavior without any special casing.
 
-#if defined(KERNSCOPE_HAVE_HIP)
+#ifdef KERNSCOPE_HAVE_HIP
 
 namespace {
 
@@ -389,7 +390,7 @@ GpuStatus HipStatus(hipError_t e, std::string_view op) {
   }
   GpuError err = GpuError::kOther;
   switch (e) {
-  case hipErrorNoDevice: err = GpuError::kNoDevice; break;
+  case hipErrorNoDevice:
   case hipErrorNoBinaryForGpu: err = GpuError::kNoDevice; break;
   case hipErrorInsufficientDriver: err = GpuError::kNoDriver; break;
   case hipErrorInvalidDevice: err = GpuError::kDeviceNotFound; break;
@@ -397,7 +398,7 @@ GpuStatus HipStatus(hipError_t e, std::string_view op) {
   case hipErrorNotFound: err = GpuError::kKernelNotFound; break;
   case hipErrorLaunchFailure: err = GpuError::kLaunchFailed; break;
   case hipErrorOutOfMemory: err = GpuError::kMemoryOpFailed; break;
-  case hipErrorInvalidValue: err = GpuError::kOther; break;
+  case hipErrorInvalidValue:
   default: err = GpuError::kOther; break;
   }
   return GpuStatus{err, std::string(op) + ": " + HipErrorText(e)};
@@ -563,21 +564,25 @@ public:
   }
 
   GpuStatus device_free(DevicePtr ptr) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return HipStatus(hipFree(reinterpret_cast<void *>(ptr.value)), "hipFree");
   }
 
   GpuStatus memcpy_htod(DevicePtr dst, const void *src, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return HipStatus(hipMemcpyHtoD(reinterpret_cast<void *>(dst.value),
                                    const_cast<void *>(src), bytes),
                      "hipMemcpyHtoD");
   }
 
   GpuStatus memcpy_dtoh(void *dst, DevicePtr src, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return HipStatus(hipMemcpyDtoH(dst, reinterpret_cast<void *>(src.value), bytes),
                      "hipMemcpyDtoH");
   }
 
   GpuStatus memset_device(DevicePtr dst, std::uint8_t value, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return HipStatus(hipMemset(reinterpret_cast<void *>(dst.value), value, bytes),
                      "hipMemset");
   }
@@ -795,22 +800,26 @@ public:
   }
 
   GpuStatus device_free(DevicePtr ptr) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return CudaStatus(cudaFree(reinterpret_cast<void *>(ptr.value)), "cudaFree");
   }
 
   GpuStatus memcpy_htod(DevicePtr dst, const void *src, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return CudaStatus(cudaMemcpy(reinterpret_cast<void *>(dst.value), src, bytes,
                                  cudaMemcpyHostToDevice),
                       "cudaMemcpy(HostToDevice)");
   }
 
   GpuStatus memcpy_dtoh(void *dst, DevicePtr src, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return CudaStatus(cudaMemcpy(dst, reinterpret_cast<void *>(src.value), bytes,
                                  cudaMemcpyDeviceToHost),
                       "cudaMemcpy(DeviceToHost)");
   }
 
   GpuStatus memset_device(DevicePtr dst, std::uint8_t value, std::size_t bytes) override {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding
     return CudaStatus(cudaMemset(reinterpret_cast<void *>(dst.value), value, bytes),
                       "cudaMemset");
   }
@@ -852,7 +861,7 @@ GpuResult<std::unique_ptr<GpuRuntime>> create_runtime(Backend backend) {
   case Backend::kCompileOnly:
     return GpuResult<std::unique_ptr<GpuRuntime>>{std::make_unique<CompileOnlyRuntime>()};
   case Backend::kHip:
-#if defined(KERNSCOPE_HAVE_HIP)
+#ifdef KERNSCOPE_HAVE_HIP
     if (HipRuntime::Live()) {
       return GpuResult<std::unique_ptr<GpuRuntime>>{std::make_unique<HipRuntime>()};
     }
@@ -865,7 +874,7 @@ GpuResult<std::unique_ptr<GpuRuntime>> create_runtime(Backend backend) {
         "configure time)"};
 #endif
   case Backend::kCuda:
-#if defined(KERNSCOPE_HAVE_CUDA)
+#ifdef KERNSCOPE_HAVE_CUDA
     if (CudaRuntime::Live()) {
       return GpuResult<std::unique_ptr<GpuRuntime>>{std::make_unique<CudaRuntime>()};
     }
@@ -883,12 +892,12 @@ GpuResult<std::unique_ptr<GpuRuntime>> create_runtime(Backend backend) {
   // kAuto: first compiled backend with a live device wins; otherwise the
   // deterministic compile-only runtime (ok(), so no-device states surface as
   // typed per-call errors instead of a factory failure).
-#if defined(KERNSCOPE_HAVE_HIP)
+#ifdef KERNSCOPE_HAVE_HIP
   if (HipRuntime::Live()) {
     return GpuResult<std::unique_ptr<GpuRuntime>>{std::make_unique<HipRuntime>()};
   }
 #endif
-#if defined(KERNSCOPE_HAVE_CUDA)
+#ifdef KERNSCOPE_HAVE_CUDA
   if (CudaRuntime::Live()) {
     return GpuResult<std::unique_ptr<GpuRuntime>>{std::make_unique<CudaRuntime>()};
   }

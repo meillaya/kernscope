@@ -65,7 +65,6 @@ using kernscope::ApiKind;
 using kernscope::CopyRecord;
 using kernscope::LaunchRecord;
 using kernscope::LaunchVia;
-using kernscope::MemsetRecord;
 
 //===--- interception state --------------------------------------------------===//
 // The stored REAL table entries (captured at intercept-table registration)
@@ -209,7 +208,7 @@ hipError_t WrapHipFree(void *ptr) {
   return g_real.hipFree != nullptr ? g_real.hipFree(ptr) : hipErrorNoDevice;
 }
 
-void RecordCopy(CopyRecord rec) { Session().record_copy(std::move(rec)); }
+void RecordCopy(CopyRecord rec) { Session().record_copy(rec); }
 
 /// QA-negative instrumentation (asserted in capture_hip_negative_check.py):
 /// when the device-side pointer of a copy is not in the ptr->size allocation
@@ -254,7 +253,7 @@ hipError_t WrapHipMemcpy(void *dst, const void *src, size_t sizeBytes,
     rec.bytes = sizeBytes;
     rec.cuda_kind = static_cast<int>(kind);
     WarnIfDevicePtrUnknown(rec);
-    RecordCopy(std::move(rec));
+    RecordCopy(rec);
   }
   return rc;
 }
@@ -280,7 +279,7 @@ hipError_t WrapHipMemcpyAsync(void *dst, const void *src, size_t sizeBytes,
     rec.cuda_kind = static_cast<int>(kind);
     rec.stream = reinterpret_cast<std::uint64_t>(stream);
     WarnIfDevicePtrUnknown(rec);
-    RecordCopy(std::move(rec));
+    RecordCopy(rec);
   }
   return rc;
 }
@@ -298,7 +297,7 @@ hipError_t WrapHipMemset(void *dst, int value, size_t sizeBytes) {
     rec.ptr = reinterpret_cast<std::uint64_t>(dst);
     rec.value = value;
     rec.bytes = sizeBytes;
-    Session().record_memset(std::move(rec));
+    Session().record_memset(rec);
   }
   return rc;
 }
@@ -318,7 +317,7 @@ hipError_t WrapHipMemsetAsync(void *dst, int value, size_t sizeBytes,
     rec.value = value;
     rec.bytes = sizeBytes;
     rec.stream = reinterpret_cast<std::uint64_t>(stream);
-    Session().record_memset(std::move(rec));
+    Session().record_memset(rec);
   }
   return rc;
 }
@@ -574,7 +573,8 @@ void CodeObjectCallback(rocprofiler_callback_tracing_record_t record,
           std::size_t got = 0;
           while (got < blob.size()) {
             const ssize_t n = ::pread(fd, blob.data() + got,
-                                      blob.size() - got, got);
+                                      blob.size() - got,
+                                      static_cast<off_t>(got));
             if (n <= 0) {
               break;
             }
@@ -585,6 +585,7 @@ void CodeObjectCallback(rocprofiler_callback_tracing_record_t record,
       }
     } else if (data->storage_type ==
                ROCPROFILER_CODE_OBJECT_STORAGE_TYPE_MEMORY) {
+      // NOLINTNEXTLINE(performance-no-int-to-ptr)  // device VA encoded as u64
       const auto *base = reinterpret_cast<const std::uint8_t *>(
           data->memory_base);
       const std::size_t size = static_cast<std::size_t>(data->memory_size);

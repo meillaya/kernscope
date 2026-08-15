@@ -110,9 +110,10 @@ inline Callback CuFuncGetParamInfo(std::uint64_t cufunc, std::size_t param_index
   // (cuda.h: cuFuncGetParamInfo writes offset/size into caller out-params).
   Callback cb;
   cuFuncGetParamInfo_params p{};
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake cufunction handle
   p.func = reinterpret_cast<CUfunction>(cufunc);
   p.paramIndex = param_index;
-  cb.params.resize(sizeof(p) + 2 * sizeof(std::size_t));
+  cb.params.resize(sizeof(p) + (2 * sizeof(std::size_t)));
   auto *buf = cb.params.data();
   std::memcpy(buf, &p, sizeof(p));
   auto *fixed = reinterpret_cast<cuFuncGetParamInfo_params *>(buf);
@@ -145,6 +146,10 @@ inline Callback CuModuleGetFunction(std::uint64_t cufunc, const char *name) {
 /// Resource-domain module load (cupti_callbacks.h: the RESOURCE payload is
 /// CUpti_ResourceData, whose resourceDescriptor carries CUpti_ModuleResourceData
 /// with cubinSize + pCubin).
+// Self-referential fixture: the descriptor points at a member of the SAME
+// struct, and Send() passes &resource while `cb` is still alive on the
+// caller's stack — valid for the duration of the synchronous callback.
+// NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)
 inline Callback ModuleLoaded(const std::vector<std::uint8_t> &cubin) {
   Callback cb;
   cb.resource.resourceDescriptor = &cb.resource_module;
@@ -152,6 +157,7 @@ inline Callback ModuleLoaded(const std::vector<std::uint8_t> &cubin) {
   cb.resource_module.cubinSize = cubin.size();
   cb.resource_module.pCubin = reinterpret_cast<const char *>(cubin.data());
   cb.data.functionName = "resource";
+  // NOLINTNEXTLINE(clang-analyzer-core.StackAddressEscape)  // cb stays alive during Send()
   return cb;
 }
 

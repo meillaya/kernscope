@@ -29,7 +29,7 @@ namespace {
 
 // The live suite is built only when hipcc + ROCm headers were found at
 // configure time (see libs/gpuruntime/CMakeLists.txt).
-#if !defined(KERNSCOPE_NO_LIVE_HIP)
+#ifndef KERNSCOPE_NO_LIVE_HIP
 
 constexpr std::uint32_t kElems = 1024;
 
@@ -66,10 +66,12 @@ TEST(GpuruntimeHip, AddKernelLaunchMemcpyRoundtrip) {
   ASSERT_TRUE(kern.ok()) << kern.message;
 
   // Host inputs: deterministic values (input[i] = i * 0.5 + 1).
-  std::vector<float> a(kElems), b(kElems), expect(kElems);
+  std::vector<float> a(kElems);
+  std::vector<float> b(kElems);
+  std::vector<float> expect(kElems);
   for (std::uint32_t i = 0; i < kElems; ++i) {
-    a[i] = static_cast<float>(i) * 0.5f + 1.0f;
-    b[i] = static_cast<float>(i) * 0.25f - 2.0f;
+    a[i] = (static_cast<float>(i) * 0.5f) + 1.0f;
+    b[i] = (static_cast<float>(i) * 0.25f) - 2.0f;
     expect[i] = a[i] + b[i];
   }
 

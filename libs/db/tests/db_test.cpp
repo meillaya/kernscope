@@ -77,7 +77,7 @@ TEST(DbTest, Roundtrip1000RecordsUnderOneSecond) {
 
   db::Database store;
   for (int i = 0; i < kCount; ++i)
-    store.put(MakeRecord(i, 0.4 + (i % 7) * 0.01));
+    store.put(MakeRecord(i, 0.4 + ((i % 7) * 0.01)));
 
   // Dedupe/replace: re-putting an identical (arch, family, shape, config)
   // key must not grow the store, and must update the record in place.
@@ -120,9 +120,13 @@ TEST(DbTest, QueryBestReturnsConfigWithMinimalMedian) {
   store.put(MakeRecordWith("gfx1101", fam, shape, 64, 0.001));
 
   const auto best = store.query_best(arch, fam, shape);
-  ASSERT_TRUE(best.has_value());
-  EXPECT_DOUBLE_EQ(best->config.find("BK")->as_number(), 64);
-  EXPECT_DOUBLE_EQ(best->timings.median, 0.35);
+  if (!best.has_value()) {
+    FAIL() << "no query_best record";
+    return;
+  }
+// NOLINTNEXTLINE(bugprone-unchecked-optional-access)  // field guaranteed by test fixture
+  EXPECT_DOUBLE_EQ(best.value().config.find("BK")->as_number(), 64);
+  EXPECT_DOUBLE_EQ(best.value().timings.median, 0.35);
 
   EXPECT_FALSE(store.query_best("sm_100", fam, shape).has_value());
 }

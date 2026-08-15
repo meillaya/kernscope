@@ -53,7 +53,7 @@ public:
   explicit StubEvent(std::function<double()> timer) : timer_(std::move(timer)) {}
   GpuStatus record() override { return {}; }
   GpuStatus synchronize() override { return {}; }
-  GpuResult<double> elapsed_ms(const Event &) const override {
+  GpuResult<double> elapsed_ms(const Event & /*other*/) const override {
     return GpuResult<double>{timer_()};
   }
 
@@ -87,12 +87,12 @@ public:
     return GpuResult<DeviceProperties>{std::move(props)};
   }
 
-  GpuResult<std::unique_ptr<Module>> load_module(const std::string &) override {
+  GpuResult<std::unique_ptr<Module>> load_module(const std::string & /*path*/) override {
     return GpuResult<std::unique_ptr<Module>>{
         GpuError::kUnsupportedBackend, "stub: no modules"};
   }
   GpuResult<std::unique_ptr<Kernel>>
-  create_kernel(Module &, const std::string &) override {
+  create_kernel(Module & /*module*/, const std::string & /*name*/) override {
     return GpuResult<std::unique_ptr<Kernel>>{
         GpuError::kUnsupportedBackend, "stub: no kernels"};
   }
@@ -101,10 +101,10 @@ public:
     (void)bytes;
     return GpuResult<DevicePtr>{DevicePtr{next_handle_++}};
   }
-  GpuStatus device_free(DevicePtr) override { return {}; }
-  GpuStatus memcpy_htod(DevicePtr, const void *, std::size_t) override { return {}; }
-  GpuStatus memcpy_dtoh(void *, DevicePtr, std::size_t) override { return {}; }
-  GpuStatus memset_device(DevicePtr, std::uint8_t, std::size_t) override { return {}; }
+  GpuStatus device_free(DevicePtr /*ptr*/) override { return {}; }
+  GpuStatus memcpy_htod(DevicePtr /*dst*/, const void * /*src*/, std::size_t /*bytes*/) override { return {}; }
+  GpuStatus memcpy_dtoh(void * /*dst*/, DevicePtr /*src*/, std::size_t /*bytes*/) override { return {}; }
+  GpuStatus memset_device(DevicePtr /*dst*/, std::uint8_t /*value*/, std::size_t /*bytes*/) override { return {}; }
 
   GpuResult<std::unique_ptr<Event>> create_event() override {
     return GpuResult<std::unique_ptr<Event>>{std::make_unique<StubEvent>(timer)};
@@ -237,7 +237,7 @@ TEST(Bench, AdaptiveTrialsConvergeViaAdditionalSamples) {
   rt.timer = [&calls]() {
     ++calls;
     const double c = static_cast<double>(calls);
-    return 1.0 + 0.8 * std::exp(-c / 10.0) * std::sin(c);
+    return 1.0 + (0.8 * std::exp(-c / 10.0) * std::sin(c));
   };
 
   int launches = 0;
@@ -270,7 +270,7 @@ TEST(Bench, AdaptiveTrialsRespectTimeout) {
   rt.timer = [&calls]() {
     ++calls;
     const double c = static_cast<double>(calls);
-    return 1.0 + 0.9 * std::sin(c);
+    return 1.0 + (0.9 * std::sin(c));
   };
 
   Options opts;

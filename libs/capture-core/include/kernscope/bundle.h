@@ -100,7 +100,7 @@ struct BundleWriteOptions {
   bool scan_embedded_pointers = true;
 };
 
-enum class WriteStatus {
+enum class WriteStatus : std::uint8_t {
   kOk,
   kAbortedSizeCap, // snapshot exceeded --max-snapshot-bytes; partial manifest
   kIoError,

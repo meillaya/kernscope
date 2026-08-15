@@ -10,6 +10,7 @@
 #include "kernscope/db.h"
 
 #include <algorithm>
+#include <ranges>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -84,6 +85,7 @@ class Parser {
 public:
   explicit Parser(std::string_view input) : in_(input) {}
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // recursive JSON tree walk (depth-capped)
   bool ParseValue(Value& out, int depth) {
     SkipWs();
     if (depth > kMaxNestingDepth)
@@ -156,6 +158,7 @@ private:
     return true;
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // recursive JSON tree walk (depth-capped)
   bool ParseObject(Value& out, int depth) {
     ++pos_; // consume '{'
     std::vector<Value::Member> members;
@@ -196,6 +199,7 @@ private:
     }
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // recursive JSON tree walk (depth-capped)
   bool ParseArray(Value& out, int depth) {
     ++pos_; // consume '['
     std::vector<Value> elements;
@@ -406,6 +410,7 @@ std::string Value::dump() const {
   return out;
 }
 
+// NOLINTNEXTLINE(misc-no-recursion)  // recursive JSON tree walk (depth-capped)
 void Value::dump_into(std::string& out) const {
   switch (kind_) {
   case Kind::Null:
@@ -581,6 +586,7 @@ bool RecordFromJson(const json::Value& obj, Record& r, std::string& error) {
 }
 
 // JSON has no NaN/Inf literal; reject them so save() can never emit them.
+// NOLINTNEXTLINE(misc-no-recursion)  // recursive JSON tree walk (depth-capped)
 bool AllNumbersFinite(const json::Value& v) {
   switch (v.kind()) {
   case json::Kind::Number:
@@ -601,10 +607,7 @@ bool AllNumbersFinite(const json::Value& v) {
 }
 
 bool IsBlank(std::string_view line) {
-  for (const char c : line)
-    if (c != ' ' && c != '\t')
-      return false;
-  return true;
+  return std::ranges::all_of(line, [](char c) { return c == ' ' || c == '\t'; });
 }
 
 } // namespace

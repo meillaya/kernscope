@@ -17,10 +17,12 @@
 // App-side symbols that must not collide with the subscription library.
 namespace kernscope {
 namespace cupti {
+namespace {
 // An app-level redefinition of a namespace-local name would be a conflict
 // if the library exported it - it does not (hidden visibility). We also
 // define our own `session`-adjacent helper to prove name-space isolation.
 inline int app_helper(int x) { return x + 1; }
+} // namespace
 } // namespace cupti
 } // namespace kernscope
 

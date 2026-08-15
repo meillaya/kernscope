@@ -17,6 +17,7 @@
 #ifndef KERNSCOPE_LIBS_PTXPARSE_SRC_TOKEN_H
 #define KERNSCOPE_LIBS_PTXPARSE_SRC_TOKEN_H
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,7 +25,7 @@
 namespace kernscope {
 namespace ptx {
 
-enum class TokKind {
+enum class TokKind : std::uint8_t {
   kDirective,
   kIdent,
   kRegister,

@@ -267,14 +267,14 @@ private:
     if (pos_ + 1 < toks_.size()) ++pos_;
     return t;
   }
-  [[noreturn]] void fail(const Token &t, const std::string &msg) {
+  [[noreturn]] static void fail(const Token &t, const std::string &msg) {
     throw PtxParseError(t.line, t.col, msg);
   }
 
-  bool is_punct(const Token &t, char c) const {
+  static bool is_punct(const Token &t, char c) {
     return t.kind == TokKind::kPunct && t.text.size() == 1 && t.text[0] == c;
   }
-  bool is_qualifier(const Token &t) const {
+  static bool is_qualifier(const Token &t) {
     return t.kind == TokKind::kDirective &&
            (t.text == ".extern" || t.text == ".visible" || t.text == ".weak" ||
             t.text == ".static");
@@ -309,10 +309,8 @@ private:
   void parse_target(PtxModule &mod) {
     next();  // .target
     const Token &t = peek();
-    if (t.kind == TokKind::kIdent) {
-      mod.target = next().text;
-    } else if (t.kind == TokKind::kDirective) {
-      // e.g. ".target .sm_86" form tolerated.
+    if (t.kind == TokKind::kIdent || t.kind == TokKind::kDirective) {
+      // ".target sm_86" and ".target .sm_86" forms are both tolerated.
       mod.target = next().text;
     } else {
       fail(t, "expected target architecture after .target");
@@ -337,13 +335,13 @@ private:
 
   // --- declarations --------------------------------------------------------
 
-  bool is_state_space_directive(const std::string &d) const {
+  static bool is_state_space_directive(const std::string &d) {
     return d == ".global" || d == ".shared" || d == ".local" || d == ".const" ||
            d == ".param" || d == ".reg";
   }
 
   // A directive that starts a variable declaration at statement level.
-  bool is_variable_decl_start(const std::string &d) const {
+  static bool is_variable_decl_start(const std::string &d) {
     if (is_state_space_directive(d)) return true;
     return d == ".extern" || d == ".visible" || d == ".weak" || d == ".static";
   }
@@ -682,7 +680,7 @@ private:
 
   // --- CFG ------------------------------------------------------------------
 
-  void build_cfg(std::vector<PtxBlock> &blocks) {
+  static void build_cfg(std::vector<PtxBlock> &blocks) {
     for (std::size_t i = 0; i < blocks.size(); ++i) {
       PtxBlock &b = blocks[i];
       const PtxInstruction *term =
@@ -716,9 +714,15 @@ private:
 
   // --- statistics ------------------------------------------------------------
 
-  void finalize_kernel(PtxKernel &kern) {
-    std::int64_t insn = 0, bar_sync = 0, barrier = 0;
-    std::int64_t shared = 0, global = 0, local = 0, cst = 0, param = 0;
+  static void finalize_kernel(PtxKernel &kern) {
+    std::int64_t insn = 0;
+    std::int64_t bar_sync = 0;
+    std::int64_t barrier = 0;
+    std::int64_t shared = 0;
+    std::int64_t global = 0;
+    std::int64_t local = 0;
+    std::int64_t cst = 0;
+    std::int64_t param = 0;
     for (const PtxBlock &b : kern.cfg) {
       for (const PtxInstruction &i : b.instructions) {
         ++insn;
@@ -763,11 +767,12 @@ private:
     kern.param_access_count = param;
 
     std::int64_t edges = 0;
-    for (const PtxBlock &b : kern.cfg) edges += b.successors.size();
+    for (const PtxBlock &b : kern.cfg)
+      edges += static_cast<std::int64_t>(b.successors.size());
     kern.cfg_edge_count = edges;
   }
 
-  std::string tensor_tag(const PtxInstruction &i) const {
+  static std::string tensor_tag(const PtxInstruction &i) {
     if (i.cls == InstructionClass::kTensorMmaSync)
       return (i.segs.size() > 1 && i.segs[1] == "sp") ? "mma.sp" : "mma.sync";
     if (i.cls == InstructionClass::kTensorWmma) return "wmma";
@@ -779,7 +784,7 @@ private:
     return "";
   }
 
-  bool tensor_parse_only(const PtxInstruction &i) const {
+  static bool tensor_parse_only(const PtxInstruction &i) {
     return i.cls == InstructionClass::kTensorTcgen05;
   }
 };

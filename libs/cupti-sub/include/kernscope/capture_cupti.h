@@ -90,7 +90,7 @@
 // Export macro: the library builds with hidden visibility (no symbol
 // conflicts when injected/linked into arbitrary apps), so the documented API
 // is re-exported explicitly - the same discipline as the injection entry.
-#if defined(_WIN32)
+#ifdef _WIN32
 #define KERNSCOPE_CUPTI_API
 #else
 #define KERNSCOPE_CUPTI_API __attribute__((visibility("default")))

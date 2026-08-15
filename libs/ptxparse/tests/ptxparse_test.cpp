@@ -136,6 +136,7 @@ void assert_kernel_matches(const kernscope::PtxKernel &k,
   EXPECT_EQ(ke.tensor_ops,
             static_cast<std::int64_t>(k.tensor_ops.size()));
   std::vector<std::string> got_classes;
+  got_classes.reserve(k.tensor_ops.size());
   for (const auto &op : k.tensor_ops) got_classes.push_back(op.class_tag);
   std::vector<std::string> want_classes = ke.tensor_classes;
   std::sort(got_classes.begin(), got_classes.end());
@@ -160,7 +161,7 @@ INSTANTIATE_TEST_SUITE_P(Ptxparse, PtxCorpusTest,
                          });
 
 TEST_P(PtxCorpusTest, MatchesManifest) {
-  const std::string file = GetParam();
+  const std::string& file = GetParam();
   const auto manifest = load_manifest();
   const FixtureExpect *fe = find_fixture(manifest, file);
   ASSERT_NE(fe, nullptr) << "no manifest entry for " << file;

@@ -51,7 +51,7 @@ struct Cursor {
     }
     return c;
   }
-  [[noreturn]] void fail(int line, int col, const std::string &msg) {
+  [[noreturn]] static void fail(int line, int col, const std::string &msg) {
     throw PtxParseError(line, col, msg);
   }
 };
@@ -98,7 +98,8 @@ void skip_space_and_comments(Cursor &cur) {
       continue;
     }
     if (c == '/' && cur.peek(1) == '*') {
-      int l = cur.line, co = cur.col;
+      int l = cur.line;
+      int co = cur.col;
       cur.take();
       cur.take();
       bool closed = false;
@@ -111,7 +112,7 @@ void skip_space_and_comments(Cursor &cur) {
         }
         cur.take();
       }
-      if (!closed) cur.fail(l, co, "unterminated block comment");
+      if (!closed) Cursor::fail(l, co, "unterminated block comment");
       continue;
     }
     break;
@@ -185,7 +186,7 @@ std::vector<Token> lex(std::string_view src) {
         if (cur.peek() == '>') {
           text += cur.take();
         } else {
-          cur.fail(line, col, "unterminated register array '%r<N>'");
+          Cursor::fail(line, col, "unterminated register array '%r<N>'");
         }
       }
       toks.push_back(make_token(TokKind::kRegister, std::move(text), line, col));
@@ -235,7 +236,7 @@ std::vector<Token> lex(std::string_view src) {
         }
         text += q;
       }
-      if (!closed) cur.fail(line, col, "unterminated string literal");
+      if (!closed) Cursor::fail(line, col, "unterminated string literal");
       toks.push_back(make_token(TokKind::kString, std::move(text), line, col));
       continue;
     }
@@ -248,7 +249,7 @@ std::vector<Token> lex(std::string_view src) {
       continue;
     }
 
-    cur.fail(line, col, std::string("unexpected character '") + c + "'");
+    Cursor::fail(line, col, std::string("unexpected character '") + c + "'");
   }
 
   toks.push_back(make_token(TokKind::kEof, "", cur.line, cur.col));

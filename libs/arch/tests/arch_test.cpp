@@ -17,7 +17,6 @@
 
 namespace {
 
-using kernscope::OccupancyPrediction;
 using kernscope::Vendor;
 using kernscope::allocated_regs_per_thread;
 using kernscope::get_arch;

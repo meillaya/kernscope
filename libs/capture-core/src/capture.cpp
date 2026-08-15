@@ -55,10 +55,10 @@ public:
 
     std::array<std::uint8_t, 32> out{};
     for (int i = 0; i < 8; ++i) {
-      out[4 * i + 0] = static_cast<std::uint8_t>(h_[i] >> 24);
-      out[4 * i + 1] = static_cast<std::uint8_t>(h_[i] >> 16);
-      out[4 * i + 2] = static_cast<std::uint8_t>(h_[i] >> 8);
-      out[4 * i + 3] = static_cast<std::uint8_t>(h_[i]);
+      out[(4 * i) + 0] = static_cast<std::uint8_t>(h_[i] >> 24);
+      out[(4 * i) + 1] = static_cast<std::uint8_t>(h_[i] >> 16);
+      out[(4 * i) + 2] = static_cast<std::uint8_t>(h_[i] >> 8);
+      out[(4 * i) + 3] = static_cast<std::uint8_t>(h_[i]);
     }
     return out;
   }
@@ -84,9 +84,9 @@ private:
     std::array<std::uint32_t, 64> w{};
     for (int i = 0; i < 16; ++i) {
       w[i] = (static_cast<std::uint32_t>(block[4 * i]) << 24) |
-             (static_cast<std::uint32_t>(block[4 * i + 1]) << 16) |
-             (static_cast<std::uint32_t>(block[4 * i + 2]) << 8) |
-             static_cast<std::uint32_t>(block[4 * i + 3]);
+             (static_cast<std::uint32_t>(block[(4 * i) + 1]) << 16) |
+             (static_cast<std::uint32_t>(block[(4 * i) + 2]) << 8) |
+             static_cast<std::uint32_t>(block[(4 * i) + 3]);
     }
     for (int i = 16; i < 64; ++i) {
       const std::uint32_t s0 = Rotr(w[i - 15], 7) ^ Rotr(w[i - 15], 18) ^
@@ -95,8 +95,14 @@ private:
                                (w[i - 2] >> 10);
       w[i] = w[i - 16] + s0 + w[i - 7] + s1;
     }
-    std::uint32_t a = h_[0], b = h_[1], c = h_[2], d = h_[3];
-    std::uint32_t e = h_[4], f = h_[5], g = h_[6], h = h_[7];
+    std::uint32_t a = h_[0];
+    std::uint32_t b = h_[1];
+    std::uint32_t c = h_[2];
+    std::uint32_t d = h_[3];
+    std::uint32_t e = h_[4];
+    std::uint32_t f = h_[5];
+    std::uint32_t g = h_[6];
+    std::uint32_t h = h_[7];
     for (int i = 0; i < 64; ++i) {
       const std::uint32_t s1 = Rotr(e, 6) ^ Rotr(e, 11) ^ Rotr(e, 25);
       const std::uint32_t ch = (e & f) ^ (~e & g);
@@ -262,7 +268,7 @@ void CaptureSession::record_copy(const CopyRecord &rec) {
   if (r.cuda_kind == 2 || r.cuda_kind == 3) {
     r.src_size = src == allocations_.end() ? 0 : src->second;
   }
-  copies_.push_back(std::move(r));
+  copies_.push_back(r);
 }
 
 void CaptureSession::record_memset(const MemsetRecord &rec) {
@@ -271,7 +277,7 @@ void CaptureSession::record_memset(const MemsetRecord &rec) {
   r.seq = ++seq_;
   const auto it = allocations_.find(r.ptr);
   r.ptr_size = it == allocations_.end() ? 0 : it->second;
-  memsets_.push_back(std::move(r));
+  memsets_.push_back(r);
 }
 
 std::uint64_t CaptureSession::record_stream_create(std::uint64_t handle) {

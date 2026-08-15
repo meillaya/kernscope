@@ -69,7 +69,6 @@
 namespace {
 
 using kernscope::get_arch;
-using kernscope::occupancy::Limiter;
 using kernscope::occupancy::OccupancyResult;
 using kernscope::occupancy::compute_occupancy;
 using kernscope::occupancy::limiter_name;
@@ -85,8 +84,8 @@ TEST(occupancy, PinnedGoldenSm86_375) {
   // -> regs_per_warp = 112x32 = 3584 (already 256-aligned) -> blocks_by_regs
   // = floor(65536 / (3584 x 2)) = 9 -> 18 warps / 48 = 0.375. Limiter
   // "registers". Brief §1.2 L101-102; tolerance 1e-9.
-  const auto o = compute_occupancy(get_arch("sm_86"), /*regs=*/112,
-                                   /*smem=*/0, /*block=*/64);
+  const auto o = compute_occupancy(get_arch("sm_86"), /*regs_per_thread=*/112,
+                                   /*smem_bytes_per_block=*/0, /*block_size=*/64);
   EXPECT_EQ(o.blocks_per_sm, 9);
   EXPECT_EQ(o.warps_resident, 18);
   EXPECT_EQ(o.max_warps_per_sm, 48);
@@ -98,8 +97,8 @@ TEST(occupancy, PinnedGoldenSm90_025) {
   // Brief §1.2 worked example (L101-102): sm_90, 128 regs, 256-thread blocks
   // -> 128x256 = 32768 regs/block -> floor(65536/32768) = 2 blocks -> 16/64
   // warps = 0.25. Limiter "registers".
-  const auto o = compute_occupancy(get_arch("sm_90"), /*regs=*/128,
-                                   /*smem=*/0, /*block=*/256);
+  const auto o = compute_occupancy(get_arch("sm_90"), /*regs_per_thread=*/128,
+                                   /*smem_bytes_per_block=*/0, /*block_size=*/256);
   EXPECT_EQ(o.blocks_per_sm, 2);
   EXPECT_EQ(o.warps_resident, 16);
   EXPECT_EQ(o.max_warps_per_sm, 64);
@@ -288,7 +287,8 @@ TEST_P(NvidiaOracleGridTest, EngineMatchesCudaOccupancyHeader) {
       << " blocks=" << r.blockLimitBlocks;
   const double oracle_occupancy =
       static_cast<double>(r.activeBlocksPerMultiprocessor) *
-      ((c.block + a.warp_size - 1) / a.warp_size) /
+      // NOLINTNEXTLINE(bugprone-integer-division)  // intentional ceil-div (blocks per wave)
+      static_cast<double>((c.block + a.warp_size - 1) / a.warp_size) /
       static_cast<double>(engine.max_warps_per_sm);
   EXPECT_NEAR(engine.occupancy, oracle_occupancy, 1e-9);
 #endif
@@ -432,16 +432,16 @@ TEST(occupancy, AmdLdsLimiterAndGranule) {
 // -> align16=112 -> floor(800/112)=7 waves -> 28 blocks binds.
 TEST(occupancy, AmdSgprLimiter) {
   const auto o =
-      compute_occupancy(get_arch("gfx90a"), /*vgprs=*/16, /*smem=*/0,
-                        /*block=*/64, /*sgprs=*/100);
+      compute_occupancy(get_arch("gfx90a"), /*regs_per_thread=*/16, /*smem_bytes_per_block=*/0,
+                        /*block_size=*/64, /*sgprs_per_thread=*/100);
   EXPECT_EQ(o.blocks_per_sm, 28);
   EXPECT_NEAR(o.occupancy, 28.0 / 32.0, 1e-9);
   EXPECT_STREQ(limiter_name(o.limiter), "registers");
   // sgprs=30 -> align16=32 -> 800/32=25 waves -> clamped to 8 -> not binding
   // vs the 8-wave VGPR limit (both give 32 blocks; registers reported).
   const auto o2 =
-      compute_occupancy(get_arch("gfx90a"), /*vgprs=*/64, /*smem=*/0,
-                        /*block=*/64, /*sgprs=*/30);
+      compute_occupancy(get_arch("gfx90a"), /*regs_per_thread=*/64, /*smem_bytes_per_block=*/0,
+                        /*block_size=*/64, /*sgprs_per_thread=*/30);
   EXPECT_EQ(o2.blocks_per_sm, 32);
 }
 

@@ -202,11 +202,13 @@ int main(int argc, char **argv) {
 
   // Driver-API convention: device pointers pass BY VALUE (uintptr).
   std::vector<std::uint64_t> ptrs;
+  ptrs.reserve(in_ptrs.size());
   for (const kernscope::DevicePtr &p : in_ptrs)
     ptrs.push_back(p.value);
   ptrs.push_back(out_d.value.value);
 
   std::vector<kernscope::KernelArg> args;
+  args.reserve(ptrs.size());
   for (const std::uint64_t &p : ptrs)
     args.push_back(kernscope::KernelArg{&p, sizeof(p)});
   for (const std::int32_t &s : opt.scalars)

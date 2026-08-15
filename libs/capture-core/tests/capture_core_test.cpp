@@ -122,8 +122,10 @@ TEST_F(CaptureSessionTest, MockScenarioCapturesLaunchAndExactAllocSizes) {
   for (const auto &arg : args) {
     kernscope::KernelArgSlot slot;
     slot.size = arg.size;
-    slot.bytes.assign(launch_op.payload.begin() + offset,
-                      launch_op.payload.begin() + offset + arg.size);
+    slot.bytes.assign(
+        launch_op.payload.begin() + static_cast<std::ptrdiff_t>(offset),
+        launch_op.payload.begin() +
+            static_cast<std::ptrdiff_t>(offset + arg.size));
     launch.args.push_back(std::move(slot));
     offset += arg.size;
   }
@@ -201,7 +203,7 @@ TEST_F(CaptureSessionTest, FatBinaryRegistrationRecordsCubinBytesHash) {
   // bytes HASH").
   std::vector<std::uint8_t> cubin(256);
   for (std::size_t i = 0; i < cubin.size(); ++i) {
-    cubin[i] = static_cast<std::uint8_t>(i * 7 + 1);
+    cubin[i] = static_cast<std::uint8_t>((i * 7) + 1);
   }
   const std::uint64_t reg_id = session_->register_fatbinary(cubin);
   EXPECT_EQ(reg_id, 1u);
@@ -351,7 +353,8 @@ TEST_F(CaptureSessionTest, BundleWriterV0IsDeterministicAndComplete) {
 
   auto writer = kernscope::BundleWriter::create_v0();
   ASSERT_NE(writer, nullptr);
-  std::ostringstream first, second;
+  std::ostringstream first;
+  std::ostringstream second;
   ASSERT_TRUE(writer->write(*session_, first));
   ASSERT_TRUE(writer->write(*session_, second));
   EXPECT_EQ(first.str(), second.str()); // deterministic

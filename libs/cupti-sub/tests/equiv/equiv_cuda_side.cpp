@@ -42,7 +42,6 @@
 
 namespace {
 
-using kernscope::LaunchVia;
 namespace syn = kernscope::cupti::synthetic;
 
 constexpr CUpti_CallbackDomain kRuntime = CUPTI_CB_DOMAIN_RUNTIME_API;
@@ -92,6 +91,7 @@ void SendMemoryRecord(std::uint64_t address, std::uint64_t bytes, bool alloc) {
 void SendMemcpy(std::uint64_t dst, const void *src, std::size_t bytes,
                 int kind) {
   cudaMemcpy_v3020_params p;
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA test marshalling
   p.dst = reinterpret_cast<void *>(dst);
   p.src = src;
   p.count = bytes;
@@ -192,7 +192,9 @@ int main(int argc, char **argv) {
   if (a.size() != opt.out_size || b.size() != opt.out_size) {
     return Fail("input sizes must equal --out-size");
   }
-  const std::uint64_t d_a = 0x1000, d_b = 0x2000, d_out = 0x3000;
+  const std::uint64_t d_a = 0x1000;
+  const std::uint64_t d_b = 0x2000;
+  const std::uint64_t d_out = 0x3000;
   std::vector<std::uint8_t> host_out(opt.out_size, 0);
 
   SendMemoryRecord(d_a, opt.out_size, /*alloc=*/true);
@@ -226,12 +228,14 @@ int main(int argc, char **argv) {
   scb.Send(kRuntime, static_cast<CUpti_CallbackId>(
                          CUPTI_RUNTIME_TRACE_CBID_cudaStreamSynchronize_v3020));
   SendMemcpy(reinterpret_cast<std::uint64_t>(host_out.data()), 
+             // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA test marshalling
              reinterpret_cast<const void *>(d_out), opt.out_size, 2);
 
   // 5. Frees (the runner frees a, b, out at exit).
   cudaFree_v3020_params fp;
   cudaError_t rc = cudaSuccess;
   for (std::uint64_t ptr : {d_a, d_b, d_out}) {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA test marshalling
     fp.devPtr = reinterpret_cast<void *>(ptr);
     auto cb = syn::CudaFree(&fp, rc);
     cb.At(CUPTI_API_EXIT)->Send(kRuntime, static_cast<CUpti_CallbackId>(

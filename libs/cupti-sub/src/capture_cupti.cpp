@@ -216,8 +216,9 @@ std::vector<KernelArgSlot> CaptureArgs(void *const *args,
 //===--- runtime-API cbids (CUPTI_RUNTIME_TRACE_CBID_*, cupti_runtime_cbid.h) ----===//
 
 void OnCudaMallocExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaMalloc);
-  auto *p = static_cast<const cudaMalloc_v3020_params *>(data->functionParams);
+  const auto *p = static_cast<const cudaMalloc_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
   }
@@ -234,8 +235,9 @@ void OnCudaMallocExit(const CUpti_CallbackData *data) {
 }
 
 void OnCudaFreeExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaFree);
-  auto *p = static_cast<const cudaFree_v3020_params *>(data->functionParams);
+  const auto *p = static_cast<const cudaFree_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
   }
@@ -247,7 +249,8 @@ void OnCudaFreeExit(const CUpti_CallbackData *data) {
 }
 
 void OnCudaMemcpyEnter(const CUpti_CallbackData *data) {
-  auto *p = static_cast<const cudaMemcpy_v3020_params *>(data->functionParams);
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
+  const auto *p = static_cast<const cudaMemcpy_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
   }
@@ -260,8 +263,9 @@ void OnCudaMemcpyEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCudaMemcpyExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaMemcpy);
-  auto *p = static_cast<const cudaMemcpy_v3020_params *>(data->functionParams);
+  const auto *p = static_cast<const cudaMemcpy_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
   }
@@ -280,7 +284,8 @@ void OnCudaMemcpyExit(const CUpti_CallbackData *data) {
 }
 
 void OnCudaMemcpyAsyncEnter(const CUpti_CallbackData *data) {
-  auto *p =
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
+  const auto *p =
       static_cast<const cudaMemcpyAsync_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
@@ -291,8 +296,9 @@ void OnCudaMemcpyAsyncEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCudaMemcpyAsyncExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaMemcpyAsync);
-  auto *p =
+  const auto *p =
       static_cast<const cudaMemcpyAsync_v3020_params *>(data->functionParams);
   if (p == nullptr) {
     return;
@@ -313,8 +319,9 @@ void OnCudaMemcpyAsyncExit(const CUpti_CallbackData *data) {
 }
 
 void OnCudaLaunchKernelEnter(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaLaunchKernel);
-  auto *p =
+  const auto *p =
       static_cast<const cudaLaunchKernel_v7000_params *>(data->functionParams);
   if (p == nullptr) {
     return;
@@ -343,8 +350,9 @@ void OnCudaLaunchKernelEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCudaLaunchKernelExCEnter(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaLaunchKernelExC);
-  auto *p = static_cast<const cudaLaunchKernelExC_v11060_params *>(
+  const auto *p = static_cast<const cudaLaunchKernelExC_v11060_params *>(
       data->functionParams);
   if (p == nullptr || p->config == nullptr) {
     return;
@@ -370,8 +378,9 @@ void OnCudaLaunchKernelExCEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCudaStreamCreateExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaStreamCreate);
-  auto *p =
+  const auto *p =
       static_cast<const cudaStreamCreate_v3020_params *>(data->functionParams);
   if (p == nullptr || p->pStream == nullptr) {
     return;
@@ -385,8 +394,9 @@ void OnCudaStreamCreateExit(const CUpti_CallbackData *data) {
 }
 
 void OnCudaStreamSynchronize(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCudaStreamSynchronize);
-  auto *p = static_cast<const cudaStreamSynchronize_v3020_params *>(
+  const auto *p = static_cast<const cudaStreamSynchronize_v3020_params *>(
       data->functionParams);
   if (p == nullptr) {
     return;
@@ -397,8 +407,9 @@ void OnCudaStreamSynchronize(const CUpti_CallbackData *data) {
 //===--- driver-API cbids (CUPTI_DRIVER_TRACE_CBID_*, cupti_driver_cbid.h) -------===//
 
 void OnCuLaunchKernelEnter(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCuLaunchKernel);
-  auto *p = static_cast<const cuLaunchKernel_params *>(data->functionParams);
+  const auto *p = static_cast<const cuLaunchKernel_params *>(data->functionParams);
   if (p == nullptr) {
     return;
   }
@@ -429,8 +440,9 @@ void OnCuLaunchKernelEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCuLaunchKernelExEnter(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCuLaunchKernelEx);
-  auto *p = static_cast<const cuLaunchKernelEx_params *>(data->functionParams);
+  const auto *p = static_cast<const cuLaunchKernelEx_params *>(data->functionParams);
   if (p == nullptr || p->config == nullptr) {
     return;
   }
@@ -462,7 +474,8 @@ void OnCuLaunchKernelExEnter(const CUpti_CallbackData *data) {
 }
 
 void OnCuFuncGetParamInfoExit(const CUpti_CallbackData *data) {
-  auto *p =
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
+  const auto *p =
       static_cast<const cuFuncGetParamInfo_params *>(data->functionParams);
   if (p == nullptr || p->paramOffset == nullptr || p->paramSize == nullptr) {
     return;
@@ -478,8 +491,9 @@ void OnCuFuncGetParamInfoExit(const CUpti_CallbackData *data) {
 }
 
 void OnCuModuleGetFunctionExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCuModuleGetFunction);
-  auto *p =
+  const auto *p =
       static_cast<const cuModuleGetFunction_params *>(data->functionParams);
   if (p == nullptr || p->hfunc == nullptr || p->name == nullptr) {
     return;
@@ -499,8 +513,9 @@ void OnCuModuleGetFunctionExit(const CUpti_CallbackData *data) {
 }
 
 void OnCuModuleLoadExit(const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   G().session->note_api(ApiKind::kCuModuleLoad);
-  auto *p = static_cast<const cuModuleLoad_params *>(data->functionParams);
+  const auto *p = static_cast<const cuModuleLoad_params *>(data->functionParams);
   if (p == nullptr || p->fname == nullptr) {
     return;
   }
@@ -531,6 +546,7 @@ void OnCuModuleLoadExit(const CUpti_CallbackData *data) {
 // code-capture path (brief §5).
 
 void OnModuleLoaded(const void *raw) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   if (raw == nullptr) {
     return;
   }
@@ -554,6 +570,7 @@ void OnModuleLoaded(const void *raw) {
 //===--- the dispatcher -----------------------------------------------------------===//
 
 void DispatchRuntime(CUpti_CallbackId cbid, const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   switch (static_cast<int>(cbid)) {
   case CUPTI_RUNTIME_TRACE_CBID_cudaMalloc_v3020:
     if (data->callbackSite == CUPTI_API_EXIT) {
@@ -603,6 +620,7 @@ void DispatchRuntime(CUpti_CallbackId cbid, const CUpti_CallbackData *data) {
 }
 
 void DispatchDriver(CUpti_CallbackId cbid, const CUpti_CallbackData *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   switch (static_cast<int>(cbid)) {
   case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
     if (data->callbackSite == CUPTI_API_ENTER) {
@@ -645,6 +663,7 @@ void DispatchDriver(CUpti_CallbackId cbid, const CUpti_CallbackData *data) {
 }
 
 void DispatchResource(CUpti_CallbackId cbid, const void *data) {
+  if (G().session == nullptr) return;  // never crash a host app: callbacks may fire before session assignment
   switch (static_cast<int>(cbid)) {
   case CUPTI_CBID_RESOURCE_MODULE_LOADED:
     OnModuleLoaded(data);
@@ -853,6 +872,7 @@ const char *CuptiErrorString(CUptiResult rc) {
 
 } // namespace
 
+namespace {
 bool try_initialize(CaptureSession *session) {
   if (G().live) {
     return true;
@@ -955,6 +975,7 @@ bool try_initialize(CaptureSession *session) {
                kLogTag);
   return true;
 }
+} // namespace
 
 bool try_initialize() { return try_initialize(nullptr); }
 

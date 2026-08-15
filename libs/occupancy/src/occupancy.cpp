@@ -125,8 +125,8 @@ OccupancyResult compute_occupancy(const ArchInfo &arch, int regs_per_thread,
 
   // Register counts are usage figures; clamp negatives to 0 so granule
   // rounding cannot turn a bogus negative into a "winner" of the min-wins.
-  if (regs_per_thread < 0) regs_per_thread = 0;
-  if (sgprs_per_thread < 0) sgprs_per_thread = 0;
+  regs_per_thread = std::max(regs_per_thread, 0);
+  sgprs_per_thread = std::max(sgprs_per_thread, 0);
 
   const int warp_size = arch.warp_size;
   const int warps_per_block = (block_size + warp_size - 1) / warp_size;

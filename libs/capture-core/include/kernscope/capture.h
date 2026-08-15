@@ -308,7 +308,6 @@ public:
   bool empty() const;
   void clear();
 
-public:
   // Constructible (tests create fresh sessions); the shim uses instance().
   CaptureSession();
 

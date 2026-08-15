@@ -44,7 +44,7 @@ double quantile(std::vector<double> samples, double q) {
   const std::size_t lo = static_cast<std::size_t>(pos);
   const std::size_t hi = std::min(lo + 1, samples.size() - 1);
   const double frac = pos - static_cast<double>(lo);
-  return samples[lo] * (1.0 - frac) + samples[hi] * frac;
+  return (samples[lo] * (1.0 - frac)) + (samples[hi] * frac);
 }
 
 double median(std::vector<double> samples) {
@@ -89,7 +89,7 @@ double NowMs() {
 //===--- device L2 cache size ------------------------------------------------===//
 
 std::uint64_t device_l2_cache_bytes(GpuRuntime &rt, const std::string &device_name) {
-#if defined(KERNSCOPE_BENCH_HAVE_HIP)
+#ifdef KERNSCOPE_BENCH_HAVE_HIP
   // Only the live HIP backend can answer this query; the mock/compile-only
   // runtimes have no L2 attribute (and the real hipDeviceGetAttribute must
   // never be consulted for a non-HIP runtime).
@@ -327,8 +327,7 @@ Result run(GpuRuntime &rt, const std::string &device_name, const LaunchFn &launc
     if (converged || timed_out) {
       out.converged = converged;
       out.timed_out = timed_out;
-      stop = true;
-      break;
+      break;  // dead-store note: `stop` is not read again before this break
     }
     // Not converged yet: keep sampling in batches of n_repeat (bounded by
     // the remaining timeout so we never overshoot a hard deadline).

@@ -45,6 +45,9 @@ public:
 
   bool ok() const { return ok_; }
 
+  // Recursive descent over a MsgPack document (parse <-> Array/Map mutual
+  // recursion is the design); depth is bounded by the document itself.
+  // NOLINTNEXTLINE(misc-no-recursion)
   MpValue parse() {
     if (p_ >= end_) {
       ok_ = false;
@@ -60,14 +63,27 @@ public:
     case 0xC0: return {};                       // nil
     case 0xC2: return Bool(false);
     case 0xC3: return Bool(true);
-    case 0xCC: return Int(Read<std::uint8_t>());
-    case 0xCD: return Int(Read<std::uint16_t>());
-    case 0xCE: return Int(Read<std::uint32_t>());
-    case 0xCF: return Int(static_cast<std::int64_t>(Read<std::uint64_t>()));
-    case 0xD0: return Int(static_cast<std::int64_t>(static_cast<std::int8_t>(Read<std::uint8_t>())));
-    case 0xD1: return Int(static_cast<std::int64_t>(static_cast<std::int16_t>(Read<std::uint16_t>())));
-    case 0xD2: return Int(static_cast<std::int64_t>(static_cast<std::int32_t>(Read<std::uint32_t>())));
-    case 0xD3: return Int(static_cast<std::int64_t>(Read<std::uint64_t>()));
+    case 0xCC:
+      return Int(Read<std::uint8_t>());  // NOLINT(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+    case 0xCD:
+      return Int(Read<std::uint16_t>());  // NOLINT(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+    case 0xCE:
+      return Int(Read<std::uint32_t>());  // NOLINT(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+    case 0xCF:
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+      return Int(static_cast<std::int64_t>(Read<std::uint64_t>()));
+    case 0xD0:
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+      return Int(static_cast<std::int64_t>(static_cast<std::int8_t>(Read<std::uint8_t>())));
+    case 0xD1:
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+      return Int(static_cast<std::int64_t>(static_cast<std::int16_t>(Read<std::uint16_t>())));
+    case 0xD2:
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+      return Int(static_cast<std::int64_t>(static_cast<std::int32_t>(Read<std::uint32_t>())));
+    case 0xD3:
+      // NOLINTNEXTLINE(bugprone-narrowing-conversions)  // msgpack wire-format byte reinterpretation
+      return Int(static_cast<std::int64_t>(Read<std::uint64_t>()));
     case 0xCA: return Float(Read<std::uint32_t>());
     case 0xCB: return Float(Read<std::uint64_t>());
     case 0xD9: return Str(Raw(Read<std::uint8_t>()));
@@ -87,24 +103,25 @@ public:
   }
 
 private:
-  MpValue Int(std::int64_t v) { MpValue r; r.type = MpValue::Type::kInt; r.i = v; return r; }
-  MpValue Bool(bool v) { MpValue r; r.type = MpValue::Type::kBool; r.b = v; return r; }
-  MpValue Float(std::uint64_t raw) {
+  static MpValue Int(std::int64_t v) { MpValue r; r.type = MpValue::Type::kInt; r.i = v; return r; }
+  static MpValue Bool(bool v) { MpValue r; r.type = MpValue::Type::kBool; r.b = v; return r; }
+  static MpValue Float(std::uint64_t raw) {
     MpValue r; r.type = MpValue::Type::kFloat;
     static_assert(sizeof(double) == sizeof(std::uint64_t));
     std::memcpy(&r.f, &raw, sizeof(raw));
     return r;
   }
-  MpValue Str(std::span<const std::uint8_t> s) {
+  static MpValue Str(std::span<const std::uint8_t> s) {
     MpValue r; r.type = MpValue::Type::kStr;
     r.str = std::string_view(reinterpret_cast<const char *>(s.data()), s.size());
     return r;
   }
-  MpValue Bin(std::span<const std::uint8_t> s) {
+  static MpValue Bin(std::span<const std::uint8_t> s) {
     MpValue r; r.type = MpValue::Type::kBin;
     r.str = std::string_view(reinterpret_cast<const char *>(s.data()), s.size());
     return r;
   }
+  // NOLINTNEXTLINE(misc-no-recursion)
   MpValue Array(std::size_t n) {
     MpValue r; r.type = MpValue::Type::kArray;
     r.items.reserve(n);
@@ -113,6 +130,7 @@ private:
     }
     return r;
   }
+  // NOLINTNEXTLINE(misc-no-recursion)
   MpValue Map(std::size_t n) {
     MpValue r; r.type = MpValue::Type::kMap;
     r.entries.reserve(n * 2);
@@ -202,7 +220,7 @@ std::span<const std::uint8_t> FindMetadataNote(std::span<const std::uint8_t> elf
     return {};
   }
   const std::size_t shstr_off =
-      static_cast<std::size_t>(shoff) + static_cast<std::size_t>(shstrndx) * shentsize;
+      static_cast<std::size_t>(shoff) + (static_cast<std::size_t>(shstrndx) * shentsize);
   const std::uint64_t shstr_offset = rd64(shstr_off + 24);
   const std::uint64_t shstr_size = rd64(shstr_off + 32);
   auto section_name = [&](std::uint64_t name_off) -> std::string_view {
@@ -220,7 +238,7 @@ std::span<const std::uint8_t> FindMetadataNote(std::span<const std::uint8_t> elf
     return std::string_view(reinterpret_cast<const char *>(elf.data() + start), len);
   };
   for (std::uint16_t i = 0; i < shnum; ++i) {
-    const std::size_t sh = static_cast<std::size_t>(shoff) + static_cast<std::size_t>(i) * shentsize;
+    const std::size_t sh = static_cast<std::size_t>(shoff) + (static_cast<std::size_t>(i) * shentsize);
     if (sh + 64 > elf.size()) {
       break;
     }

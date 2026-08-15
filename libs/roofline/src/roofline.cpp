@@ -171,6 +171,7 @@ const char *bound_class_name(BoundClass bound) noexcept {
 // The problem shape must carry positive values for the dims its family uses
 // (GEMM: m/n/k; elementwise + reduction: n; attention: n + d) plus a positive
 // element size — roofline_position rejects anything else up front.
+namespace {
 bool shape_valid(KernelFamily family, const Shape &shape) {
   if (shape.dtype_bytes <= 0)
     return false;
@@ -187,6 +188,7 @@ bool shape_valid(KernelFamily family, const Shape &shape) {
   }
   return false;
 }
+}  // namespace
 
 ErrorCode roofline_position(KernelFamily family, const Shape &shape,
                             std::int64_t bytes_moved, std::int64_t flops,

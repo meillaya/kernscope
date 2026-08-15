@@ -25,6 +25,7 @@
 #include <vector>
 
 extern "C" {
+namespace {
 
 //===--- fake device ---------------------------------------------------------===//
 // Deterministic: allocation addresses step 0x10000; a 1 MiB arena holds
@@ -33,10 +34,10 @@ extern "C" {
 constexpr std::uintptr_t kFakeBase = 0x10000;
 constexpr std::uintptr_t kFakeStride = 0x10000;
 constexpr std::size_t kArenaBytes = 1u << 20;
-static std::uint8_t g_arena[kArenaBytes];
-static std::vector<std::pair<void *, std::size_t>> g_allocs;
+std::uint8_t g_arena[kArenaBytes];
+std::vector<std::pair<void *, std::size_t>> g_allocs;
 
-static std::uintptr_t NextFreePointer(std::size_t size) {
+std::uintptr_t NextFreePointer(std::size_t size) {
   for (std::uintptr_t p = kFakeBase; p < kFakeBase + kArenaBytes;
        p += kFakeStride) {
     bool free = true;
@@ -47,6 +48,7 @@ static std::uintptr_t NextFreePointer(std::size_t size) {
       }
     }
     if (free) {
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding in the mock runtime
       g_allocs.push_back({reinterpret_cast<void *>(p), size});
       return p;
     }
@@ -54,7 +56,7 @@ static std::uintptr_t NextFreePointer(std::size_t size) {
   return 0;
 }
 
-static std::size_t FakeSizeOf(void *ptr) {
+std::size_t FakeSizeOf(void *ptr) {
   for (const auto &a : g_allocs) {
     if (a.first == ptr) {
       return a.second;
@@ -63,13 +65,13 @@ static std::size_t FakeSizeOf(void *ptr) {
   return 0;
 }
 
-static void *ArenaAt(void *ptr) {
+void *ArenaAt(void *ptr) {
   return g_arena + (reinterpret_cast<std::uintptr_t>(ptr) - kFakeBase);
 }
 
 // Kernel identity registry: host stub <-> fake CUfunction.
-static std::unordered_map<const void *, CUfunction> g_host_functions;
-static std::uintptr_t g_next_function = 0x9000;
+std::unordered_map<const void *, CUfunction> g_host_functions;
+std::uintptr_t g_next_function = 0x9000;
 
 // Synthetic fatbin (the layout the shim parses, GPGPU-Sim §2).
 struct FatBinCHeader {
@@ -95,21 +97,21 @@ struct FatCudaBinaryEntry {
   unsigned int binarySize;
 };
 
-static std::vector<std::uint8_t> g_fat_cubin(256, 0x5A);
-static FatCudaBinaryEntry g_fat_entry{1, g_fat_cubin.data(),
+std::vector<std::uint8_t> g_fat_cubin(256, 0x5A);
+FatCudaBinaryEntry g_fat_entry{1, g_fat_cubin.data(),
                                       static_cast<unsigned int>(g_fat_cubin.size())};
-static FatCudaBinary g_fat_binary{0x466243B2, 1, nullptr, &g_fat_entry, nullptr,
+FatCudaBinary g_fat_binary{0x466243B2, 1, nullptr, &g_fat_entry, nullptr,
                                   nullptr, 1};
-static FatBinCHeader g_fat_header{0x466243B1, 1, &g_fat_binary, nullptr};
+FatBinCHeader g_fat_header{0x466243B1, 1, &g_fat_binary, nullptr};
 
 // Synthetic cubin: a minimal little-endian ELF64 (ehdr + 2 section headers +
 // a .text payload) so the shim can compute the image length from the section
 // table (cuModuleLoadData has no length at the boundary).
-static std::vector<std::uint8_t> g_fake_cubin = [] {
+std::vector<std::uint8_t> g_fake_cubin = [] {
   const std::size_t kEhdrSize = 64;
   const std::size_t kShdrSize = 64;
   const std::size_t kTextSize = 16;
-  std::vector<std::uint8_t> elf(kEhdrSize + 2 * kShdrSize + kTextSize, 0);
+  std::vector<std::uint8_t> elf(kEhdrSize + (2 * kShdrSize) + kTextSize, 0);
   auto put16 = [&](std::size_t off, std::uint16_t v) {
     elf[off] = static_cast<std::uint8_t>(v);
     elf[off + 1] = static_cast<std::uint8_t>(v >> 8);
@@ -135,7 +137,7 @@ static std::vector<std::uint8_t> g_fake_cubin = [] {
   put64(0x28, kEhdrSize); // e_shoff
   put16(0x3A, kShdrSize); // e_shentsize
   put16(0x3C, 2);         // e_shnum
-  const std::size_t text_off = kEhdrSize + 2 * kShdrSize;
+  const std::size_t text_off = kEhdrSize + (2 * kShdrSize);
   const std::size_t sh = kEhdrSize + kShdrSize;
   put32(sh + 0x00, 1);         // sh_type = SHT_PROGBITS
   put64(sh + 0x18, text_off);  // sh_offset
@@ -148,8 +150,10 @@ static std::vector<std::uint8_t> g_fake_cubin = [] {
 
 //===--- fake runtime API definitions (the interposed symbols) ----------------===//
 
+}  // namespace
 cudaError_t cudaMalloc(void **devPtr, size_t size) {
   const std::uintptr_t p = NextFreePointer(size);
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding in the mock runtime
   *devPtr = reinterpret_cast<void *>(p);
   return p == 0 ? cudaErrorMemoryAllocation : cudaSuccess;
 }
@@ -268,6 +272,7 @@ cudaError_t cudaGraphLaunch(cudaGraphExec_t graphExec, cudaStream_t stream) {
 
 cudaError_t cudaStreamCreate(cudaStream_t *pStream) {
   static std::uintptr_t next = 0x5000;
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding in the mock runtime
   *pStream = reinterpret_cast<cudaStream_t>(next);
   next += 0x100;
   return cudaSuccess;
@@ -278,16 +283,18 @@ cudaError_t cudaStreamSynchronize(cudaStream_t stream) {
   return cudaSuccess;
 }
 
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the mock runtime must export
 void **__cudaRegisterFatBinary(void *fatCubin) {
   (void)fatCubin;
   static void *sink; // the fake handle the fake __cudaRegisterFunction accepts
   return &sink;
 }
 
+// NOLINTNEXTLINE(bugprone-reserved-identifier)  // CUDA-ABI symbol the mock runtime must export
 void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun,
-                            char *deviceFun, const char *deviceName,
+                            const char *deviceFun, const char *deviceName,
                             int thread_limit, uint3 *tid, uint3 *blockDim,
-                            int *dimMask, int unrollFactor) {
+                            const int *dimMask, int unrollFactor) {
   (void)fatCubinHandle;
   (void)deviceFun;
   (void)deviceName;
@@ -296,6 +303,7 @@ void __cudaRegisterFunction(void **fatCubinHandle, const char *hostFun,
   (void)blockDim;
   (void)dimMask;
   (void)unrollFactor;
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)  // fake-VA DevicePtr encoding in the mock runtime
   auto *f = reinterpret_cast<CUfunction>(g_next_function);
   g_next_function += 0x100;
   g_host_functions[hostFun] = f;
@@ -314,8 +322,10 @@ CUresult cuModuleLoadData(CUmodule *module, const void *image) {
 }
 
 CUresult cuModuleLoadDataEx(CUmodule *module, const void *image,
-                            unsigned int numOptions, CUjit_option *options,
+                            unsigned int numOptions,
+                            CUjit_option *options,  // NOLINT(readability-non-const-parameter)  // must match cuda.h ABI
                             void **optionValues) {
+  (void)options;
   (void)image;
   (void)numOptions;
   (void)options;

@@ -37,6 +37,7 @@
 #define KERNSCOPE_DB_H
 
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <map>
 #include <optional>
@@ -70,8 +71,11 @@ inline constexpr int kCurrentSchemaVersion = 1;
 // ---------------------------------------------------------------------------
 namespace json {
 
-enum class Kind { Null, Bool, Number, String, Array, Object };
+enum class Kind : std::uint8_t { Null, Bool, Number, String, Array, Object };
 
+// Value is a recursive variant-like JSON node (vector<Value> members): its
+// implicit copy/assign/dtor recursion is the design, not a bug.
+// NOLINTNEXTLINE(misc-no-recursion)
 class Value {
 public:
   using Member = std::pair<std::string, Value>;
