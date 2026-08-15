@@ -262,7 +262,7 @@ bool SetupReplay(const CaptureBundleOptions &opts, ReplayCtx &ctx,
   for (std::size_t i = 0; i < ctx.plan.args.size(); ++i) {
     const ArgPlan &a = ctx.plan.args[i];
     std::uint64_t *cell =
-        reinterpret_cast<std::uint64_t *>(ctx.slot_data.data() + i * 8);
+        reinterpret_cast<std::uint64_t *>(ctx.slot_data.data() + (i * 8));
     if (a.is_pointer) {
       if (a.buffer < 0 || static_cast<std::size_t>(a.buffer) >= ctx.devs.size()) {
         *error = "arg " + std::to_string(i) + " resolves to no buffer";

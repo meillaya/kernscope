@@ -118,13 +118,28 @@ TEST(TuneDriverLive, Matmul512CubeGfx1101CorrectnessGatedTune) {
   // The JSON evidence records the pre-screen rejections + the gate discard.
   std::string jerr;
   const auto evidence = db::json::Value::parse(r.evidence_json, jerr);
-  ASSERT_TRUE(evidence) << "evidence JSON must parse: " << jerr;
+  if (!evidence) {
+    FAIL() << "evidence JSON must parse: " << jerr;
+    return;
+  }
   const auto *summary = evidence->find("summary");
-  ASSERT_TRUE(summary && summary->kind() == db::json::Kind::Object);
-  EXPECT_GE(summary->find("prescreen_rejected")->as_number(), 1.0);
-  EXPECT_EQ(summary->find("golden_gate_failed")->as_number(), 1.0);
+  if (summary == nullptr || summary->kind() != db::json::Kind::Object) {
+    FAIL() << "summary object missing";
+    return;
+  }
+  const auto *prescreen = summary->find("prescreen_rejected");
+  const auto *gate_fail = summary->find("golden_gate_failed");
+  if (prescreen == nullptr || gate_fail == nullptr) {
+    FAIL() << "summary counters missing";
+    return;
+  }
+  EXPECT_GE(prescreen->as_number(), 1.0);
+  EXPECT_EQ(gate_fail->as_number(), 1.0);
   const auto *best = evidence->find("best");
-  ASSERT_TRUE(best) << "evidence must carry the selected best";
+  if (best == nullptr) {
+    FAIL() << "evidence must carry the selected best";
+    return;
+  }
   EXPECT_TRUE(evidence->find("cache_key"));
   EXPECT_TRUE(evidence->find("roofline"));
   EXPECT_TRUE(evidence->find("shape_hash"));
@@ -137,9 +152,11 @@ TEST(TuneDriverLive, Matmul512CubeGfx1101CorrectnessGatedTune) {
       << "db file must exist and load: " << opts.db_path;
   const auto db_best =
       db.query_best("gfx1101", "matmul", r.shape_hash);
-  ASSERT_TRUE(db_best.has_value())
-      << "db must hold a (gfx1101, matmul, shape_hash) record";
-  EXPECT_DOUBLE_EQ(db_best->timings.median, r.best_median_ms)
+  if (!db_best.has_value()) {
+    FAIL() << "db must hold a (gfx1101, matmul, shape_hash) record";
+    return;
+  }
+  EXPECT_DOUBLE_EQ(db_best.value().timings.median, r.best_median_ms)
       << "query_best must agree with the driver's selection";
 
   // Cache hit on re-run: the same (arch, family, shape) + tunecache must
@@ -178,14 +195,27 @@ TEST(TuneDriver, AllConfigsInfeasible) {
 
   std::string jerr;
   const auto evidence = db::json::Value::parse(r.evidence_json, jerr);
-  ASSERT_TRUE(evidence) << "evidence JSON must parse: " << jerr;
+  if (!evidence) {
+    FAIL() << "evidence JSON must parse: " << jerr;
+    return;
+  }
   const auto *summary = evidence->find("summary");
-  ASSERT_TRUE(summary && summary->kind() == db::json::Kind::Object);
-  EXPECT_EQ(summary->find("prescreen_rejected")->as_number(),
-            static_cast<double>(r.variants_total));
+  if (summary == nullptr || summary->kind() != db::json::Kind::Object) {
+    FAIL() << "summary object missing";
+    return;
+  }
+  const auto *rejected = summary->find("prescreen_rejected");
+  if (rejected == nullptr) {
+    FAIL() << "prescreen_rejected counter missing";
+    return;
+  }
+  EXPECT_EQ(rejected->as_number(), static_cast<double>(r.variants_total));
   // Every rejected variant carries a reason.
   const auto *variants = evidence->find("variants");
-  ASSERT_TRUE(variants && variants->kind() == db::json::Kind::Array);
+  if (variants == nullptr || variants->kind() != db::json::Kind::Array) {
+    FAIL() << "variants array missing";
+    return;
+  }
   ASSERT_EQ(variants->as_array().size(),
             static_cast<std::size_t>(r.variants_total));
   for (const auto &v : variants->as_array()) {

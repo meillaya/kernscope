@@ -163,7 +163,7 @@ TEST(Mix, MfmaShapeMacs) {
 
   EXPECT_EQ(report.metrics["tensor_ops"], 2);
   // 32x32x8 + 16x16x16.
-  EXPECT_EQ(report.metrics["tensor_macs"], 32 * 32 * 8 + 16 * 16 * 16);
+  EXPECT_EQ(report.metrics["tensor_macs"], (32 * 32 * 8) + (16 * 16 * 16));
 }
 
 // ---------------------------------------------------------------------------

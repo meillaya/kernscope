@@ -70,7 +70,7 @@ inline constexpr const char* kTableAmdgpu =
 
 /// Classification of the allocation a pointer expression is rooted in.
 struct AllocationInfo {
-  enum class Root {
+  enum class Root : std::uint8_t {
     Unknown,       ///< not recognized (call result, ..., ).
     DeviceGlobal,  ///< addrspace(1) __device__ global.
     SharedArray,   ///< addrspace(3) __shared__ array.

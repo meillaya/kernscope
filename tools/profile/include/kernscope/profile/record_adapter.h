@@ -160,7 +160,7 @@ inline constexpr struct {
 // CUDA 13 - identical offsets; only the tail differs). A header bump that
 // reorders the struct fails here, loudly, at compile time.
 #define KERNSCOPE_PIN_OFFSET(FIELD, OFF)                                       \
-  static_assert(offsetof(ActivityKernelT, FIELD) == OFF,                       \
+  static_assert(offsetof(ActivityKernelT, FIELD) == (OFF),                      \
                 "kernscope profile: Kernel9/10 layout pin for " #FIELD)
 KERNSCOPE_PIN_OFFSET(kind, 0);
 KERNSCOPE_PIN_OFFSET(registersPerThread, 6);

@@ -33,6 +33,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +48,7 @@ namespace kernscope {
 namespace verify {
 
 /// Which language the source is (inferred from the extension).
-enum class SourceLanguage { Cuda, Hip };
+enum class SourceLanguage : std::uint8_t { Cuda, Hip };
 
 /// Options controlling one ingestion run.
 struct IngestionOptions {

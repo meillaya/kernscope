@@ -47,6 +47,7 @@
 
 #include <kernscope/pass/coalesce.h>
 #include <kernscope/pass/register_pass.h>
+#include <algorithm>
 
 using namespace llvm;
 
@@ -110,19 +111,20 @@ Value *findLaneValue(Function &F) {
 // %tid.y/%tid.z as uniform bases; this IR-level classifier treats them as
 // warp-varying -> unknown-pattern, because blockDim.x is not provably a
 // warp multiple at IR level. Stricter = honest.
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 bool isUniformTerm(const Value *V) {
   if (isa<Argument>(V) || isa<GlobalValue>(V) || isa<Constant>(V)) {
     return true;
   }
-  if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
+  if (const auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
     return isUniformTerm(GEP->getPointerOperand());
   }
   // An addrspacecast preserves warp-uniformity (the kernscope-as1 param
   // casts land here).
-  if (auto *ASC = dyn_cast<AddrSpaceCastInst>(V)) {
+  if (const auto *ASC = dyn_cast<AddrSpaceCastInst>(V)) {
     return isUniformTerm(ASC->getPointerOperand());
   }
-  if (auto *CB = dyn_cast<CallBase>(V)) {
+  if (const auto *CB = dyn_cast<CallBase>(V)) {
     const Function *F = CB->getCalledFunction();
     if (!F) {
       return false;
@@ -147,31 +149,30 @@ bool isUniformTerm(const Value *V) {
 }
 
 // Does the SCEV node mention the lane value at all?
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 bool mentionsLane(const SCEV *S, const Value *LaneValue) {
-  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+  if (const auto *U = dyn_cast<SCEVUnknown>(S)) {
     return U->getValue() == LaneValue;
   }
-  for (const SCEV *Op : S->operands()) {
-    if (mentionsLane(Op, LaneValue)) {
-      return true;
-    }
-  }
+  return std::ranges::any_of(
+      S->operands(),
+      [&](const SCEV *Op) { return mentionsLane(Op, LaneValue); });  // NOLINT(misc-no-recursion)  // deliberate IR walk
   return false;
 }
 
 // The bare lane term, possibly through zext/sext/trunc (clang emits
 // zext(tid.x) before the GEP index arithmetic).
 bool isBareLaneTerm(const SCEV *S, const Value *LaneValue) {
-  while (auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
+  while (const auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
     S = Ext->getOperand();
   }
-  while (auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
+  while (const auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
     S = Ext->getOperand();
   }
-  while (auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
+  while (const auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
     S = T->getOperand();
   }
-  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+  if (const auto *U = dyn_cast<SCEVUnknown>(S)) {
     return U->getValue() == LaneValue;
   }
   return false;
@@ -181,18 +182,17 @@ bool isBareLaneTerm(const SCEV *S, const Value *LaneValue) {
 // a warp-uniform address component (constants, args, globals, canonical
 // loop AddRecs). Such components shift the whole warp by the same amount
 // and never affect the per-lane stride.
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 bool isKnownUniformSCEV(const SCEV *S) {
   if (isa<SCEVConstant>(S) || isa<SCEVCouldNotCompute>(S)) {
     return true;
   }
-  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+  if (const auto *U = dyn_cast<SCEVUnknown>(S)) {
     return isUniformTerm(U->getValue());
   }
-  for (const SCEV *Op : S->operands()) {
-    if (!isKnownUniformSCEV(Op)) {
-      return false;
-    }
-  }
+  return std::ranges::all_of(
+      S->operands(),
+      [&](const SCEV *Op) { return isKnownUniformSCEV(Op); });  // NOLINT(misc-no-recursion)  // deliberate IR walk
   return true;
 }
 
@@ -200,6 +200,7 @@ bool isKnownUniformSCEV(const SCEV *S) {
 // access address advances per tid unit. `ok` flips false when the SCEV is
 // not affine in the lane (or depends on data), which classifies the access
 // unknown-pattern.
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
                       bool &Ok) {
   if (!Ok) {
@@ -208,7 +209,7 @@ void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
   if (isa<SCEVConstant>(S) || isa<SCEVCouldNotCompute>(S)) {
     return;
   }
-  if (auto *U = dyn_cast<SCEVUnknown>(S)) {
+  if (const auto *U = dyn_cast<SCEVUnknown>(S)) {
     if (U->getValue() == LaneValue) {
       Coeff += 1;  // a bare lane term: coefficient 1 (bytes)
       return;
@@ -218,13 +219,13 @@ void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
     }
     return;
   }
-  if (auto *Add = dyn_cast<SCEVAddExpr>(S)) {
+  if (const auto *Add = dyn_cast<SCEVAddExpr>(S)) {
     for (const SCEV *Op : Add->operands()) {
       collectLaneCoeff(Op, LaneValue, Coeff, Ok);
     }
     return;
   }
-  if (auto *Mul = dyn_cast<SCEVMulExpr>(S)) {
+  if (const auto *Mul = dyn_cast<SCEVMulExpr>(S)) {
     // Affine-in-lane shape: the product must decompose into ONE factor
     // containing the lane (constant or affine-in-lane — nested AddExpr
     // factors distribute: (base + tid)*4 = 4*base + 4*tid) and constants.
@@ -241,7 +242,7 @@ void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
     int64_t Factor = 1;
     int LaneFactors = 0;
     for (const SCEV *Op : Mul->operands()) {
-      if (auto *C = dyn_cast<SCEVConstant>(Op)) {
+      if (const auto *C = dyn_cast<SCEVConstant>(Op)) {
         Factor *= C->getAPInt().getSExtValue();
         continue;
       }
@@ -275,19 +276,19 @@ void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
   // the same per-lane coefficient as its operand (the byte stride is
   // decided by the address arithmetic around the extension, not by the
   // extension itself). Recurse into the operand.
-  if (auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
+  if (const auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
     collectLaneCoeff(Ext->getOperand(), LaneValue, Coeff, Ok);
     return;
   }
-  if (auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
+  if (const auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
     collectLaneCoeff(Ext->getOperand(), LaneValue, Coeff, Ok);
     return;
   }
-  if (auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
+  if (const auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
     collectLaneCoeff(T->getOperand(), LaneValue, Coeff, Ok);
     return;
   }
-  if (auto *AR = dyn_cast<SCEVAddRecExpr>(S)) {
+  if (const auto *AR = dyn_cast<SCEVAddRecExpr>(S)) {
     // Loop IVs are warp-uniform (all lanes execute the same iteration), so
     // an AddRec contributes to the BASE, not the stride. A lane term in the
     // START is a plain per-lane offset (distribute it); a lane term in the
@@ -356,7 +357,7 @@ CoalescingClass classifyGlobalAccess(Value *Ptr, unsigned WidthBytes,
     // Uniform / broadcast: all lanes hit the same address (analyzer's
     // coeff==0 case — analyze_coalescing.cpp classify_pattern). A single
     // span of WidthBytes, efficiency 1.0.
-    C.sectors = (WidthBytes + kSectorSizeBytes - 1) / kSectorSizeBytes;
+    C.sectors = static_cast<int>((WidthBytes + kSectorSizeBytes - 1) / kSectorSizeBytes);
     C.efficiency = 1.0;
     C.lane_stride_elements = 0;
     C.pattern = "contiguous-128B";
@@ -441,6 +442,7 @@ CoalesceStats analyzeFunction(Function &F, ScalarEvolution &SE) {
   }
   return Stats;
 }
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 llvm::PreservedAnalyses CoalescePass::run(llvm::Function &F,
                                           llvm::FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
@@ -465,7 +467,7 @@ llvm::PreservedAnalyses CoalescePass::run(llvm::Function &F,
 namespace {
 
 bool parseCoalescePass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
-                       llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+                       llvm::ArrayRef<llvm::PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-coalesce") {
     MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
         kernscope::pass::CoalescePass()));
@@ -490,6 +492,7 @@ bool parseCoalescePass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
 // pipelines). Skipped when this TU is compiled into the unit test binary
 // (KERNSCOPE_COALESCE_AS_LIB — the test drives classifyGlobalAccess /
 // analyzeFunction directly).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](llvm::PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseCoalescePass);
 

@@ -25,7 +25,6 @@ namespace verify {
 using llvm::CallInst;
 using llvm::Constant;
 using llvm::ConstantAggregateZero;
-using llvm::ConstantExpr;
 using llvm::ConstantInt;
 using llvm::ConstantStruct;
 using llvm::Function;
@@ -79,7 +78,7 @@ namespace {
 // constant (-> tier Symbolic).
 std::optional<Dim3> try_extract_dim3(const llvm::Value* v) {
   using namespace llvm;
-  if (auto* ci = dyn_cast<ConstantInt>(v)) {
+  if (const auto* ci = dyn_cast<ConstantInt>(v)) {
     const uint64_t val = ci->getZExtValue();
     if (ci->getBitWidth() == 64) {
       return Dim3{val & 0xffffffffULL, (val >> 32) & 0xffffffffULL, 1};
@@ -89,7 +88,7 @@ std::optional<Dim3> try_extract_dim3(const llvm::Value* v) {
     }
     return std::nullopt;
   }
-  if (auto* cs = dyn_cast<ConstantStruct>(v)) {
+  if (const auto* cs = dyn_cast<ConstantStruct>(v)) {
     Dim3 d;
     const unsigned n = std::min<unsigned>(3, cs->getNumOperands());
     for (unsigned i = 0; i < n; ++i) {
@@ -97,7 +96,12 @@ std::optional<Dim3> try_extract_dim3(const llvm::Value* v) {
       if (!f) {
         return std::nullopt;
       }
-      (&d.x)[i] = f->getZExtValue();
+      const std::uint64_t val = f->getZExtValue();
+      switch (i) {
+      case 0: d.x = val; break;
+      case 1: d.y = val; break;
+      default: d.z = val; break;
+      }
     }
     return d;
   }
@@ -115,7 +119,7 @@ bool sane_dims(const Dim3& d) { return d.x != 0 && d.y != 0 && d.z != 0; }
 // host pass carried no debug info).
 SourceLoc loc_of(const llvm::Instruction* i) {
   SourceLoc loc;
-  if (const llvm::DebugLoc dl = i->getDebugLoc()) {
+  if (const llvm::DebugLoc& dl = i->getDebugLoc()) {
     loc.file = dl->getFilename().str();
     loc.line = dl->getLine();
     loc.col = dl->getColumn();

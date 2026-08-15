@@ -84,7 +84,7 @@ inline const std::string kRepoRoot = KERNSCOPE_TUNE_REPO_ROOT;
 inline const std::string kRunHipGate = KERNSCOPE_TUNE_RUN_HIP_GATE;
 inline const std::string kPython = KERNSCOPE_TUNE_PYTHON;
 inline const std::string kRunner = KERNSCOPE_TUNE_RUNNER;
-inline const std::string kVerifyCli = KERNSCOPE_TUNE_VERIFY_CLI;
+inline const std::string kVerifyCli;
 
 // ---------------------------------------------------------------------------
 // Tunecache (Triton-style disk cache, brief §1 check_disk_cache).
@@ -255,6 +255,7 @@ public:
                                    db::json::Value(rec.outcome.limiter));
         if (!rec.outcome.verdicts.empty()) {
           std::vector<db::json::Value> vs;
+          vs.reserve(rec.outcome.verdicts.size());
           for (const std::string &v : rec.outcome.verdicts)
             vs.emplace_back(v);
           out_members.emplace_back("verdicts",
@@ -274,6 +275,7 @@ public:
              {"outcome", db::json::Value(std::move(out_members))}}));
       }
       std::vector<db::json::Value> shape_arr;
+      shape_arr.reserve(shape.size());
       for (const std::int64_t d : shape)
         shape_arr.emplace_back(static_cast<double>(d));
       entry_members.emplace_back(
@@ -359,7 +361,7 @@ inline __device__ float ks_float_to_bf16(float v) { return v; }
 // Host harness appended to the specialized kernel source (the todo-35
 // launch_const.cu pattern): cudaConfigureCall decl + cudaMalloc'd params +
 // one constant-dim launch with the variant's own geometry.
-std::string BuildVerifyHarness(const std::string &symbol, int ptr_count,
+inline std::string BuildVerifyHarness(const std::string &symbol, int ptr_count,
                                const LaunchGeometry &geo,
                                std::size_t alloc_bytes) {
   std::string s;
@@ -394,7 +396,7 @@ std::string BuildVerifyHarness(const std::string &symbol, int ptr_count,
 // body top (the family-generic shape specialization — matmul's M,N,K and
 // flash's nq,nk,d follow the same trailing-int-param convention). Returns
 // false (with `err`) when the signature does not match the convention.
-bool SpecializeKernelSource(const std::string &src, const std::string &symbol,
+inline bool SpecializeKernelSource(const std::string &src, const std::string &symbol,
                             const std::vector<std::int64_t> &shape,
                             std::size_t shape_arity, int *ptr_count_out,
                             std::string *out, std::string *err) {
@@ -471,7 +473,7 @@ bool SpecializeKernelSource(const std::string &src, const std::string &symbol,
 //        error-class verdict ids in first-seen order
 //   2 -> rc 2 (ingestion failure): gated; *reason carries the diagnostics
 //   -1 -> the verifier binary could not run
-int RunVerifyGate(const std::string &cli, const std::string &workdir,
+inline int RunVerifyGate(const std::string &cli, const std::string &workdir,
                   const std::string &artifact,
                   std::vector<std::string> *verdicts, std::string *reason) {
   std::string out;
@@ -520,7 +522,7 @@ int RunVerifyGate(const std::string &cli, const std::string &workdir,
 // Parses the entry kernel symbol of a source file (used for the injected
 // risky variant, whose kernel is NOT a family-generated symbol). Returns
 // false when no `extern "C" __global__ void <name>(` is found.
-bool ParseKernelSymbol(const std::string &src, std::string *symbol) {
+inline bool ParseKernelSymbol(const std::string &src, std::string *symbol) {
   constexpr const char *kMarker = "extern \"C\" __global__ void ";
   const std::size_t at = src.find(kMarker);
   if (at == std::string::npos)
@@ -913,8 +915,11 @@ struct Tuner {
           total_elems *= static_cast<std::size_t>(d);
         const std::size_t alloc_bytes =
             std::max<std::size_t>(1u << 20, total_elems * 4u);
-        const std::string artifact =
-            gdir + "/v" + std::to_string(i) + "_" + sym;
+        std::string artifact = gdir;
+        artifact += "/v";
+        artifact += std::to_string(i);
+        artifact += "_";
+        artifact += sym;
         const std::string harness =
             BuildVerifyHarness(sym, ptr_count, gate_geo, alloc_bytes);
         (void)driver_detail::write_file(artifact,
@@ -1280,7 +1285,9 @@ struct Tuner {
       return false;
     }
     for (const std::string &bin : Traits::bench_bins()) {
-      const std::string path = bench_dir + "/" + bin;
+      std::string path = bench_dir;
+      path += "/";
+      path += bin;
       const std::string bytes = driver_detail::read_file(path);
       if (bytes.empty()) {
         out.message = "bench input bin missing: " + path;
@@ -1330,10 +1337,12 @@ struct Tuner {
     // Driver-API marshalling: input device pointers by value, then the output
     // pointer, then the int32 scalars (kernel parameter contract).
     std::vector<std::uint64_t> ptrs;
+    ptrs.reserve(s.inputs.size());
     for (const kernscope::DevicePtr &p : s.inputs)
       ptrs.push_back(p.value);
     ptrs.push_back(s.out.value);
     std::vector<kernscope::KernelArg> args;
+    args.reserve(ptrs.size());
     for (const std::uint64_t &p : ptrs)
       args.push_back(kernscope::KernelArg{&p, sizeof(p)});
     for (const std::int32_t &sc : scalars)
@@ -1444,6 +1453,7 @@ struct Tuner {
         m.emplace_back("reason", db::json::Value(v.reason));
       if (!v.verdicts.empty()) {
         std::vector<db::json::Value> vs;
+        vs.reserve(v.verdicts.size());
         for (const std::string &vd : v.verdicts)
           vs.emplace_back(vd);
         m.emplace_back("verdicts", db::json::Value(std::move(vs)));
@@ -1472,6 +1482,7 @@ struct Tuner {
     }
 
     std::vector<db::json::Value> shape_arr;
+    shape_arr.reserve(opts.shape.size());
     for (const std::int64_t d : opts.shape)
       shape_arr.emplace_back(static_cast<double>(d));
     std::vector<db::json::Value> gate_shape_arr;
@@ -1518,8 +1529,10 @@ struct Tuner {
       // best.gate.
       double best_occ = 0.0;
       std::string best_limiter;
-      std::string best_gate_shape, best_gate_grid, best_gate_block,
-          best_gate_symbol;
+      std::string best_gate_shape;
+      std::string best_gate_grid;
+      std::string best_gate_block;
+      std::string best_gate_symbol;
       for (const VariantRecord &v : variants) {
         if (!v.best)
           continue;

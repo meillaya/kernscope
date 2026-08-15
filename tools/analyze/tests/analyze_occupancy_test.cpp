@@ -24,7 +24,6 @@
 
 namespace {
 
-using kernscope::ArchInfo;
 using kernscope::KernelReport;
 using kernscope::analyze::OccupancyInputs;
 using kernscope::analyze::analyze_occupancy;
@@ -86,8 +85,8 @@ TEST(Occ, BriefWorkedExampleSm90_025) {
   // through the resource-level entry.
   KernelReport report;
   report.kernel_name = "brief_example";
-  analyze_occupancy(get_arch("sm_90"), /*regs=*/128, /*smem=*/0,
-                    /*block=*/256, report);
+  analyze_occupancy(get_arch("sm_90"), /*regs_per_thread=*/128, /*smem_bytes_per_block=*/0,
+                    /*block_size=*/256, report);
 
   EXPECT_NEAR(report.metrics["occupancy"], 0.25, 1e-9);
   EXPECT_EQ(report.limiter, "registers");
@@ -134,8 +133,8 @@ TEST(Occ, OversizedBlockLimiterThreadsWarning) {
   // limiter "threads", theoretical occupancy 0, and a warning. Never a crash.
   KernelReport report;
   report.kernel_name = "oversized";
-  analyze_occupancy(get_arch("sm_86"), /*regs=*/32, /*smem=*/0,
-                    /*block=*/2048, report);
+  analyze_occupancy(get_arch("sm_86"), /*regs_per_thread=*/32, /*smem_bytes_per_block=*/0,
+                    /*block_size=*/2048, report);
 
   EXPECT_EQ(report.limiter, "threads");
   EXPECT_EQ(report.metrics["occupancy"], 0.0);

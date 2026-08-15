@@ -36,6 +36,7 @@
 
 #include <cstring>
 #include <vector>
+#include <algorithm>
 
 using namespace kernscope::profile;
 using namespace kernscope::profile::cupti;
@@ -152,9 +153,9 @@ struct Kernel10View {
   std::uint8_t pad[3] = {0, 0, 0};   // tail padding to 8-byte alignment
 };
 
-static_assert(has_is_device_launched<CUpti_ActivityKernel9>::value == false,
+static_assert(!has_is_device_launched<CUpti_ActivityKernel9>::value,
               "Kernel9 must not expose the Kernel10 tail field");
-static_assert(has_is_device_launched<Kernel10View>::value == true,
+static_assert(has_is_device_launched<Kernel10View>::value,
               "Kernel10View must expose the Kernel10 tail field");
 
 //===--- 4. the todo-44 reuse + the driverless negative path -------------------===//
@@ -179,8 +180,11 @@ TEST(profile_tracer, ReuseRoutesMemoryRecordsToCuptiSub) {
       reinterpret_cast<const CUpti_Activity *>(&mem));
 
   const auto size = session.allocation_size(0x1F0000);
-  ASSERT_TRUE(size.has_value());
-  EXPECT_EQ(*size, 65536u);
+  if (!size.has_value()) {
+    FAIL() << "no allocation size";
+    return;
+  }
+  EXPECT_EQ(size.value(), 65536u);
 }
 
 TEST(profile_tracer, DriverlessBoxDegradesGracefully) {
@@ -194,12 +198,12 @@ TEST(profile_tracer, DriverlessBoxDegradesGracefully) {
     if (const char *home = std::getenv("CUPTI_HOME"); home != nullptr) {
       home_path = std::string(home) + "/lib/libcupti.so";
     }
-    for (const char *c : {home_path.c_str(), "libcupti.so.12", "libcupti.so"}) {
-      if (c != nullptr && c[0] != '\0' && dlopen(c, RTLD_NOW | RTLD_LOCAL) != nullptr) {
-        return true;
-      }
-    }
-    return false;
+    const char *candidates[] = {home_path.c_str(), "libcupti.so.12",
+                                "libcupti.so"};
+    return std::ranges::any_of(candidates, [](const char *c) {
+      return c != nullptr && c[0] != '\0' &&
+             dlopen(c, RTLD_NOW | RTLD_LOCAL) != nullptr;
+    });
   }();
   if (cupti_present) {
     GTEST_SKIP() << "CUPTI runtime present — real tracing is rental-gated";
@@ -253,7 +257,9 @@ TEST(profile_tracer, IterateSyntheticBufferDeliversKernelAndApiRecords) {
       {sizeof(kernel), sizeof(api), sizeof(overhead)});
 
   std::vector<std::uint32_t> correlations;
-  std::size_t kernels = 0, apis = 0, overheads = 0;
+  std::size_t kernels = 0;
+  std::size_t apis = 0;
+  std::size_t overheads = 0;
   const BufferIterationResult res = iterate_activity_buffer(
       buf.data(), buf.size(),
       [&](CUpti_ActivityKind kind, const CUpti_Activity *record, std::size_t) {
@@ -316,7 +322,8 @@ TEST(profile_tracer, AdapterMapsKernel10FieldSet) {
   raw.localMemoryTotal_v2 = 0;
   raw.isDeviceLaunched = 1; // Kernel10 tail: device-side launch (CDP)
 
-  KernelRecord out9, out10;
+  KernelRecord out9;
+  KernelRecord out10;
   ASSERT_TRUE(parse_cupti_kernel_record<Kernel10View>(&raw, &out10));
   CUpti_ActivityKernel9 k9 = MakeSyntheticKernel9(0xBEEF, 1000, 2500);
   ASSERT_TRUE(parse_kernel_record(&k9, &out9));

@@ -62,14 +62,12 @@ AllocationInfo resolveAllocation(const llvm::Value* ptr, const llvm::Module& m) 
   if (const auto* gv = llvm::dyn_cast<const llvm::GlobalVariable>(v)) {
     info.name = gv->getName().str();
     const unsigned as = gv->getAddressSpace();
-    if (as == 1) {
+    if (as == 1 || as == 4) {
+      // as==4 (__constant__): treated as a known-size device-side allocation
+      // for the pointer-discipline checks (like DeviceGlobal).
       info.root = AllocationInfo::Root::DeviceGlobal;
     } else if (as == 3) {
       info.root = AllocationInfo::Root::SharedArray;
-    } else if (as == 4) {
-      // __constant__: treated as a known-size device-side allocation for the
-      // pointer-discipline checks (like DeviceGlobal).
-      info.root = AllocationInfo::Root::DeviceGlobal;
     } else {
       info.root = AllocationInfo::Root::Unknown;
       return info;
@@ -132,7 +130,8 @@ std::optional<llvm::ConstantRange> gepByteSpan(llvm::Value* ptr,
   // Byte span [lo, hi): iterate levels outermost-first, accumulating
   // (index-range * stride). All offsets are unsigned (negative indices wrap
   // into a huge span -> conservatively flagged by the caller).
-  llvm::APInt lo(64, 0), hi(64, 1);
+  llvm::APInt lo(64, 0);
+  llvm::APInt hi(64, 1);
   bool first = true;
   const auto* innermost_gep = chain.front();
   llvm::SmallVector<unsigned, 4> idxs;
@@ -261,11 +260,7 @@ SmemSizeMap scanLaunchSmem(llvm::Module& m) {
         llvm::Value* kernel_arg = nullptr;
         if (n == "cudaConfigureCall" || n == "__cudaPushCallConfiguration") {
           smem_arg = 2;
-          if (n == "cudaConfigureCall") {
-            kernel_arg = nullptr;  // kernel launched separately
-          } else {
-            kernel_arg = nullptr;
-          }
+          kernel_arg = nullptr;  // kernel launched separately
         } else if (n == "cudaLaunchKernel") {
           smem_arg = 3;
           kernel_arg = ci->getArgOperand(0);

@@ -21,6 +21,7 @@
 
 #include "kernscope/analyze/divergence.h"
 
+#include <cstdint>
 #include <algorithm>
 #include <cctype>
 #include <map>
@@ -34,7 +35,7 @@ namespace kernscope::analyze {
 namespace {
 
 // Three-valued divergence class (brief §4.2 L303-318).
-enum class DClass : int { kUniform = 0, kPossiblyDivergent, kDivergent };
+enum class DClass : std::uint8_t { kUniform = 0, kPossiblyDivergent, kDivergent };
 
 DClass max_class(DClass a, DClass b) noexcept {
   return static_cast<DClass>(
@@ -82,7 +83,7 @@ void compute_dominators(Cfg &cfg) {
       for (std::size_t p : cfg.preds[i]) {
         std::set<std::size_t> inter;
         for (std::size_t d : newdoms)
-          if (cfg.doms[p].count(d)) inter.insert(d);
+          if (cfg.doms[p].contains(d)) inter.insert(d);
         newdoms = std::move(inter);
       }
       newdoms.insert(i);
@@ -118,7 +119,7 @@ void compute_postdominators(Cfg &cfg) {
       for (std::size_t s : cfg.succs[i]) {
         std::set<std::size_t> inter;
         for (std::size_t d : newpd)
-          if (cfg.postdoms[s].count(d)) inter.insert(d);
+          if (cfg.postdoms[s].contains(d)) inter.insert(d);
         newpd = std::move(inter);
       }
       newpd.insert(i);
@@ -187,11 +188,11 @@ std::vector<int> compute_loop_depth(const Cfg &cfg) {
   std::vector<bool> is_header(cfg.n, false);
   for (std::size_t b = 0; b < cfg.n; ++b)
     for (std::size_t s : cfg.succs[b])
-      if (cfg.doms[b].count(s)) is_header[s] = true;
+      if (cfg.doms[b].contains(s)) is_header[s] = true;
   std::vector<int> depth(cfg.n, 0);
   for (std::size_t i = 0; i < cfg.n; ++i)
     for (std::size_t h = 0; h < cfg.n; ++h)
-      if (is_header[h] && cfg.doms[i].count(h)) depth[i]++;
+      if (is_header[h] && cfg.doms[i].contains(h)) depth[i]++;
   return depth;
 }
 
@@ -240,7 +241,7 @@ std::map<std::string, DClass> analyze_classes(const PtxKernel &kernel) {
         const std::string dest = operand_reg(insn.operands.empty()
                                                  ? std::string()
                                                  : insn.operands[0].text);
-        if (!dest.empty() && cls.count(dest) == 0)
+        if (!dest.empty() && !cls.contains(dest))
           cls[dest] = DClass::kPossiblyDivergent;
         continue;
       }
@@ -386,7 +387,7 @@ void analyze_divergence(const PtxModule &module, KernelReport &report) {
             join = d;
             break;
           }
-        if (cfg.doms[bi].count(b) && !cfg.doms[bi].count(join)) {
+        if (cfg.doms[bi].contains(b) && !cfg.doms[bi].contains(join)) {
           divergent_barrier = true;
           break;
         }

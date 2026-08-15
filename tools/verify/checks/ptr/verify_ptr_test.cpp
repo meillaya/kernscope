@@ -25,6 +25,7 @@
 
 #include "ptr_common.h"
 
+#include <cstdint>
 #include <kernscope/verify/diagnostic.h>
 #include <kernscope/verify/ingestion.h>
 #include <kernscope/verify/verifier_state.h>
@@ -54,7 +55,7 @@ namespace {
 // --------------------------------------------------------------------------
 
 struct Json {
-  enum class Type { Null, Bool, Number, String, Array, Object };
+  enum class Type : std::uint8_t { Null, Bool, Number, String, Array, Object };
   Type type = Type::Null;
   bool boolean = false;
   int64_t number = 0;
@@ -115,6 +116,7 @@ class JsonParser {
     std::abort();
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseValue() {
     pos_ = skipWs(pos_);
     const char c = peek();
@@ -144,6 +146,7 @@ class JsonParser {
     }
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseObject() {
     Json out;
     out.type = Json::Type::Object;
@@ -177,6 +180,7 @@ class JsonParser {
     return out;
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseArray() {
     Json out;
     out.type = Json::Type::Array;
@@ -296,7 +300,7 @@ struct Analyzed {
   std::unique_ptr<VerifierState> state;
 };
 
-Analyzed runAnalyze(const std::string& file, IngestionOptions iopts,
+Analyzed runAnalyze(const std::string& file, const IngestionOptions& iopts,
                     VerifierOptions vopts = VerifierOptions()) {
   ClangIngester ingester;
   IngestionResult result = ingester.ingest(corpusDir() + "/" + file, iopts);
@@ -430,7 +434,7 @@ TEST(VerifyPtr, ManifestVerdictsMatch) {
                     << ": no plugin verdict emitted";
       continue;
     }
-    EXPECT_EQ(v->verdict, m.expected)
+    EXPECT_EQ(v.value().verdict, m.expected)
         << m.file << ":" << m.kernel << " check " << m.check;
   }
   EXPECT_FALSE(any_missing);
@@ -449,10 +453,13 @@ TEST(VerifyPtr, PtrOobEscapeHasSpanAndBound) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kPtrArith);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictPtrOob);
-  EXPECT_GT(v->payload.getInt("bad"), 0);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictPtrOob);
+  EXPECT_GT(v.value().payload.getInt("bad"), 0);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   ASSERT_FALSE(findings->array.empty());
   const Json& f = findings->array.front();
@@ -472,9 +479,12 @@ TEST(VerifyPtr, PtrSubUnrelatedFlagged) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kPtrArith);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictPtrOob);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictPtrOob);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   bool saw_unrelated = false;
   for (const Json& f : findings->array) {
@@ -494,10 +504,13 @@ TEST(VerifyPtr, BadCastErrorCitesTable) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kAddrSpaceCast);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictInvalidAddrspaceCast);
-  EXPECT_GT(v->payload.getInt("bad"), 0);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictInvalidAddrspaceCast);
+  EXPECT_GT(v.value().payload.getInt("bad"), 0);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   ASSERT_FALSE(findings->array.empty());
   const Json& f = findings->array.front();
@@ -535,9 +548,12 @@ TEST(VerifyPtr, LegalGenericMediatedChainNotFlagged) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kAddrSpaceCast);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictSafe);
-  EXPECT_EQ(v->payload.getInt("bad"), 0);
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictSafe);
+  EXPECT_EQ(v.value().payload.getInt("bad"), 0);
   // No class-8 Error may exist for this kernel (precision guard).
   for (const Diagnostic& d : a.state->diagnostics()) {
     if (d.class_id == CheckClass::kAddrSpaceCast &&
@@ -556,10 +572,13 @@ TEST(VerifyPtr, UninitReadHasEvidencePath) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kUninitRead);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictMayUninitRead);
-  EXPECT_GT(v->payload.getInt("bad"), 0);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictMayUninitRead);
+  EXPECT_GT(v.value().payload.getInt("bad"), 0);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   ASSERT_FALSE(findings->array.empty());
   EXPECT_EQ(findings->array.front().getString("kind"),
@@ -588,8 +607,11 @@ TEST(VerifyPtr, PhaseCleanKernelStaysSafe) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kUninitRead);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictSafe);
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictSafe);
   for (const Diagnostic& d : a.state->diagnostics()) {
     if (d.class_id == CheckClass::kUninitRead &&
         d.function.find("uninit_phase_clean_kernel") != std::string::npos) {
@@ -606,8 +628,11 @@ TEST(VerifyPtr, AllocaReadBeforeWriteFlagged) {
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v =
       pluginVerdict(a, k->name, CheckClass::kUninitRead);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, ptr::kVerdictMayUninitRead);
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, ptr::kVerdictMayUninitRead);
 }
 
 // --- registry contract -----------------------------------------------------

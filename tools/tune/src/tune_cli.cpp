@@ -255,7 +255,7 @@ void print_text(const std::string &evidence_json, const std::string &family,
 // in the standard report-data payload + the full evidence + ranked table).
 // ---------------------------------------------------------------------------
 
-const kernscope::KernelReport BuildReport(const std::string &evidence_json,
+kernscope::KernelReport BuildReport(const std::string &evidence_json,
                                           const std::string &family,
                                           const std::string &arch,
                                           const std::string &shape_csv) {
@@ -264,59 +264,91 @@ const kernscope::KernelReport BuildReport(const std::string &evidence_json,
   const auto ev = kernscope::db::json::Value::parse(evidence_json, err);
   report.kernel_name = family + " " + shape_csv + " (" + arch + ")";
 
-  const auto *best = ev ? ev->find("best") : nullptr;
+  if (!ev.has_value()) {
+    report.limiter = "n/a";
+    kernscope::Finding status;
+    status.id = "status";
+    status.severity = "warning";
+    status.evidence["text"] = "no viable config";
+    report.warnings.push_back(status);
+    return report;
+  }
+  const auto *best = ev.value().find("best");
   if (!best) {
     report.limiter = "n/a";
     kernscope::Finding status;
     status.id = "status";
     status.severity = "warning";
     status.evidence["text"] =
-        ev && ev->find("message") ? ev->find("message")->as_string() : "no viable config";
+        ev.value().find("message")
+            ? ev.value().find("message")->as_string()
+            : "no viable config";
     report.warnings.push_back(status);
     return report;
   }
 
   const auto *timings = best->find("timings");
-  const auto *rl = ev->find("roofline");
-  const double position =
-      rl && rl->find("position") ? rl->find("position")->as_number() : 0.0;
-  const std::string bound =
-      rl && rl->find("bound") ? rl->find("bound")->as_string() : "n/a";
-  const double occ = ev->find("occupancy") ? ev->find("occupancy")->as_number() : 0.0;
-  const double speedup = ev->find("speedup") ? ev->find("speedup")->as_number() : 0.0;
+  const auto *rl = ev.value().find("roofline");
+  const auto *occ_node = ev.value().find("occupancy");
+  const auto *sp_node = ev.value().find("speedup");
+  const auto *pos_node = rl ? rl->find("position") : nullptr;
+  const auto *bnd_node = rl ? rl->find("bound") : nullptr;
+  const auto *med_node = timings ? timings->find("median") : nullptr;
+  const auto *p20_node = timings ? timings->find("p20") : nullptr;
+  const auto *p80_node = timings ? timings->find("p80") : nullptr;
+  const auto *ai_node = rl ? rl->find("arithmetic_intensity") : nullptr;
+  const auto *ridge_node = rl ? rl->find("ridge_point") : nullptr;
+  const auto *flops_node = rl ? rl->find("attained_flops") : nullptr;
+  double position = 0.0;
+  if (pos_node != nullptr) position = pos_node->as_number();
+  std::string bound = "n/a";
+  if (bnd_node != nullptr) bound = bnd_node->as_string();
+  double occ = 0.0;
+  if (occ_node != nullptr) occ = occ_node->as_number();
+  double speedup = 0.0;
+  if (sp_node != nullptr) speedup = sp_node->as_number();
 
-  report.metrics["time_median_ms"] =
-      timings && timings->find("median") ? timings->find("median")->as_number() : 0.0;
-  report.metrics["time_p20_ms"] =
-      timings && timings->find("p20") ? timings->find("p20")->as_number() : 0.0;
-  report.metrics["time_p80_ms"] =
-      timings && timings->find("p80") ? timings->find("p80")->as_number() : 0.0;
+  double time_median = 0.0;
+  double time_p20 = 0.0;
+  double time_p80 = 0.0;
+  if (med_node != nullptr) time_median = med_node->as_number();
+  if (p20_node != nullptr) time_p20 = p20_node->as_number();
+  if (p80_node != nullptr) time_p80 = p80_node->as_number();
+  double ai = 0.0;
+  double ridge = 0.0;
+  double flops = 0.0;
+  if (ai_node != nullptr) ai = ai_node->as_number();
+  if (ridge_node != nullptr) ridge = ridge_node->as_number();
+  if (flops_node != nullptr) flops = flops_node->as_number();
+  report.metrics["time_median_ms"] = time_median;
+  report.metrics["time_p20_ms"] = time_p20;
+  report.metrics["time_p80_ms"] = time_p80;
   report.metrics["occupancy"] = occ;
   report.metrics["roofline_position"] = position;
-  report.metrics["roofline_arithmetic_intensity"] =
-      rl && rl->find("arithmetic_intensity") ? rl->find("arithmetic_intensity")->as_number() : 0.0;
-  report.metrics["roofline_ridge_point"] =
-      rl && rl->find("ridge_point") ? rl->find("ridge_point")->as_number() : 0.0;
-  report.metrics["roofline_attained_flops"] =
-      rl && rl->find("attained_flops") ? rl->find("attained_flops")->as_number() : 0.0;
+  report.metrics["roofline_arithmetic_intensity"] = ai;
+  report.metrics["roofline_ridge_point"] = ridge;
+  report.metrics["roofline_attained_flops"] = flops;
   report.metrics["speedup_vs_baseline"] = speedup;
-  if (const auto *sm = ev->find("summary")) {
-    if (sm->find("variants_total"))
-      report.metrics["variants_total"] = sm->find("variants_total")->as_number();
-    if (sm->find("benchmarked"))
-      report.metrics["variants_measured"] = sm->find("benchmarked")->as_number();
-    if (sm->find("prescreen_rejected"))
-      report.metrics["prescreen_rejected"] = sm->find("prescreen_rejected")->as_number();
-    if (sm->find("golden_gate_failed"))
-      report.metrics["golden_gate_failed"] = sm->find("golden_gate_failed")->as_number();
-    if (sm->find("cached"))
-      report.metrics["cached"] = sm->find("cached")->as_number();
-    if (sm->find("compiled"))
-      report.metrics["compiled"] = sm->find("compiled")->as_number();
+  if (const auto *sm = ev.value().find("summary")) {
+    const auto *vt = sm->find("variants_total");
+    const auto *bm = sm->find("benchmarked");
+    const auto *pr = sm->find("prescreen_rejected");
+    const auto *gg = sm->find("golden_gate_failed");
+    const auto *ca = sm->find("cached");
+    const auto *co = sm->find("compiled");
+    if (vt) report.metrics["variants_total"] = vt->as_number();
+    if (bm) report.metrics["variants_measured"] = bm->as_number();
+    if (pr) report.metrics["prescreen_rejected"] = pr->as_number();
+    if (gg) report.metrics["golden_gate_failed"] = gg->as_number();
+    if (ca) report.metrics["cached"] = ca->as_number();
+    if (co) report.metrics["compiled"] = co->as_number();
   }
 
-  report.limiter =
-      ev->find("occupancy.limiter") ? ev->find("occupancy.limiter")->as_string() : "n/a";
+  const auto *lim_node = ev.value().find("occupancy.limiter");
+  report.limiter = "n/a";
+  if (lim_node != nullptr) {
+    report.limiter = lim_node->as_string();
+  }
 
   kernscope::Finding bound_finding;
   bound_finding.id = "roofline_bound";
@@ -1009,7 +1041,8 @@ int main(int argc, char **argv) {
           const int v = std::stoi(tok);
           if (v > 0)
             ctopts.candidate_blocks.push_back(v);
-        } catch (...) {
+        } catch (...) {  // NOLINT: malformed capture-blocks tokens are
+                         // deliberately skipped (config tolerance)
         }
         if (comma == std::string::npos)
           break;

@@ -56,9 +56,8 @@ LatencyTable latency_for_arch(const std::string &name) {
   else if (name == "sm_80") t = {33, 29, 203, 566};  // A100
   else if (name == "sm_86") t = {33, 30, 273, 571};  // Ada-class
   else if (name == "sm_89") t = {32, 30, 273, 571};  // Ada
-  else if (name == "sm_90") t = {32, 29, 264, 656};  // Hopper
-  else if (name == "sm_100" || name == "sm_120")
-    t = {32, 29, 264, 656};  // Hopper-class (no Blackwell table in brief)
+  else if (name == "sm_90" || name == "sm_100" || name == "sm_120")
+    t = {32, 29, 264, 656};  // Hopper; sm_100/120 Hopper-class (no Blackwell table in brief)
   else t = {-1, -1, -1, -1};  // unknown -> caller skips
   return t;
 }
@@ -260,8 +259,8 @@ LatencyOutcome estimate_latency(const PtxKernel &kernel,
   // §8.2 L492, TURING §2 single-dispatch]. ALU budget = alu_count/4.
   const double alu_issue = static_cast<double>(alu_count) / 4.0;
   // Memory latency budget: LSU ops at L1, smem ops at smem latency.
-  const double mem_latency = static_cast<double>(lsu_count) * t.l1 +
-                             static_cast<double>(smem_count) * t.smem;
+  const double mem_latency = (static_cast<double>(lsu_count) * t.l1) +
+                             (static_cast<double>(smem_count) * t.smem);
 
   if (alu_count == 0 && lsu_count == 0 && smem_count == 0) {
     out.classification = "alu-bound";
@@ -312,28 +311,31 @@ void analyze_mix(const PtxModule &module, KernelReport &report) {
   }
 
   // Mnemonic-level metrics (expected_fused_attention.json instruction_mix).
-  report.metrics["fma_rn_f32"] = mix.fma_rn_f32;
-  report.metrics["mul_f32"] = mix.mul_f32;
-  report.metrics["add_f32"] = mix.add_f32;
-  report.metrics["ex2_approx_f32"] = mix.ex2_approx_f32;
-  report.metrics["ld_global"] = mix.ld_global;
-  report.metrics["ld_global_vectorized"] = mix.ld_global_vectorized;
-  report.metrics["ld_shared"] = mix.ld_shared;
-  report.metrics["st_global"] = mix.st_global;
-  report.metrics["st_shared"] = mix.st_shared;
-  report.metrics["ld_local"] = mix.ld_local;
-  report.metrics["st_local"] = mix.st_local;
-  report.metrics["setp"] = mix.setp;
-  report.metrics["predicated_bra"] = mix.predicated_bra;
-  report.metrics["bar_sync"] = mix.bar_sync;
-  report.metrics["tensor_ops"] = tensor_ops;
-  report.metrics["tensor_macs"] = tensor_mac_count;
+  // Explicit double casts: counts are long long, metrics map stores doubles
+  // (JSON number domain); the cast makes the intended domain explicit.
+  report.metrics["fma_rn_f32"] = static_cast<double>(mix.fma_rn_f32);
+  report.metrics["mul_f32"] = static_cast<double>(mix.mul_f32);
+  report.metrics["add_f32"] = static_cast<double>(mix.add_f32);
+  report.metrics["ex2_approx_f32"] = static_cast<double>(mix.ex2_approx_f32);
+  report.metrics["ld_global"] = static_cast<double>(mix.ld_global);
+  report.metrics["ld_global_vectorized"] =
+      static_cast<double>(mix.ld_global_vectorized);
+  report.metrics["ld_shared"] = static_cast<double>(mix.ld_shared);
+  report.metrics["st_global"] = static_cast<double>(mix.st_global);
+  report.metrics["st_shared"] = static_cast<double>(mix.st_shared);
+  report.metrics["ld_local"] = static_cast<double>(mix.ld_local);
+  report.metrics["st_local"] = static_cast<double>(mix.st_local);
+  report.metrics["setp"] = static_cast<double>(mix.setp);
+  report.metrics["predicated_bra"] = static_cast<double>(mix.predicated_bra);
+  report.metrics["bar_sync"] = static_cast<double>(mix.bar_sync);
+  report.metrics["tensor_ops"] = static_cast<double>(tensor_ops);
+  report.metrics["tensor_macs"] = static_cast<double>(tensor_mac_count);
 
   // Class histogram counts + percentages.
   long long total = 0;
   for (const auto &[bucket, count] : mix.class_hist) total += count;
   for (const auto &[bucket, count] : mix.class_hist) {
-    report.metrics["mix_count_" + bucket] = count;
+    report.metrics["mix_count_" + bucket] = static_cast<double>(count);
     if (total > 0)
       report.metrics["mix_pct_" + bucket] =
           100.0 * static_cast<double>(count) / static_cast<double>(total);
@@ -395,7 +397,7 @@ void analyze_mix(const kernscope::AmdModule &module, KernelReport &report) {
   int tensor_ops = 0;
   for (const AmdInstruction &insn : module.instructions) {
     switch (insn.klass) {
-      case InstrClass::VALU: bump_class(mix, "ALU"); break;
+      case InstrClass::VALU:
       case InstrClass::SALU: bump_class(mix, "ALU"); break;
       case InstrClass::LDS: bump_class(mix, "SMEM"); break;
       case InstrClass::Global:
@@ -421,10 +423,10 @@ void analyze_mix(const kernscope::AmdModule &module, KernelReport &report) {
       tensor_mac_count += tensor_macs(insn.mnemonic);
     }
   }
-  report.metrics["tensor_ops"] = tensor_ops;
-  report.metrics["tensor_macs"] = tensor_mac_count;
+  report.metrics["tensor_ops"] = static_cast<double>(tensor_ops);
+  report.metrics["tensor_macs"] = static_cast<double>(tensor_mac_count);
   for (const auto &[bucket, count] : mix.class_hist) {
-    report.metrics["mix_count_" + bucket] = count;
+    report.metrics["mix_count_" + bucket] = static_cast<double>(count);
   }
   if (tensor_ops == 0 && mix.class_hist["ALU"] > 0) {
     Finding f;

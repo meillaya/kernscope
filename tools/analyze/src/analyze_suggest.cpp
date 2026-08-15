@@ -80,7 +80,7 @@ long long evidence_int(const Finding &f, const std::string &key,
   if (v.empty()) return fallback;
   char *end = nullptr;
   const double d = std::strtod(v.c_str(), &end);
-  return end != v.c_str() ? static_cast<long long>(std::llround(d)) : fallback;
+  return end != v.c_str() ? std::llround(d) : fallback;
 }
 
 double metric_double(const KernelReport &report, const std::string &key,
@@ -93,7 +93,7 @@ long long metric_int(const KernelReport &report, const std::string &key,
                      long long fallback = 0) {
   const auto it = report.metrics.find(key);
   if (it == report.metrics.end()) return fallback;
-  return static_cast<long long>(std::llround(it->second));
+  return std::llround(it->second);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,9 +143,9 @@ void rule_tile_k_32(const KernelReport &report, std::vector<Finding> &out) {
   f.evidence["current_tile_k"] = std::to_string(current_tile_k);
   f.evidence["suggested_tile_k"] = std::to_string(suggested_tile_k);
   f.evidence["shared_bytes_current"] = std::to_string(
-      static_cast<long long>(std::llround(shared_current)));
+      std::llround(shared_current));
   f.evidence["shared_bytes_suggested"] =
-      std::to_string(static_cast<long long>(std::llround(shared_suggested)));
+      std::to_string(std::llround(shared_suggested));
   out.push_back(std::move(f));
 }
 
@@ -224,7 +224,7 @@ void suggest_compute_dominators(SuggestCfg &cfg) {
       for (std::size_t p : cfg.preds[i]) {
         std::set<std::size_t> inter;
         for (std::size_t d : newdoms)
-          if (cfg.doms[p].count(d)) inter.insert(d);
+          if (cfg.doms[p].contains(d)) inter.insert(d);
         newdoms = std::move(inter);
       }
       newdoms.insert(i);
@@ -278,11 +278,11 @@ std::vector<int> suggest_loop_depths(const PtxKernel &kernel) {
   std::vector<bool> is_header(cfg.n, false);
   for (std::size_t b = 0; b < cfg.n; ++b)
     for (std::size_t s : cfg.succs[b])
-      if (cfg.doms[b].count(s)) is_header[s] = true;
+      if (cfg.doms[b].contains(s)) is_header[s] = true;
   std::vector<int> depth(cfg.n, 0);
   for (std::size_t i = 0; i < cfg.n; ++i)
     for (std::size_t h = 0; h < cfg.n; ++h)
-      if (is_header[h] && cfg.doms[i].count(h)) depth[i]++;
+      if (is_header[h] && cfg.doms[i].contains(h)) depth[i]++;
   return depth;
 }
 
@@ -379,7 +379,7 @@ void rule_vectorize_coalescing(const KernelReport &report,
   f.evidence["text"] = "vectorize to 128B contiguous per warp";
   f.evidence["triggered_by"] = "coalescing";
   f.evidence["efficiency"] =
-      std::to_string(static_cast<double>(std::floor(efficiency * 1000.0) /
+      std::to_string((std::floor(efficiency * 1000.0) /
                                          1000.0));
   f.evidence["current_bytes_per_warp"] =
       std::to_string(bytes_transferred > 0 ? bytes_transferred : 0);

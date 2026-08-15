@@ -28,6 +28,7 @@
 
 #include <kernscope/pass/addrsimp.h>
 #include <kernscope/pass/register_pass.h>
+#include <algorithm>
 
 using namespace llvm;
 
@@ -105,11 +106,10 @@ bool isHoistable(const Instruction &I, const Loop *L) {
     default:
       return false;
   }
-  for (const Use &U : I.operands()) {
-    if (const auto *OpI = dyn_cast<Instruction>(U.get())) {
-      if (L->contains(OpI->getParent())) return false;
-    }
-  }
+  return std::ranges::all_of(I.operands(), [&](const Use &U) {
+    const auto *OpI = dyn_cast<Instruction>(U.get());
+    return OpI == nullptr || !L->contains(OpI->getParent());
+  });
   return true;
 }
 
@@ -117,6 +117,7 @@ bool isHoistable(const Instruction &I, const Loop *L) {
 /// (children loops first, so each instruction lands in the innermost
 /// preheader whose operands permit it). Blocks belonging to nested loops
 /// are handled by the nested loop's own pass.
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 bool hoistInvariant(Loop *L, ScalarEvolution &SE, unsigned &Count) {
   bool Changed = false;
   for (Loop *Child : L->getSubLoops()) {
@@ -145,6 +146,7 @@ bool hoistInvariant(Loop *L, ScalarEvolution &SE, unsigned &Count) {
 
 }  // namespace
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 PreservedAnalyses AddressSimplificationPass::run(Function &F,
                                                  FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
@@ -200,7 +202,7 @@ PreservedAnalyses AddressSimplificationPass::run(Function &F,
 namespace {
 
 bool parseAddrSimpName(StringRef Name, ModulePassManager &MPM,
-                       ArrayRef<PassBuilder::PipelineElement>) {
+                       ArrayRef<PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-addrsimp") {
     MPM.addPass(createModuleToFunctionPassAdaptor(
         kernscope::pass::AddressSimplificationPass()));
@@ -212,6 +214,7 @@ bool parseAddrSimpName(StringRef Name, ModulePassManager &MPM,
 }  // namespace
 
 // Self-registration (todo-36 contract — register_pass.h).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseAddrSimpName);
 

@@ -30,8 +30,9 @@
 namespace kernscope {
 namespace pass {
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 llvm::PreservedAnalyses HelloPass::run(llvm::Function &F,
-                                       llvm::FunctionAnalysisManager &) {
+                                       llvm::FunctionAnalysisManager & /*unused*/) {
   F.addFnAttr("kernscope.hello");
   return llvm::PreservedAnalyses::none();
 }
@@ -42,7 +43,7 @@ llvm::PreservedAnalyses HelloPass::run(llvm::Function &F,
 namespace {
 
 bool parseHelloPass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
-                    llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+                    llvm::ArrayRef<llvm::PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-hello") {
     MPM.addPass(
         llvm::createModuleToFunctionPassAdaptor(kernscope::pass::HelloPass()));
@@ -56,6 +57,7 @@ bool parseHelloPass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
 // Self-registration (the todo-36 contract — see register_pass.h). The
 // callback receives the PassBuilder of the process that loaded the plugin
 // (opt or clang) and wires the EP callbacks + the textual name.
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](llvm::PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseHelloPass);
 

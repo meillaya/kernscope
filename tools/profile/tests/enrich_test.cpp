@@ -117,8 +117,8 @@ TEST(profile_enrich, OccupancyEqualsLibsOccupancy) {
   // the only occupancy implementation — the acceptance pins EQUALITY).
   const kernscope::occupancy::OccupancyResult oracle =
       kernscope::occupancy::compute_occupancy(kernscope::get_arch("sm_86"),
-                                              /*regs=*/96,
-                                              /*smem=*/24576,
+                                              /*regs_per_thread=*/96,
+                                              /*smem_bytes_per_block=*/24576,
                                               /*block_size=*/128);
 
   EXPECT_DOUBLE_EQ(enriched.occupancy, oracle.occupancy);

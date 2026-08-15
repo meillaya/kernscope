@@ -22,6 +22,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <algorithm>
 
 namespace {
 
@@ -41,9 +42,8 @@ const char *kCorpus = TEST_CORPUS_DIR;
 const char *kFixtures = FIXTURES_DIR;
 
 bool has_warning(const KernelReport &r, const std::string &id) {
-  for (const auto &w : r.warnings)
-    if (w.id == id) return true;
-  return false;
+  return std::ranges::any_of(r.warnings,
+                             [&](const auto &w) { return w.id == id; });
 }
 
 // ---------------------------------------------------------------------------

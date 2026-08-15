@@ -39,6 +39,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -64,15 +65,15 @@
 
 namespace {
 
-enum class ExitCode : int {
+enum class ExitCode : std::uint8_t {
   kOk = 0,       // report clean (no warnings)
   kWarnings = 1, // report produced; warnings present
   kError = 2,    // parse failure / unknown arch / unreadable file
   kUsage = 3,    // command-line usage error
 };
 
-enum class Format { kText, kJson, kHtml };
-enum class Language { kPtx, kAmdGpu };
+enum class Format : std::uint8_t { kText, kJson, kHtml };
+enum class Language : std::uint8_t { kPtx, kAmdGpu };
 
 struct Options {
   std::string input;

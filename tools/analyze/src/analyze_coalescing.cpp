@@ -87,7 +87,7 @@ void record_def(const PtxInstruction &insn, ExprMap &exprs) {
   if (insn.operands.empty()) return;
   const std::string dest = operand_reg(insn.operands[0].text);
   if (dest.empty()) return;
-  if (exprs.count(dest)) return;
+  if (exprs.contains(dest)) return;
 
   const std::string &mn = insn.mnemonic;
   if (mn == "mov" || mn == "mov.u32" || mn == "mov.u64" || mn == "mov.b64" ||
@@ -224,7 +224,7 @@ PatternResult classify_pattern(const AffineExpr &e, int width_bytes) {
   std::set<long long> sectors;
   for (int lane = 0; lane < kWarpSize; ++lane) {
     const long long base =
-        e.const_off + static_cast<long long>(e.coeff) * lane;
+        e.const_off + (static_cast<long long>(e.coeff) * lane);
     sectors.insert(base / kSectorSizeBytes);
     sectors.insert((base + width_bytes - 1) / kSectorSizeBytes);
   }

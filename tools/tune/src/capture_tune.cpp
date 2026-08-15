@@ -148,7 +148,7 @@ private:
 // Rejects a candidate BEFORE any replay with a reason string. Limits are the
 // documented HIP launch ceilings (per-block 1024 threads, grid x 2^31-1,
 // y/z 65535) + the arch's smem-per-block budget via libs/arch.
-bool PreScreenConfig(std::uint32_t grid[3], std::uint32_t block[3],
+bool PreScreenConfig(std::uint32_t grid[3], const std::uint32_t block[3],
                      std::uint32_t shared, const ArchInfo &arch,
                      std::string *reason) {
   const std::uint64_t threads =
@@ -309,7 +309,13 @@ std::vector<CandidateSeed> BuildCandidates(const LaunchRecord &lr,
 
   if (!inject_config.empty()) {
     CandidateSeed inj{{1, 1, 1}, {1, 1, 1}, 0, false};
-    unsigned gx, gy, gz, bx, by, bz, shared = 0;
+    unsigned gx;
+    unsigned gy;
+    unsigned gz;
+    unsigned bx;
+    unsigned by;
+    unsigned bz;
+    unsigned shared = 0;
     int parsed = 0;
     if (std::sscanf(inject_config.c_str(), "%u,%u,%u:%u,%u,%u:%u", &gx, &gy,
                     &gz, &bx, &by, &bz, &shared) == 7) {
@@ -451,7 +457,7 @@ bool SetupReplay(const CaptureTuneOptions &opts, TuneCtx &ctx,
   for (std::size_t i = 0; i < ctx.plan.args.size(); ++i) {
     const ArgPlan &a = ctx.plan.args[i];
     std::uint64_t *cell =
-        reinterpret_cast<std::uint64_t *>(ctx.slot_data.data() + i * 8);
+        reinterpret_cast<std::uint64_t *>(ctx.slot_data.data() + (i * 8));
     if (a.is_pointer) {
       if (a.buffer < 0 || static_cast<std::size_t>(a.buffer) >= ctx.devs.size()) {
         *error = "arg " + std::to_string(i) + " resolves to no buffer";
@@ -540,7 +546,8 @@ bool ReplayOnce(TuneCtx &ctx, const CandidateSeed &seed,
   }
 
   bool pass = true;
-  std::string replay_hex, ref_hex;
+  std::string replay_hex;
+  std::string ref_hex;
   for (std::size_t i = 0; i < ctx.plan.buffers.size(); ++i) {
     if (ctx.plan.buffers[i].kind != BufKind::kOutput) {
       continue;
@@ -698,11 +705,10 @@ CaptureTuneResult tune_from_capture(const CaptureTuneOptions &opts) {
 
   // --- candidate enumeration (baseline ALWAYS first) ------------------------
   ArchInfo arch{};
-  try {
+  // Unknown arch key: run without the smem budget check (limits that do
+  // not need the table still apply) — has_arch guards the throwing lookup.
+  if (kernscope::has_arch(ctx.plan.arch)) {
     arch = get_arch(ctx.plan.arch);
-  } catch (const std::out_of_range &) {
-    // unknown arch key: run without the smem budget check (limits that do
-    // not need the table still apply)
   }
   std::vector<CandidateSeed> seeds =
       BuildCandidates(ctx.plan.launch_rec, arch, opts.candidate_blocks,

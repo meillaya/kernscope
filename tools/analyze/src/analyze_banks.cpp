@@ -84,7 +84,7 @@ void record_def(const PtxInstruction &insn, ExprMap &exprs) {
   if (insn.operands.empty()) return;
   const std::string dest = operand_reg(insn.operands[0].text);
   if (dest.empty()) return;
-  if (exprs.count(dest)) return;
+  if (exprs.contains(dest)) return;
 
   const std::string &mn = insn.mnemonic;
   if (mn == "mov" || mn == "mov.u32" || mn == "mov.u64" || mn == "mov.b64" ||
@@ -224,7 +224,7 @@ BankResult compute_banks(int stride_bytes, long long base_word) {
   std::map<int, int> bank_count;
   for (int lane = 0; lane < kWarpSize; ++lane) {
     const long long word =
-        base_word + static_cast<long long>(stride_words) * lane;
+        base_word + (static_cast<long long>(stride_words) * lane);
     const int bank =
         static_cast<int>((word % kNumBanks + kNumBanks) % kNumBanks);
     bank_count[bank]++;
@@ -326,12 +326,17 @@ void emit_finding(const BanksReport &b, KernelReport &report) {
     return;
   }
 
-  // Conflict-free (or broadcast): report the clean verdict.
-  const BankResult &r = *b.worst;
-  report.metrics["shared_stride_words"] = r.stride_words;
-  report.metrics["shared_stride_mod_32"] = r.stride_mod_32;
-  report.metrics["shared_distinct_banks"] = r.distinct_banks;
-  report.metrics["shared_bank_way"] = r.way;
+  // Conflict-free (or broadcast): report the clean verdict. `worst` is
+  // engaged whenever accesses > 0 and nothing is unknown (every known-
+  // address shared access runs consider() with a resolved result); the guard
+  // keeps the deref honest for the analyzer.
+  if (b.worst) {
+    const BankResult &r = *b.worst;
+    report.metrics["shared_stride_words"] = r.stride_words;
+    report.metrics["shared_stride_mod_32"] = r.stride_mod_32;
+    report.metrics["shared_distinct_banks"] = r.distinct_banks;
+    report.metrics["shared_bank_way"] = r.way;
+  }
 }
 
 }  // namespace

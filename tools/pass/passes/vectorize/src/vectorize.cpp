@@ -164,7 +164,7 @@ bool chainSafe(ArrayRef<Access> Chain, bool IsStoreChain,
   for (auto It = First->getIterator(), End = Last->getIterator(); It != End;
        ++It) {
     Instruction &I = *It;
-    if (ChainSet.count(&I)) {
+    if (ChainSet.contains(&I)) {
       continue;
     }
     if (auto *CB = dyn_cast<CallBase>(&I)) {
@@ -385,6 +385,7 @@ VectorizeStats vectorizeFunction(Function &F, ScalarEvolution &SE,
   return Stats;
 }
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 llvm::PreservedAnalyses VectorizeLoadStorePass::run(
     llvm::Function &F, llvm::FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
@@ -416,7 +417,7 @@ llvm::PreservedAnalyses VectorizeLoadStorePass::run(
 namespace {
 
 bool parseVectorizePass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
-                        llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+                        llvm::ArrayRef<llvm::PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-vectorize") {
     MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
         kernscope::pass::VectorizeLoadStorePass()));
@@ -433,6 +434,7 @@ bool parseVectorizePass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
 // this TU is compiled into the unit test binary (KERNSCOPE_VECTORIZE_AS_LIB:
 // the registrar lives in the plugin's src/, which the test does not link;
 // the test drives vectorizeFunction() directly).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](llvm::PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseVectorizePass);
 

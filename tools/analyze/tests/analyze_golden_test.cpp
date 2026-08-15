@@ -39,6 +39,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #include "kernscope/db.h"
 #include "kernscope/ptx.h"
@@ -66,9 +67,8 @@ const char *kCorpus = TEST_CORPUS_DIR;
 const char *kFixtures = FIXTURES_DIR;
 
 bool has_warning(const KernelReport &r, const std::string &id) {
-  for (const auto &w : r.warnings)
-    if (w.id == id) return true;
-  return false;
+  return std::ranges::any_of(r.warnings,
+                             [&](const auto &w) { return w.id == id; });
 }
 
 // Parse a machine-readable numeric evidence value back to double.
@@ -148,7 +148,8 @@ std::vector<ExpectedFinding> collect_findings(const Value &expected,
 
 bool load_golden(const std::string &fixtures, GoldenFixture *fx,
                  std::string *error) {
-  Value manifest, expected;
+  Value manifest;
+  Value expected;
   if (!load_json(fixtures + "/manifest.json", &manifest, error)) return false;
   if (!load_json(fixtures + "/expected_fused_attention.json", &expected,
                  error))

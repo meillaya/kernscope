@@ -186,6 +186,7 @@ llvm::Value *laneVarOf(const llvm::Function &F) {
 // Classify V as c0 + c1*laneVar. Returns the coefficient c1 when V is
 // statically affine in exactly one lane variable; nullopt when V is
 // data-dependent (not provable). Constant values classify as coeff 0.
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR/SCEV tree recursion
 std::optional<int64_t> classifyAffine(llvm::Value *V, llvm::Value *LaneVar) {
   if (V == LaneVar) return 1;
   if (llvm::isa<llvm::ConstantInt>(V)) return 0;
@@ -374,7 +375,7 @@ void collectGeps(llvm::Value *Root,
 // Per-candidate analysis + rewrite.
 // ---------------------------------------------------------------------------
 
-enum class DeclineReason {
+enum class DeclineReason : std::uint8_t {
   kNoConflict,      // no provable conflict (or no lane-affine stride at all)
   kDataDependent,   // some GEP index is not statically affine
   kUnaligned,       // stride not 4-byte aligned (unmodelable)
@@ -443,7 +444,8 @@ AnalysisResult processAllocation(llvm::Module &M, const llvm::Function *F,
     return R;
   }
 
-  const int64_t ElemSize = DL.getTypeAllocSize(Alloc.ElemType);
+  const int64_t ElemSize =
+      static_cast<std::int64_t>(DL.getTypeAllocSize(Alloc.ElemType));
 
   // Spine position of a GEP source type: 0 for the full allocation type,
   // k for the innermost array, k+1 for the scalar element type.
@@ -486,7 +488,9 @@ AnalysisResult processAllocation(llvm::Module &M, const llvm::Function *F,
       }
       if (*Coeff == 0) continue;
       const bool IsInnermost = (IT.getIndexedType() == Alloc.ElemType);
-      const int64_t Stride = *Coeff * DL.getTypeAllocSize(IT.getIndexedType());
+      const int64_t Stride =
+          *Coeff * static_cast<std::int64_t>(
+                       DL.getTypeAllocSize(IT.getIndexedType()));
       const BankFootprint B =
           computeBankFootprint(Stride, kNumBanks);  // 32 lanes (wave32)
       if (!B.resolved) {
@@ -587,8 +591,9 @@ AnalysisResult processAllocation(llvm::Module &M, const llvm::Function *F,
 
 }  // namespace
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 llvm::PreservedAnalyses SharedMemoryPadPass::run(llvm::Module &M,
-                                                 llvm::ModuleAnalysisManager &) {
+                                                 llvm::ModuleAnalysisManager & /*unused*/) {
   const llvm::DataLayout &DL = M.getDataLayout();
   bool Changed = false;;
 
@@ -674,7 +679,7 @@ llvm::PreservedAnalyses SharedMemoryPadPass::run(llvm::Module &M,
 namespace {
 
 bool parsePadPass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
-                  llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+                  llvm::ArrayRef<llvm::PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-pad") {
     MPM.addPass(kernscope::pass::SharedMemoryPadPass());
     return true;
@@ -689,6 +694,7 @@ bool parsePadPass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
 // it straight to the ModulePassManager. The peephole EP is NOT registered:
 // allocation rewrites are module-scope transforms, not peepholes, and
 // re-running them after each InstCombine is neither useful nor safe.
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](llvm::PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parsePadPass);
 

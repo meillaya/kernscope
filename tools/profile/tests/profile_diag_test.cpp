@@ -46,6 +46,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 #ifndef PROFILE_FIXTURE_DIR
 #error "PROFILE_FIXTURE_DIR must be defined (tests/fixtures/profile)"
@@ -85,7 +86,7 @@ EnrichedKernel MakeKernel(const char *name, std::uint64_t duration_ns,
 }
 
 // Enrich through the real todo-50 layer (libs/occupancy behind it).
-EnrichedKernel Enrich(EnrichedKernel ek, const char *arch) {
+EnrichedKernel Enrich(const EnrichedKernel& ek, const char *arch) {
   EnrichOptions opts;
   opts.arch_name = arch;
   return enrich_kernel(ek.record, opts);
@@ -102,12 +103,9 @@ const EnrichedKernel *FindKernel(const std::vector<EnrichedKernel> &kernels,
 }
 
 bool HasHint(const KernelDiagnostics &d, const char *id) {
-  for (const kernscope::Finding &f : d.hints) {
-    if (f.id == id) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(d.hints, [&](const kernscope::Finding &f) {
+    return f.id == id;
+  });
 }
 
 const kernscope::Finding *FindHint(const KernelDiagnostics &d,
@@ -378,26 +376,39 @@ TEST(ProfileDiag, JsonEmissionCarriesRuleIdsAndEvidence) {
   std::string err;
   const std::optional<kernscope::db::json::Value> parsed =
       kernscope::db::json::Value::parse(json, err);
-  ASSERT_TRUE(parsed.has_value()) << err;
+  if (!parsed.has_value()) {
+    FAIL() << err;
+    return;
+  }
 
   const kernscope::db::json::Value *ranking_arr =
-      Child(&*parsed, "ranking");
+      Child(&parsed.value(), "ranking");
   ASSERT_NE(ranking_arr, nullptr);
   ASSERT_EQ(ranking_arr->kind(), kernscope::db::json::Kind::Array);
   ASSERT_EQ(ranking_arr->as_array().size(), 3u);
-  const kernscope::db::json::Value *first = &ranking_arr->as_array()[0];
+  const kernscope::db::json::Value *first = ranking_arr->as_array().data();
   EXPECT_EQ(Child(first, "kernel_name")->as_string(), "bloated_kernel");
   // The JSON renders numbers with %.10g (libs/report convention): assert the
   // round-trip within that rendering precision.
   EXPECT_NEAR(Child(first, "pct_wall_time")->as_number(), 64.2857142857,
               1e-6);
-  EXPECT_EQ(Child(first, "total_ns")->as_number(), 900000.0);
+  const kernscope::db::json::Value* total_ns = Child(first, "total_ns");
+  if (total_ns == nullptr) {
+    FAIL() << "missing total_ns";
+    return;
+  }
+  EXPECT_EQ(total_ns->as_number(), 900000.0);
 
-  const kernscope::db::json::Value *kernels_arr = Child(&*parsed, "kernels");
+  const kernscope::db::json::Value *kernels_arr = Child(&parsed.value(), "kernels");
   ASSERT_NE(kernels_arr, nullptr);
   ASSERT_EQ(kernels_arr->as_array().size(), 2u);
-  const kernscope::db::json::Value *bloated = &kernels_arr->as_array()[0];
-  EXPECT_EQ(Child(bloated, "limiter")->as_string(), "occupancy");
+  const kernscope::db::json::Value *bloated = kernels_arr->as_array().data();
+  const kernscope::db::json::Value* limiter = Child(bloated, "limiter");
+  if (limiter == nullptr) {
+    FAIL() << "missing limiter";
+    return;
+  }
+  EXPECT_EQ(limiter->as_string(), "occupancy");
   const kernscope::db::json::Value *hints = Child(bloated, "hints");
   ASSERT_NE(hints, nullptr);
   bool saw_register_bloat = false;

@@ -138,7 +138,7 @@ std::string make_workdir(const char *tag) {
 std::string emit_kernel(const FlashAttentionConfig &cfg,
                         const FlashAttentionProblem &prob,
                         const std::string &dir) {
-  const std::string src_path = dir + "/" + kernel_symbol(cfg) + ".hip";
+  std::string src_path = dir + "/" + kernel_symbol(cfg) + ".hip";
   std::string err;
   if (!generate_to_file(cfg, prob, src_path, &err)) {
     ADD_FAILURE() << "generate_to_file: " << err;

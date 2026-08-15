@@ -44,14 +44,13 @@ namespace oob {
 namespace {
 
 using llvm::ConstantRange;
-using llvm::GetElementPtrInst;
 using llvm::Instruction;
 using llvm::Value;
 
 // DebugLoc-backed source location (empty when the IR carries no debug info).
 SourceLoc loc_of(const Instruction* i) {
   SourceLoc loc;
-  if (const llvm::DebugLoc dl = i->getDebugLoc()) {
+  if (const llvm::DebugLoc& dl = i->getDebugLoc()) {
     loc.file = dl->getFilename().str();
     loc.line = dl->getLine();
     loc.col = dl->getColumn();
@@ -147,19 +146,26 @@ std::optional<AccessRecord> analyze_access(Instruction& i,
   if (alloc.root == AllocationInfo::Root::SharedDynamic) {
     // extern __shared__: the size comes from the launch-site smem argument.
     const auto it = smem.find(ctx.kernel.function);
-    if (it != smem.end() && it->second) {
-      rec.finding.alloc_known = true;
-      rec.finding.bound_bytes = *it->second;
-      rec.finding.detail = "dynamic shared memory: bound from launch-site "
-                           "smem argument (" +
-                           std::to_string(*it->second) + " bytes)";
-    } else {
+    if (it == smem.end()) {
       rec.finding.kind = AccessFinding::Kind::Unbounded;
       rec.finding.detail = "dynamic shared memory size unknown (no constant "
                            "launch-site smem argument): may-analysis — no "
                            "in-bounds claim";
       return rec;
     }
+    const std::optional<std::uint64_t> &launch_smem = it->second;
+    if (!launch_smem.has_value()) {
+      rec.finding.kind = AccessFinding::Kind::Unbounded;
+      rec.finding.detail = "dynamic shared memory size unknown (no constant "
+                           "launch-site smem argument): may-analysis — no "
+                           "in-bounds claim";
+      return rec;
+    }
+    rec.finding.alloc_known = true;
+    rec.finding.bound_bytes = *launch_smem;
+    rec.finding.detail = "dynamic shared memory: bound from launch-site "
+                         "smem argument (" +
+                         std::to_string(*launch_smem) + " bytes)";
   } else if (alloc.known_size) {
     rec.finding.alloc_known = true;
     rec.finding.bound_bytes = alloc.size_bytes;
@@ -346,20 +352,32 @@ class BoundsCheckPlugin : public CheckPlugin {
       const std::string summary = cls == CheckClass::kGlobalOob
                                       ? "global OOB check"
                                       : "shared-memory bounds check";
-      d.message = summary + ": " + std::to_string(group.size()) +
-                  " access(es), " + std::to_string(may_oob) +
-                  " possibly out-of-bounds; "
-                  "verdict_json: {\"check\":" + std::to_string(cls) +
-                  ",\"kernel\":\"" + fn + "\",\"verdict\":\"" + verdict +
-                  "\",\"tier\":\"" + tier + "\",\"accesses\":" +
-                  std::to_string(group.size()) + ",\"may_oob\":" +
-                  std::to_string(may_oob) + ",\"findings\":" + findings + "}";
+      std::string msg = summary + ": " + std::to_string(group.size());
+      msg += " access(es), ";
+      msg += std::to_string(may_oob);
+      msg += " possibly out-of-bounds; verdict_json: {\"check\":";
+      msg += std::to_string(cls);
+      msg += ",\"kernel\":\"";
+      msg += fn;
+      msg += "\",\"verdict\":\"";
+      msg += verdict;
+      msg += "\",\"tier\":\"";
+      msg += tier;
+      msg += "\",\"accesses\":";
+      msg += std::to_string(group.size());
+      msg += ",\"may_oob\":";
+      msg += std::to_string(may_oob);
+      msg += ",\"findings\":";
+      msg += findings;
+      msg += "}";
+      d.message = std::move(msg);
       out.push_back(std::move(d));
     }
     return out;
   }
 };
 
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_CHECK(BoundsCheckPlugin);
 
 }  // namespace oob

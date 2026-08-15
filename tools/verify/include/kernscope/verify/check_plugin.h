@@ -114,5 +114,7 @@ class CheckPluginRegistrar {
 /// No shared-file edits needed — this is the registry contract todos 31-34
 /// rely on.
 #define REGISTER_CHECK(PluginClass)                                          \
+  /* NOLINTNEXTLINE(misc-use-anonymous-namespace) - macro-expanded registry   \
+     entry (each expansion must register at namespace scope) */               \
   static ::kernscope::verify::CheckPluginRegistrar                           \
       kernscope_verify_register_##PluginClass(std::make_unique<PluginClass>())

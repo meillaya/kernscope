@@ -38,6 +38,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -61,13 +62,13 @@
 
 namespace {
 
-enum class ExitCode : int {
+enum class ExitCode : std::uint8_t {
   kOk = 0,    // report produced (incl. no-kernels negative)
   kError = 2, // trace/render error
   kUsage = 3, // command-line usage error
 };
 
-enum class Format { kText, kJson, kHtml };
+enum class Format : std::uint8_t { kText, kJson, kHtml };
 
 struct Options {
   std::string target;

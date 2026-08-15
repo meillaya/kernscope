@@ -113,7 +113,7 @@ struct FlashTraits {
     const LaunchGeometry g = launch_geometry(c, p);
     return g.block_x * g.block_y;
   }
-  static int estimated_regs(const Config &, const Problem &) {
+  static int estimated_regs(const Config & /*unused*/, const Problem & /*unused*/) {
     return 0;  // not modeled (register-light scalar template)
   }
   static db::json::Value config_json(const Config &c) {

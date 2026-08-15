@@ -101,6 +101,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 namespace kernscope {
 namespace verify {
@@ -126,7 +127,7 @@ using llvm::Value;
 
 SourceLoc loc_of(const Instruction& i) {
   SourceLoc loc;
-  if (const llvm::DebugLoc dl = i.getDebugLoc()) {
+  if (const llvm::DebugLoc& dl = i.getDebugLoc()) {
     loc.file = dl->getFilename().str();
     loc.line = dl->getLine();
     loc.col = dl->getColumn();
@@ -247,7 +248,7 @@ bool is_block_uniform_intrinsic(const llvm::StringRef& n) {
 // Index classification: how does the address expression vary per thread?
 // ---------------------------------------------------------------------------
 
-enum class IndexClass { Uniform, Thread, Data };
+enum class IndexClass : std::uint8_t { Uniform, Thread, Data };
 
 /// Classifies an index expression by walking its SSA use chain:
 ///   Thread  — reaches a thread-id intrinsic (tid/laneid/workitem.id):
@@ -551,19 +552,16 @@ bool in_region(llvm::BasicBlock* bb, llvm::BasicBlock* succ,
 bool mutually_exclusive(llvm::BasicBlock* a, llvm::BasicBlock* b,
                         const std::vector<UniformBranch>& branches,
                         const llvm::DominatorTree& dt) {
-  for (const UniformBranch& ub : branches) {
+  return std::ranges::any_of(branches, [&](const UniformBranch& ub) {
     const bool a0 = in_region(a, ub.succ0, ub.join, dt);
     const bool a1 = in_region(a, ub.succ1, ub.join, dt);
     if (!a0 && !a1) {
-      continue;
+      return false;
     }
     const bool b0 = in_region(b, ub.succ0, ub.join, dt);
     const bool b1 = in_region(b, ub.succ1, ub.join, dt);
-    if ((a0 && b1) || (a1 && b0)) {
-      return true;
-    }
-  }
-  return false;
+    return (a0 && b1) || (a1 && b0);
+  });
 }
 
 /// One race-candidate pair finding (MAY_RACE or UNKNOWN_RACE).
@@ -871,6 +869,7 @@ std::vector<Diagnostic> RaceCheck::run(VerifierContext& ctx) const {
 
 // REGISTER_CHECK token-pastes the class name, so it must be expanded in the
 // scope where RaceCheck is unqualified.
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_CHECK(RaceCheck);
 
 }  // namespace race

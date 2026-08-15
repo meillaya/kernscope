@@ -104,7 +104,7 @@ int ParseResField(const std::string &line, const char *key) {
   long value = 0;
   bool any = false;
   for (; i < line.size() && line[i] >= '0' && line[i] <= '9'; ++i) {
-    value = value * 10 + (line[i] - '0');
+    value = (value * 10) + (line[i] - '0');
     any = true;
   }
   return any ? static_cast<int>(value) : -1;
@@ -115,36 +115,40 @@ int ParseResField(const std::string &line, const char *key) {
 EnrichedKernel enrich_kernel(const KernelRecord &record,
                              const EnrichOptions &options) noexcept {
   EnrichedKernel out;
-  out.record = record;
+  try {
+    out.record = record;
 
-  const int regs = static_cast<int>(record.registers_per_thread);
-  const int block_size =
-      static_cast<int>(record.block_x * record.block_y * record.block_z);
-  const int smem = static_cast<int>(record.static_shared_bytes) +
-                   static_cast<int>(record.dynamic_shared_bytes);
+    const int regs = static_cast<int>(record.registers_per_thread);
+    const int block_size =
+        static_cast<int>(record.block_x * record.block_y * record.block_z);
+    const int smem = static_cast<int>(record.static_shared_bytes) +
+                     static_cast<int>(record.dynamic_shared_bytes);
 
-  // No resource evidence -> "unknown-resources" (QA contract: never a
-  // fabricated 0%). Also covers block_size <= 0 and unknown arch names
-  // (get_arch throws std::out_of_range for foreign keys).
-  if (regs <= 0 || block_size <= 0 || options.arch_name.empty() ||
-      !kernscope::has_arch(options.arch_name)) {
-    out.occupancy_unknown = true;
-    out.occupancy = -1.0;
-    out.limiter.clear();
-    return out;
+    // No resource evidence -> "unknown-resources" (QA contract: never a
+    // fabricated 0%). Also covers block_size <= 0 and unknown arch names
+    // (get_arch throws std::out_of_range for foreign keys).
+    if (regs <= 0 || block_size <= 0 || options.arch_name.empty() ||
+        !kernscope::has_arch(options.arch_name)) {
+      out.occupancy_unknown = true;
+      out.occupancy = -1.0;
+      out.limiter.clear();
+      return out;
+    }
+
+    const kernscope::ArchInfo &arch =
+        kernscope::get_arch(options.arch_name); // guarded by has_arch above
+    const kernscope::occupancy::OccupancyResult occ =
+        kernscope::occupancy::compute_occupancy(arch, regs, smem, block_size,
+                                                options.sgprs_per_thread);
+    out.occupancy = occ.occupancy;
+    out.occupancy_unknown = false;
+    out.limiter = kernscope::occupancy::limiter_name(occ.limiter);
+    out.blocks_per_sm = occ.blocks_per_sm;
+    out.warps_resident = occ.warps_resident;
+    out.max_warps_per_sm = occ.max_warps_per_sm;
+  } catch (...) {
+    return out;  // documented degradation: partial enrichment, never a crash
   }
-
-  const kernscope::ArchInfo &arch =
-      kernscope::get_arch(options.arch_name); // guarded by has_arch above
-  const kernscope::occupancy::OccupancyResult occ =
-      kernscope::occupancy::compute_occupancy(arch, regs, smem, block_size,
-                                              options.sgprs_per_thread);
-  out.occupancy = occ.occupancy;
-  out.occupancy_unknown = false;
-  out.limiter = kernscope::occupancy::limiter_name(occ.limiter);
-  out.blocks_per_sm = occ.blocks_per_sm;
-  out.warps_resident = occ.warps_resident;
-  out.max_warps_per_sm = occ.max_warps_per_sm;
   return out;
 }
 
@@ -233,7 +237,7 @@ void apply_ptx_lineinfo(const std::string &ptx_text,
     long num = 0;
     bool num_ok = false;
     while (i < t.size() && t[i] >= '0' && t[i] <= '9') {
-      num = num * 10 + (t[i] - '0');
+      num = (num * 10) + (t[i] - '0');
       num_ok = true;
       ++i;
     }
@@ -264,13 +268,13 @@ void apply_ptx_lineinfo(const std::string &ptx_text,
       while (i < t.size() && (t[i] == ' ' || t[i] == '\t')) ++i;
       long file_num = 0;
       while (i < t.size() && t[i] >= '0' && t[i] <= '9') {
-        file_num = file_num * 10 + (t[i] - '0');
+        file_num = (file_num * 10) + (t[i] - '0');
         ++i;
       }
       while (i < t.size() && (t[i] == ' ' || t[i] == '\t')) ++i;
       long line_num = 0;
       while (i < t.size() && t[i] >= '0' && t[i] <= '9') {
-        line_num = line_num * 10 + (t[i] - '0');
+        line_num = (line_num * 10) + (t[i] - '0');
         ++i;
       }
       SourceMappingEntry entry;
@@ -291,7 +295,7 @@ void apply_ptx_lineinfo(const std::string &ptx_text,
             it.rfind(".file", 0) == 0 || it.rfind(".visible", 0) == 0 ||
             it.rfind(".entry", 0) == 0 || it.rfind(".reg", 0) == 0 ||
             it.rfind(".param", 0) == 0 || it.rfind(".shared", 0) == 0 ||
-            it.rfind("{", 0) == 0 || it.rfind("}", 0) == 0) {
+            it.rfind('{', 0) == 0 || it.rfind('}', 0) == 0) {
           continue;
         }
         entry.asm_text = it;
@@ -335,7 +339,7 @@ void apply_llvm_objdump_lines(const std::string &objdump_text,
         ok = false;
         break;
       }
-      value = value * 10 + (c - '0');
+      value = (value * 10) + (c - '0');
     }
     if (!ok || file.empty()) {
       continue;

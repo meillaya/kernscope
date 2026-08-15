@@ -34,6 +34,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include <algorithm>
 
 using namespace kernscope::verify;
 
@@ -53,7 +54,7 @@ struct Analyzed {
 };
 
 Analyzed run_analyze(const std::string& fixture_name, VerifierOptions vopts,
-                     IngestionOptions iopts = IngestionOptions()) {
+                     const IngestionOptions& iopts = IngestionOptions()) {
   ClangIngester ingester;
   IngestionResult result = ingester.ingest(fixture(fixture_name), iopts);
   Analyzed out;
@@ -78,12 +79,8 @@ const KernelInfo* find_kernel(const Analyzed& a, const std::string& needle) {
 }
 
 bool has_diagnostic(const Analyzed& a, int class_id) {
-  for (const Diagnostic& d : a.state->diagnostics()) {
-    if (d.class_id == class_id) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(a.state->diagnostics(),
+                             [&](const Diagnostic& d) { return d.class_id == class_id; });
 }
 
 // Registry-contract test plugin (passive; registered via REGISTER_CHECK so
@@ -95,8 +92,9 @@ class TestPlugin : public CheckPlugin {
     name = "Test plugin (registry contract)";
     check_class_ids = {CheckClass::kGlobalOob};
   }
-  std::vector<Diagnostic> run(VerifierContext&) const override { return {}; }
+  std::vector<Diagnostic> run(VerifierContext& /*ctx*/) const override { return {}; }
 };
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_CHECK(TestPlugin);
 
 }  // namespace
@@ -218,9 +216,12 @@ TEST(VerifyCore, O2ReconstructionViaQueryRange) {
   VerifierContext ctx{*a.module, *const_cast<KernelInfo*>(k), a.state->engine()};
   ctx.state = a.state.get();
   auto r = ctx.queryRange(gep);
-  ASSERT_TRUE(r.has_value());
-  EXPECT_FALSE(r->isFullSet());
-  EXPECT_FALSE(r->isEmptySet());
+  if (!r.has_value()) {
+    FAIL() << "no range";
+    return;
+  }
+  EXPECT_FALSE(r.value().isFullSet());
+  EXPECT_FALSE(r.value().isEmptySet());
 }
 
 // --- 4. budget-exceeded synthetic case: < 5s + budget diagnostic ----------

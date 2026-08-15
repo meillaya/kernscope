@@ -61,7 +61,7 @@ namespace {
 // --------------------------------------------------------------------------
 
 struct Json {
-  enum class Type { Null, Bool, Number, String, Array, Object };
+  enum class Type : std::uint8_t { Null, Bool, Number, String, Array, Object };
   Type type = Type::Null;
   bool boolean = false;
   int64_t number = 0;
@@ -122,6 +122,7 @@ class JsonParser {
     std::abort();
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseValue() {
     pos_ = skipWs(pos_);
     const char c = peek();
@@ -151,6 +152,7 @@ class JsonParser {
     }
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseObject() {
     Json out;
     out.type = Json::Type::Object;
@@ -184,6 +186,7 @@ class JsonParser {
     return out;
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseArray() {
     Json out;
     out.type = Json::Type::Array;
@@ -309,7 +312,7 @@ struct Analyzed {
   std::unique_ptr<VerifierState> state;
 };
 
-Analyzed runAnalyze(const std::string& file, IngestionOptions iopts,
+Analyzed runAnalyze(const std::string& file, const IngestionOptions& iopts,
                     VerifierOptions vopts = VerifierOptions()) {
   ClangIngester ingester;
   IngestionResult result = ingester.ingest(corpusDir() + "/" + file, iopts);
@@ -401,7 +404,11 @@ std::string verdictJsonSummary(const Analyzed& a, const std::string& file) {
     if (!out.empty()) {
       out += ",\n";
     }
-    out += "  {\"file\":\"" + file + "\",\"diagnostic\":" + payload + "}";
+    out += "  {\"file\":\"";
+    out += file;
+    out += "\",\"diagnostic\":";
+    out += payload;
+    out += "}";
   }
   return out;
 }
@@ -435,9 +442,11 @@ TEST(RaceCheck, ManifestVerdictsMatch) {
     ASSERT_NE(k, nullptr) << "kernel " << m.kernel << " not found in "
                           << m.file;
     const std::optional<Verdict> v = pluginVerdict(a, k->name);
-    ASSERT_TRUE(v.has_value())
-        << m.file << ":" << m.kernel << ": no race verdict emitted";
-    EXPECT_EQ(v->verdict, m.expected)
+    if (!v.has_value()) {
+      FAIL() << m.file << ":" << m.kernel << ": no race verdict emitted";
+      return;
+    }
+    EXPECT_EQ(v.value().verdict, m.expected)
         << m.file << ":" << m.kernel << " check " << m.check;
   }
   if (evidence.size() > 2) {
@@ -462,9 +471,12 @@ TEST(RaceCheck, MayRacePairsCarryBothSites) {
     const KernelInfo* k = findKernel(a, c.kernel);
     ASSERT_NE(k, nullptr) << "kernel " << c.kernel << " not found";
     const std::optional<Verdict> v = pluginVerdict(a, k->name);
-    ASSERT_TRUE(v.has_value());
-    EXPECT_EQ(v->verdict, "MAY_RACE") << c.file;
-    const Json* pairs = v->payload.find("pairs");
+    if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+    EXPECT_EQ(v.value().verdict, "MAY_RACE") << c.file;
+    const Json* pairs = v.value().payload.find("pairs");
     ASSERT_NE(pairs, nullptr) << c.file << ": verdict JSON has no pairs array";
     ASSERT_FALSE(pairs->array.empty()) << c.file << ": no race pairs";
     for (const Json& p : pairs->array) {
@@ -492,8 +504,11 @@ TEST(RaceCheck, CleanFixturesStaySafe) {
     const KernelInfo* k = findKernel(a, kernel);
     ASSERT_NE(k, nullptr) << "kernel " << kernel << " not found";
     const std::optional<Verdict> v = pluginVerdict(a, k->name);
-    ASSERT_TRUE(v.has_value()) << kernel << ": no verdict emitted";
-    EXPECT_EQ(v->verdict, "SAFE") << kernel;
+    if (!v.has_value()) {
+      FAIL() << kernel << ": no verdict emitted";
+      return;
+    }
+    EXPECT_EQ(v.value().verdict, "SAFE") << kernel;
   }
 }
 
@@ -506,11 +521,14 @@ TEST(RaceCheck, DataDependentIndexIsUnknownRace) {
   const KernelInfo* k = findKernel(a, "race_data_kernel");
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v = pluginVerdict(a, k->name);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, "UNKNOWN_RACE");
-  EXPECT_NE(v->verdict, "SAFE");
-  EXPECT_NE(v->verdict, "MAY_RACE");
-  const Json* pairs = v->payload.find("pairs");
+  if (!v.has_value()) {
+    FAIL() << "no verdict";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, "UNKNOWN_RACE");
+  EXPECT_NE(v.value().verdict, "SAFE");
+  EXPECT_NE(v.value().verdict, "MAY_RACE");
+  const Json* pairs = v.value().payload.find("pairs");
   ASSERT_NE(pairs, nullptr);
   ASSERT_FALSE(pairs->array.empty());
   for (const Json& p : pairs->array) {
@@ -520,7 +538,7 @@ TEST(RaceCheck, DataDependentIndexIsUnknownRace) {
     EXPECT_EQ(p.getString("idx1"), "data-dependent");
     EXPECT_EQ(p.getString("idx2"), "data-dependent");
   }
-  std::cout << "=== QA negative: " << k->name << " -> " << v->verdict << "\n"
+  std::cout << "=== QA negative: " << k->name << " -> " << v.value().verdict << "\n"
             << verdictJsonSummary(a, "race_dataindex.cu") << "\n";
 }
 

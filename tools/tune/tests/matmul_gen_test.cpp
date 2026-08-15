@@ -139,7 +139,7 @@ std::string make_workdir(const char *tag) {
 // Generate the kernel source for cfg+prob into `dir`; returns the .hip path.
 std::string emit_kernel(const MatmulConfig &cfg, const MatmulProblem &prob,
                         const std::string &dir) {
-  const std::string src_path = dir + "/matmul.hip";
+  std::string src_path = dir + "/matmul.hip";
   std::string err;
   if (!generate_to_file(cfg, prob, src_path, &err)) {
     ADD_FAILURE() << "generate_to_file: " << err;

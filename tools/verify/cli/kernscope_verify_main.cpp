@@ -64,7 +64,6 @@
 namespace {
 
 // CheckClass / EngineClass (diagnostic.h) are namespaces: qualified refs only.
-using kernscope::verify::CheckPlugin;
 using kernscope::verify::CheckRegistry;
 using kernscope::verify::Diagnostic;
 using kernscope::verify::KernelInfo;

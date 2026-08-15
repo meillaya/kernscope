@@ -123,7 +123,7 @@ template <typename Config, typename SymbolFn, typename GenFn>
 std::string emit_kernel(const Config &cfg, const ElemProblem &prob,
                         SymbolFn symbol_fn, GenFn gen_fn,
                         const std::string &dir) {
-  const std::string src_path = dir + "/" + symbol_fn(cfg) + ".hip";
+  std::string src_path = dir + "/" + symbol_fn(cfg) + ".hip";
   std::string err;
   if (!gen_fn(cfg, prob, src_path, &err)) {
     ADD_FAILURE() << "generate_to_file: " << err;

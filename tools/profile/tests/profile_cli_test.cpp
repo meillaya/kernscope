@@ -40,7 +40,6 @@ using kernscope::profile::cli::build_report;
 using kernscope::profile::cli::ProfileReport;
 using kernscope::profile::cli::TraceOptions;
 using kernscope::profile::EnrichedKernel;
-using kernscope::profile::KernelRecord;
 
 // One enriched kernel record in the tracer's JSONL shape (todo 50 emitter).
 std::string EnrichedJsonl(const char *name, std::uint64_t duration_ns,
@@ -142,9 +141,12 @@ TEST(ProfileCli, NoKernelsNegativeIsExit0Report) {
   std::string error;
   const std::optional<kernscope::db::json::Value> parsed =
       kernscope::db::json::Value::parse(json, error);
-  ASSERT_TRUE(parsed.has_value()) << error;
-  EXPECT_TRUE(parsed->find("no_kernels_traced")->as_bool());
-  EXPECT_EQ(parsed->find("kernel_count")->as_number(), 0.0);
+  if (!parsed.has_value()) {
+    FAIL() << error;
+    return;
+  }
+  EXPECT_TRUE(parsed.value().find("no_kernels_traced")->as_bool());
+  EXPECT_EQ(parsed.value().find("kernel_count")->as_number(), 0.0);
 }
 
 //--- report assembly + JSON -----------------------------------------------------//
@@ -179,9 +181,16 @@ TEST(ProfileCli, ReportJsonCarriesNumericFields) {
   std::string error;
   const std::optional<kernscope::db::json::Value> parsed =
       kernscope::db::json::Value::parse(json, error);
-  ASSERT_TRUE(parsed.has_value()) << error;
-  const kernscope::db::json::Value *kernels_arr = parsed->find("kernels");
-  ASSERT_NE(kernels_arr, nullptr);
+  if (!parsed.has_value()) {
+    ADD_FAILURE() << error;
+    return;
+  }
+  const kernscope::db::json::Value *kernels_arr =
+      parsed.value().find("kernels");
+  if (kernels_arr == nullptr) {
+    FAIL() << "kernels array missing";
+    return;
+  }
   ASSERT_EQ(kernels_arr->as_array().size(), 1u);
   const kernscope::db::json::Value &k = kernels_arr->as_array()[0];
   EXPECT_EQ(k.find("kernel_name")->as_string(),
@@ -251,7 +260,10 @@ TEST(ProfileCli, HtmlReportUsesLibsReportEmbeddedJson) {
   const std::optional<kernscope::db::json::Value> payload =
       kernscope::db::json::Value::parse(
           html.substr(payload_begin, end - payload_begin), error);
-  ASSERT_TRUE(payload.has_value()) << error;
-  EXPECT_EQ(payload->find("kernel")->find("name")->as_string(),
+  if (!payload.has_value()) {
+    FAIL() << error;
+    return;
+  }
+  EXPECT_EQ(payload.value().find("kernel")->find("name")->as_string(),
             "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd");
 }

@@ -146,7 +146,7 @@ bool backendOf(const Module &M, BackendIntrinsics &Out) {
 
 // Element-offset classification of one load (offset in ELEMENTS of the
 // group's element type, relative to the underlying object).
-enum class OffsetKind {
+enum class OffsetKind : std::uint8_t {
   kConstant,    // constant c: reads element c only
   kUnitAddRec,  // {s,+,1} in the load's own loop with constant trip count
   kUnknown,     // not statically bounded -> declines the group
@@ -162,19 +162,20 @@ struct ElemOffset {
 // SCEV, or nullptr when the division is not statically exact. Handles
 // constants, casts (zext/sext/trunc), mul-by-constant, and affine
 // AddRecs with constant start/step (every part must divide evenly).
+// NOLINTNEXTLINE(misc-no-recursion)  // deliberate SCEV tree recursion
 const SCEV *divSCEV(ScalarEvolution &SE, const SCEV *S, uint64_t D) {
   if (isa<SCEVIntegralCastExpr>(S))
     return divSCEV(SE, cast<SCEVIntegralCastExpr>(S)->getOperand(), D);
-  if (auto *C = dyn_cast<SCEVConstant>(S)) {
+  if (const auto *C = dyn_cast<SCEVConstant>(S)) {
     const APInt &V = C->getAPInt();
     if (V.isNegative() || V.urem(D) != 0) return nullptr;
     return SE.getConstant(V.udiv(D));
   }
-  if (auto *M = dyn_cast<SCEVMulExpr>(S)) {
+  if (const auto *M = dyn_cast<SCEVMulExpr>(S)) {
     const SCEV *Inner = nullptr;
     uint64_t Coeff = 1;
     for (const SCEV *Op : M->operands()) {
-      if (auto *OC = dyn_cast<SCEVConstant>(Op)) {
+      if (const auto *OC = dyn_cast<SCEVConstant>(Op)) {
         if (OC->getAPInt().isNegative() ||
             Coeff > std::numeric_limits<uint64_t>::max() /
                         OC->getAPInt().getZExtValue())
@@ -189,9 +190,9 @@ const SCEV *divSCEV(ScalarEvolution &SE, const SCEV *S, uint64_t D) {
     if (Coeff != D || !Inner) return nullptr;
     return divSCEV(SE, Inner, 1);
   }
-  if (auto *AR = dyn_cast<SCEVAddRecExpr>(S)) {
-    auto *StartC = dyn_cast<SCEVConstant>(AR->getStart());
-    auto *StepC = dyn_cast<SCEVConstant>(AR->getStepRecurrence(SE));
+  if (const auto *AR = dyn_cast<SCEVAddRecExpr>(S)) {
+    const auto *StartC = dyn_cast<SCEVConstant>(AR->getStart());
+    const auto *StepC = dyn_cast<SCEVConstant>(AR->getStepRecurrence(SE));
     if (!StartC || !StepC) return nullptr;
     const APInt S0 = StartC->getAPInt();
     const APInt St = StepC->getAPInt();
@@ -212,16 +213,16 @@ const SCEV *divSCEV(ScalarEvolution &SE, const SCEV *S, uint64_t D) {
 ElemOffset classifyOffset(ScalarEvolution &SE, const SCEV *ElemSCEV,
                           const Loop *LoadLoop) {
   ElemOffset R;
-  if (auto *C = dyn_cast<SCEVConstant>(ElemSCEV)) {
+  if (const auto *C = dyn_cast<SCEVConstant>(ElemSCEV)) {
     if (!C->getAPInt().isNegative()) {
       R.Kind = OffsetKind::kConstant;
       R.Const = C->getAPInt().getZExtValue();
     }
     return R;
   }
-  if (auto *AR = dyn_cast<SCEVAddRecExpr>(ElemSCEV)) {
-    auto *StepC = dyn_cast<SCEVConstant>(AR->getStepRecurrence(SE));
-    auto *StartC = dyn_cast<SCEVConstant>(AR->getStart());
+  if (const auto *AR = dyn_cast<SCEVAddRecExpr>(ElemSCEV)) {
+    const auto *StepC = dyn_cast<SCEVConstant>(AR->getStepRecurrence(SE));
+    const auto *StartC = dyn_cast<SCEVConstant>(AR->getStart());
     if (!StepC || !StartC || StepC->getAPInt().isNegative() ||
         StartC->getAPInt().isNegative() ||
         StepC->getAPInt().getZExtValue() != 1)
@@ -291,7 +292,7 @@ Group *findGroup(SmallVectorImpl<Group> &Groups, Value *Base, Type *EltTy) {
 // decline leaves IR untouched).
 // ---------------------------------------------------------------------------
 
-enum class DeclineReason {
+enum class DeclineReason : std::uint8_t {
   kNoPattern,     // no promotable group (no reuse) — silent
   kNoArch,        // no arch attribute/flag -> cannot verify the budget
   kNoBackend,     // triple has no supported GPU backend
@@ -415,6 +416,7 @@ Instruction *insertCooperativeLoad(Function &F, Group &G,
 
 }  // namespace
 
+namespace {
 PromoteStats promoteFunction(Function &F, ScalarEvolution &SE, AAResults &AA,
                              LoopInfo &LI) {
   PromoteStats Stats;
@@ -591,7 +593,7 @@ PromoteStats promoteFunction(Function &F, ScalarEvolution &SE, AAResults &AA,
           TileTy, G.TileAlloca, {ConstantInt::get(Type::getInt64Ty(
                                      F.getContext()), 0), Off},
           "kernscope.sptr");
-      C.LI->setOperand(C.LI->getPointerOperandIndex(), SPtr);
+      C.LI->setOperand(llvm::LoadInst::getPointerOperandIndex(), SPtr);
       Stats.loadsPromoted += 1;
     }
     while (true) {
@@ -609,6 +611,7 @@ PromoteStats promoteFunction(Function &F, ScalarEvolution &SE, AAResults &AA,
 
   return Stats;
 }
+}  // namespace
 
 }  // namespace pass
 }  // namespace kernscope
@@ -616,6 +619,7 @@ PromoteStats promoteFunction(Function &F, ScalarEvolution &SE, AAResults &AA,
 namespace kernscope {
 namespace pass {
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 PreservedAnalyses GlobalToSharedPromotePass::run(Function &F,
                                                  FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
@@ -641,7 +645,7 @@ PreservedAnalyses GlobalToSharedPromotePass::run(Function &F,
 namespace {
 
 bool parsePromoteName(StringRef Name, ModulePassManager &MPM,
-                      ArrayRef<PassBuilder::PipelineElement>) {
+                      ArrayRef<PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-promote") {
     MPM.addPass(createModuleToFunctionPassAdaptor(
         kernscope::pass::GlobalToSharedPromotePass()));
@@ -655,6 +659,7 @@ bool parsePromoteName(StringRef Name, ModulePassManager &MPM,
 // Self-registration (todo-36 contract — register_pass.h). Function-scoped
 // transform: textual name + pipeline-start EP + peephole EP (the same set
 // as the todo-39 rle module).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parsePromoteName);
 

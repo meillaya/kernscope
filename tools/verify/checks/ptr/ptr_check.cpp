@@ -30,6 +30,7 @@
 
 #include "ptr_common.h"
 
+#include <cstdint>
 #include <kernscope/verify/check_plugin.h>
 
 #include <llvm/ADT/PostOrderIterator.h>
@@ -51,14 +52,13 @@ namespace ptr {
 namespace {
 
 using llvm::ConstantRange;
-using llvm::GetElementPtrInst;
 using llvm::Instruction;
 using llvm::Value;
 
 // DebugLoc-backed source location (empty when the IR carries no debug info).
 SourceLoc loc_of(const Instruction* i) {
   SourceLoc loc;
-  if (const llvm::DebugLoc dl = i->getDebugLoc()) {
+  if (const llvm::DebugLoc& dl = i->getDebugLoc()) {
     loc.file = dl->getFilename().str();
     loc.line = dl->getLine();
     loc.col = dl->getColumn();
@@ -81,7 +81,7 @@ std::string short_instruction(const Instruction& i) {
 
 // One class-5 finding.
 struct PtrFinding {
-  enum class Kind {
+  enum class Kind : std::uint8_t {
     InBounds,     ///< pointer arithmetic proven inside the allocation.
     Escaped,      ///< pointer VALUE provably outside its allocation.
     Unbounded,    ///< index range unbounded -> may-analysis PTR_OOB.
@@ -451,17 +451,13 @@ std::optional<std::pair<const llvm::Value*, InitBits>> track_object(
   InitBits init;
   switch (alloc.root) {
     case AllocationInfo::Root::Local:
-      init = {false, false};  // alloca: uninitialized.
-      break;
     case AllocationInfo::Root::SharedArray:
     case AllocationInfo::Root::SharedDynamic:
-      init = {false, false};  // smem: uninitialized at kernel entry.
+      init = {false, false};  // alloca/smem: uninitialized at kernel entry.
       break;
     case AllocationInfo::Root::DeviceGlobal:
-      init = {true, true};  // device/constant globals: initialized by host.
-      break;
     case AllocationInfo::Root::KernelParam:
-      init = {true, true};  // param pointees: host-provided.
+      init = {true, true};  // device/constant globals + params: host-provided.
       break;
     case AllocationInfo::Root::Unknown:
       return std::nullopt;
@@ -537,12 +533,16 @@ UninitResult analyze_uninit(llvm::Function& F, VerifierContext& ctx) {
       llvm::Value* ptr = nullptr;
       llvm::StoreInst* store = nullptr;
       llvm::LoadInst* load = nullptr;
-      if ((load = llvm::dyn_cast<llvm::LoadInst>(&i)) != nullptr) {
+      load = llvm::dyn_cast<llvm::LoadInst>(&i);
+      if (load != nullptr) {
         ptr = load->getPointerOperand();
-      } else if ((store = llvm::dyn_cast<llvm::StoreInst>(&i)) != nullptr) {
-        ptr = store->getPointerOperand();
       } else {
-        continue;
+        store = llvm::dyn_cast<llvm::StoreInst>(&i);
+        if (store != nullptr) {
+          ptr = store->getPointerOperand();
+        } else {
+          continue;
+        }
       }
       const auto obj = track_object(ptr, ctx.module);
       if (!obj) {
@@ -570,7 +570,7 @@ UninitResult analyze_uninit(llvm::Function& F, VerifierContext& ctx) {
         if (obj) {
           out[obj->first] = {true, true};
         }
-      } else if (auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
+      } else if (const auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
         const llvm::Function* cf = ci->getCalledFunction();
         if (cf == nullptr || !cf->isIntrinsic()) {
           continue;
@@ -656,7 +656,7 @@ UninitResult analyze_uninit(llvm::Function& F, VerifierContext& ctx) {
         }
         continue;
       }
-      if (auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
+      if (const auto* ci = llvm::dyn_cast<llvm::CallInst>(&i)) {
         const llvm::Function* cf = ci->getCalledFunction();
         if (cf != nullptr && cf->isIntrinsic()) {
           const llvm::StringRef n = cf->getName();
@@ -919,6 +919,7 @@ class PointerDisciplineCheckPlugin : public CheckPlugin {
   }
 };
 
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_CHECK(PointerDisciplineCheckPlugin);
 
 }  // namespace ptr

@@ -119,7 +119,7 @@ struct BiasGeluTraits {
   static ConfigVerdict validate(const Config &c, const Problem &p) {
     return validate_config(c, p);
   }
-  static std::int64_t smem_bytes(const Config &, const Problem &) {
+  static std::int64_t smem_bytes(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::smem_bytes();
   }
   static LaunchGeometry geometry(const Config &c, const Problem &p) {
@@ -130,8 +130,8 @@ struct BiasGeluTraits {
                        const std::string &path, std::string *err) {
     return generate_to_file(c, p, path, err);
   }
-  static int block_size(const Config &c, const Problem &) { return c.block; }
-  static int estimated_regs(const Config &, const Problem &) {
+  static int block_size(const Config &c, const Problem & /*unused*/) { return c.block; }
+  static int estimated_regs(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::estimated_regs();
   }
   static db::json::Value config_json(const Config &c) {
@@ -197,7 +197,7 @@ struct SoftmaxTraits {
   static ConfigVerdict validate(const Config &c, const Problem &p) {
     return validate_config(c, p);
   }
-  static std::int64_t smem_bytes(const Config &, const Problem &) {
+  static std::int64_t smem_bytes(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::smem_bytes();
   }
   static LaunchGeometry geometry(const Config &c, const Problem &p) {
@@ -208,8 +208,8 @@ struct SoftmaxTraits {
                        const std::string &path, std::string *err) {
     return generate_to_file(c, p, path, err);
   }
-  static int block_size(const Config &c, const Problem &) { return c.block; }
-  static int estimated_regs(const Config &, const Problem &) {
+  static int block_size(const Config &c, const Problem & /*unused*/) { return c.block; }
+  static int estimated_regs(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::estimated_regs();
   }
   static db::json::Value config_json(const Config &c) {
@@ -271,7 +271,7 @@ struct LayerNormTraits {
   static ConfigVerdict validate(const Config &c, const Problem &p) {
     return validate_config(c, p);
   }
-  static std::int64_t smem_bytes(const Config &, const Problem &) {
+  static std::int64_t smem_bytes(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::smem_bytes();
   }
   static LaunchGeometry geometry(const Config &c, const Problem &p) {
@@ -282,8 +282,8 @@ struct LayerNormTraits {
                        const std::string &path, std::string *err) {
     return generate_to_file(c, p, path, err);
   }
-  static int block_size(const Config &c, const Problem &) { return c.block; }
-  static int estimated_regs(const Config &, const Problem &) {
+  static int block_size(const Config &c, const Problem & /*unused*/) { return c.block; }
+  static int estimated_regs(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::estimated_regs();
   }
   static db::json::Value config_json(const Config &c) {
@@ -347,7 +347,7 @@ struct ReductionTraits {
   static ConfigVerdict validate(const Config &c, const Problem &p) {
     return validate_config(c, p);
   }
-  static std::int64_t smem_bytes(const Config &, const Problem &) {
+  static std::int64_t smem_bytes(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::smem_bytes();
   }
   static LaunchGeometry geometry(const Config &c, const Problem &p) {
@@ -358,8 +358,8 @@ struct ReductionTraits {
                        const std::string &path, std::string *err) {
     return generate_to_file(c, p, path, err);
   }
-  static int block_size(const Config &c, const Problem &) { return c.block; }
-  static int estimated_regs(const Config &, const Problem &) {
+  static int block_size(const Config &c, const Problem & /*unused*/) { return c.block; }
+  static int estimated_regs(const Config & /*unused*/, const Problem & /*unused*/) {
     return ElemCommon::estimated_regs();
   }
   static db::json::Value config_json(const Config &c) {

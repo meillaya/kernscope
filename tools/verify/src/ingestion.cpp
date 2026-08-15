@@ -179,7 +179,7 @@ struct ClangIngester::Impl {
   std::string hip_root;
 
   // Resolves the ROCm root from the hipcc wrapper (clr package layout).
-  std::string find_hip_root() {
+  static std::string find_hip_root() {
     if (auto hipcc = llvm::sys::findProgramByName("hipcc")) {
       llvm::SmallString<256> resolved(*hipcc);
       if (!llvm::sys::fs::real_path(resolved, resolved, true)) {
@@ -197,7 +197,7 @@ struct ClangIngester::Impl {
   // Stages include/ (symlink farm) + bin/, nvvm/, crt/ + the curand shim
   // into a fresh temp dir, mirroring scripts/smoke_toolchain.sh. Returns ""
   // when staging fails.
-  std::string stage_cuda_root(const std::string& cuda_home) {
+  static std::string stage_cuda_root(const std::string& cuda_home) {
     if (cuda_home.empty() || !std::filesystem::is_directory(cuda_home + "/include")) {
       return "";
     }
@@ -239,10 +239,10 @@ struct ClangIngester::Impl {
 
 ClangIngester::ClangIngester() : impl_(new Impl) {
   clang_path_ = locate_unwrapped_clang();
-  impl_->hip_root = impl_->find_hip_root();
+  impl_->hip_root = ClangIngester::Impl::find_hip_root();
   const char* cuda_home = std::getenv("CUDA_HOME");
   std::string home = cuda_home ? cuda_home : "";
-  impl_->staged_cuda_root = impl_->stage_cuda_root(home);
+  impl_->staged_cuda_root = ClangIngester::Impl::stage_cuda_root(home);
   toolchain_ok_ = !clang_path_.empty() && !impl_->staged_cuda_root.empty() &&
                   !impl_->hip_root.empty();
   cuda_root_ = impl_->staged_cuda_root;

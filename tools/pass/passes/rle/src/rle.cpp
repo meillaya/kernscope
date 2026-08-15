@@ -45,11 +45,11 @@ namespace {
 /// location-value walk must not cross (volatile/atomic accesses). These
 /// are MemoryDefs; the explicit check makes them block even where plain AA
 /// would treat them as Ref-only (e.g. a volatile load).
-static bool isBlockingOp(const Instruction *I) {
-  if (auto *LI = dyn_cast<LoadInst>(I)) {
+bool isBlockingOp(const Instruction *I) {
+  if (const auto *LI = dyn_cast<LoadInst>(I)) {
     return LI->isVolatile() || LI->isAtomic();
   }
-  if (auto *SI = dyn_cast<StoreInst>(I)) {
+  if (const auto *SI = dyn_cast<StoreInst>(I)) {
     return SI->isVolatile() || SI->isAtomic();
   }
   return isa<AtomicRMWInst>(I) || isa<AtomicCmpXchgInst>(I) ||
@@ -60,7 +60,7 @@ static bool isBlockingOp(const Instruction *I) {
 /// `convergent` attribute (llvm.nvvm.barrier0, llvm.ptx.bar.sync,
 /// llvm.amdgcn.s.barrier, __syncthreads, ...), or a call with an unknown
 /// callee (indirect call / inline asm — conservative barrier).
-static bool isBarrier(const Instruction *I) {
+bool isBarrier(const Instruction *I) {
   const auto *CB = dyn_cast<CallBase>(I);
   if (!CB) return false;
   const Function *Callee = CB->getCalledFunction();
@@ -110,6 +110,7 @@ class RLEWalk {
 
   /// Walk the access list of BB backward, ending at (and including)
   /// index EndIdx (EndIdx == -1: start from the block's last access).
+// NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR tree recursion
   LoadInst *walkAccesses(BasicBlock *BB, int EndIdx, unsigned Depth) {
     if (!BB || Depth > kMaxDepth) return nullptr;
     const MemorySSA::AccessList *List = MSSA_.getBlockAccesses(BB);
@@ -149,6 +150,7 @@ class RLEWalk {
   /// invariant locations may be tracked through a phi, and only when every
   /// edge walks to the SAME must-alias load (the chosen replacement then
   /// dominates all paths to L2).
+  // NOLINTNEXTLINE(misc-no-recursion)  // deliberate IR tree recursion
   LoadInst *walkPhi(MemoryPhi *Phi, unsigned Depth) {
     if (!isGloballyInvariant()) return nullptr;
     if (!PhiVisited_.insert(Phi).second) return nullptr;  // cycle
@@ -197,6 +199,7 @@ class RLEWalk {
 
 }  // namespace
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 PreservedAnalyses RedundantLoadEliminationPass::run(Function &F,
                                                     FunctionAnalysisManager &FAM) {
   MemorySSA &MSSA = FAM.getResult<MemorySSAAnalysis>(F).getMSSA();
@@ -233,7 +236,7 @@ PreservedAnalyses RedundantLoadEliminationPass::run(Function &F,
 namespace {
 
 bool parseRLEName(StringRef Name, ModulePassManager &MPM,
-                  ArrayRef<PassBuilder::PipelineElement>) {
+                  ArrayRef<PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-rle") {
     MPM.addPass(createModuleToFunctionPassAdaptor(
         kernscope::pass::RedundantLoadEliminationPass()));
@@ -245,6 +248,7 @@ bool parseRLEName(StringRef Name, ModulePassManager &MPM,
 }  // namespace
 
 // Self-registration (todo-36 contract — register_pass.h).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseRLEName);
 

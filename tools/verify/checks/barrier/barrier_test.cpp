@@ -77,14 +77,26 @@ std::vector<ManifestEntry> readManifest() {
     if (obj == nullptr) {
       continue;
     }
-    ManifestEntry e;
-    e.file = obj->getString("file")->str();
-    e.kernel = obj->getString("kernel")->str();
-    if (const std::optional<double> check = obj->getNumber("check")) {
-      e.check = static_cast<int>(*check);
+    {
+      ManifestEntry e;
+      const std::optional<llvm::StringRef> file = obj->getString("file");
+      const std::optional<llvm::StringRef> kernel = obj->getString("kernel");
+      const std::optional<llvm::StringRef> verdict =
+          obj->getString("expected_verdict");
+      if (!file.has_value() || !kernel.has_value() ||
+          !verdict.has_value()) {
+        ADD_FAILURE() << "manifest entry missing a required field";
+        return {};
+      }
+      e.file = file->str();
+      e.kernel = kernel->str();
+      const std::optional<double> check = obj->getNumber("check");
+      if (check.has_value()) {
+        e.check = static_cast<int>(check.value());
+      }
+      e.verdict = verdict->str();
+      entries.push_back(std::move(e));
     }
-    e.verdict = obj->getString("expected_verdict")->str();
-    entries.push_back(std::move(e));
   }
   return entries;
 }

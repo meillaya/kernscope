@@ -119,7 +119,7 @@ void LogFallback(const char *detail) {
 
 //===--- the CUPTI buffer callbacks (C linkage, CUPTI worker thread) ----------===//
 
-void BufferRequested(std::uint8_t **buffer, std::size_t *size, std::size_t *) {
+void BufferRequested(std::uint8_t **buffer, std::size_t *size, std::size_t * /*unused*/) {
   if (buffer == nullptr || size == nullptr) {
     return;
   }

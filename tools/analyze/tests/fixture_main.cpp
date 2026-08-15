@@ -33,7 +33,6 @@ namespace {
 
 using kernscope::analyze::AnalyzeInputs;
 using kernscope::analyze::analyze_ptx_module;
-using kernscope::db::json::Kind;
 using kernscope::db::json::Value;
 
 std::string read_file(const std::string &path) {
@@ -71,7 +70,8 @@ double num(const Value *v, double fallback = 0.0) {
 int main_impl(const char *fixtures_dir, const char *reports_dir) {
   const std::string fixtures = fixtures_dir;
 
-  Value manifest, expected;
+  Value manifest;
+  Value expected;
   std::string err;
   if (!load_json(fixtures + "/manifest.json", &manifest, &err) ||
       !load_json(fixtures + "/expected_fused_attention.json", &expected,

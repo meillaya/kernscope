@@ -142,7 +142,8 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
 
   std::size_t line_start = 0;
   std::size_t line_no = 0;
-  bool saw_header = false, saw_end = false;
+  bool saw_header = false;
+  bool saw_end = false;
   std::uint64_t seq = 0;
   while (line_start <= text.size()) {
     const std::size_t nl = text.find('\n', line_start);
@@ -152,7 +153,7 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
     if (!line.empty() && line.back() == '\r') {
       line.remove_suffix(1);
     }
-    const auto fail = [&](std::string msg) {
+    const auto fail = [&](const std::string& msg) {
       *error = "v0 parse error at line " + std::to_string(line_no) + ": " + msg;
       return false;
     };
@@ -173,7 +174,8 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
     } else if (kw == "end-capture-v0") {
       saw_end = true;
     } else if (kw == "alloc" || kw == "free") {
-      std::uint64_t ptr = 0, size = 0;
+      std::uint64_t ptr = 0;
+      std::uint64_t size = 0;
       if (!parse_u64kv(line, "ptr", &ptr, error) ||
           !parse_u64kv(line, "size", &size, error)) {
         return fail(*error);
@@ -181,8 +183,14 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
       out.allocs.push_back(AllocRecord{ptr, static_cast<std::size_t>(size),
                                        kw == "alloc", ++seq});
     } else if (kw == "launch") {
-      std::string name, via, grid_s, block_s;
-      std::uint64_t shared = 0, stream = 0, graph = 0, nargs = 0;
+      std::string name;
+      std::string via;
+      std::string grid_s;
+      std::string block_s;
+      std::uint64_t shared = 0;
+      std::uint64_t stream = 0;
+      std::uint64_t graph = 0;
+      std::uint64_t nargs = 0;
       if (!kv_of(line, "kernel", &name) || !kv_of(line, "via", &via) ||
           !kv_of(line, "grid", &grid_s) || !kv_of(line, "block", &block_s) ||
           !parse_u64kv(line, "shared", &shared, error) ||
@@ -244,7 +252,8 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
             };
             slot.bytes.reserve(hex.size() / 2);
             for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
-              const int hi = nibble(hex[i]), lo = nibble(hex[i + 1]);
+              const int hi = nibble(hex[i]);
+              const int lo = nibble(hex[i + 1]);
               if (hi < 0 || lo < 0) {
                 return fail("invalid arg hex '" + std::string(tok) + "'");
               }
@@ -268,8 +277,13 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
       out.arg_tables.push_back(std::move(table));
     } else if (kw == "copy") {
       std::string kind;
-      std::uint64_t dst = 0, src = 0, bytes = 0, stream = 0;
-      std::uint64_t cuda_kind = 0, dst_size = 0, src_size = 0;
+      std::uint64_t dst = 0;
+      std::uint64_t src = 0;
+      std::uint64_t bytes = 0;
+      std::uint64_t stream = 0;
+      std::uint64_t cuda_kind = 0;
+      std::uint64_t dst_size = 0;
+      std::uint64_t src_size = 0;
       if (!kv_of(line, "kind", &kind) ||
           !parse_u64kv(line, "dst", &dst, error) ||
           !parse_u64kv(line, "src", &src, error) ||
@@ -292,7 +306,11 @@ bool ParseV0BundleText(std::string_view text, V0Bundle &out,
       rec.seq = ++seq;
       out.copies.push_back(rec);
     } else if (kw == "memset") {
-      std::uint64_t ptr = 0, bytes = 0, stream = 0, value = 0, ptr_size = 0;
+      std::uint64_t ptr = 0;
+      std::uint64_t bytes = 0;
+      std::uint64_t stream = 0;
+      std::uint64_t value = 0;
+      std::uint64_t ptr_size = 0;
       if (!parse_u64kv(line, "ptr", &ptr, error) ||
           !parse_u64kv(line, "value", &value, error) ||
           !parse_u64kv(line, "bytes", &bytes, error) ||
@@ -589,8 +607,8 @@ bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
     }
     const bool copy_pointer =
         slot.size == sizeof(std::uint64_t) &&
-        (alloc_size.count(slot_value) != 0 ||
-         device_ptrs.count(slot_value) != 0);
+        (alloc_size.contains(slot_value) ||
+         device_ptrs.contains(slot_value));
     if (reader_pointer || copy_pointer) {
       ap.is_pointer = true;
       ap.pointer_va = slot_value;
@@ -631,7 +649,7 @@ bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
         std::memcpy(&ap.scalar, slot.bytes.data(), slot.bytes.size());
       }
     }
-    plan.args.push_back(std::move(ap));
+    plan.args.push_back(ap);
   }
 
   // captured output hash: not present in v0 bundles; the replay engine
@@ -717,7 +735,7 @@ bool BuildPlanV1(const BundleReader &reader, Plan &plan, std::string *error) {
       if (i < table.size() && table[i].is_pointer) {
         ap.is_pointer = true;
         ap.pointer_va = table[i].va;
-        const bool out = output_by_va.count(table[i].va) != 0;
+        const bool out = output_by_va.contains(table[i].va);
         ap.buffer = add_buffer(table[i].va, out);
         if (ap.buffer < 0) {
           return false;
@@ -743,7 +761,7 @@ bool BuildPlanV1(const BundleReader &reader, Plan &plan, std::string *error) {
           std::memcpy(&ap.scalar, slot.bytes.data(), slot.bytes.size());
         }
       }
-      plan.args.push_back(std::move(ap));
+      plan.args.push_back(ap);
     }
   }
   return true;

@@ -159,8 +159,9 @@ Value *canonicalizePointer(Value *Ptr, Function &F,
 
 }  // namespace
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 llvm::PreservedAnalyses As1CanonPass::run(llvm::Function &F,
-                                          llvm::FunctionAnalysisManager &) {
+                                          llvm::FunctionAnalysisManager & /*unused*/) {
   DenseMap<Argument *, Value *> ParamCasts;
   bool Changed = false;
 
@@ -174,7 +175,7 @@ llvm::PreservedAnalyses As1CanonPass::run(llvm::Function &F,
     for (Instruction *I : Worklist) {
       Value *Ptr = isa<LoadInst>(I) ? cast<LoadInst>(I)->getPointerOperand()
                                     : cast<StoreInst>(I)->getPointerOperand();
-      Instruction *InsertBefore = isa<LoadInst>(I) ? I : I;
+      Instruction* InsertBefore = I;
       if (getenv("KERNSCOPE_AS1_DEBUG")) {
         errs() << "as1: " << (isa<LoadInst>(I) ? "load" : "store") << " ptr: "
                << *Ptr << " AS=" << Ptr->getType()->getPointerAddressSpace()
@@ -186,10 +187,10 @@ llvm::PreservedAnalyses As1CanonPass::run(llvm::Function &F,
         continue;
       }
       if (auto *LI = dyn_cast<LoadInst>(I)) {
-        LI->setOperand(LI->getPointerOperandIndex(), NewPtr);
+        LI->setOperand(llvm::LoadInst::getPointerOperandIndex(), NewPtr);
       } else {
         auto *SI = cast<StoreInst>(I);
-        SI->setOperand(SI->getPointerOperandIndex(), NewPtr);
+        SI->setOperand(llvm::StoreInst::getPointerOperandIndex(), NewPtr);
       }
     }
   }

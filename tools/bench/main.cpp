@@ -123,7 +123,7 @@ Clocks ReadClocks() {
       all << line.data();
       const std::string s(line.data());
       // "GPU[0]		: sclk clock level: S: (36Mhz)" -> value inside parens.
-      const std::size_t paren = s.find("(");
+      const std::size_t paren = s.find('(');
       const std::size_t close =
           s.find("Mhz", paren == std::string::npos ? 0 : paren);
       if (paren != std::string::npos && close != std::string::npos &&

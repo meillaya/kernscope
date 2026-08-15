@@ -112,28 +112,35 @@ PtxasVReport parse_ptxas_v(std::string_view text) noexcept {
   PtxasVReport out;
   const std::string s(text);
 
-  // Validity anchor: the "N registers" token appears in BOTH ptxas formats
-  // [brief §6.1 L401-408; polykernel PtxasParser oracle]. No register line
-  // -> the input is not a ptxas log -> {ok=false}.
-  std::smatch m;
-  const std::regex registers_re(R"(([0-9]+) registers)");
-  if (!std::regex_search(s, m, registers_re)) return out;
-  out.regs_per_thread = std::atoi(m[1].str().c_str());
-  out.ok = true;
+  // All regexes here are constant and valid, so no throw is possible in
+  // practice; the guard keeps the noexcept contract honest (a throw inside a
+  // noexcept function would terminate instead of returning {ok=false}).
+  try {
+    // Validity anchor: the "N registers" token appears in BOTH ptxas formats
+    // [brief §6.1 L401-408; polykernel PtxasParser oracle]. No register line
+    // -> the input is not a ptxas log -> {ok=false}.
+    std::smatch m;
+    const std::regex registers_re(R"(([0-9]+) registers)");
+    if (!std::regex_search(s, m, registers_re)) return out;
+    out.regs_per_thread = std::atoi(m[1].str().c_str());
+    out.ok = true;
 
-  // Optional fields (independent regex per field; absent -> 0).
-  const auto grab = [&s](const char *pattern) -> int {
-    std::smatch mm;
-    if (std::regex_search(s, mm, std::regex(pattern))) {
-      return std::atoi(mm[1].str().c_str());
-    }
-    return 0;
-  };
-  out.stack_frame_bytes = grab(R"(([0-9]+) bytes stack frame)");
-  out.spill_stores_bytes = grab(R"(([0-9]+) bytes spill stores)");
-  out.spill_loads_bytes = grab(R"(([0-9]+) bytes spill loads)");
-  out.smem_bytes = grab(R"(([0-9]+) bytes smem)");
-  out.cmem_bytes = grab(R"(([0-9]+) bytes cmem)");
+    // Optional fields (independent regex per field; absent -> 0).
+    const auto grab = [&s](const char *pattern) -> int {
+      std::smatch mm;
+      if (std::regex_search(s, mm, std::regex(pattern))) {
+        return std::atoi(mm[1].str().c_str());
+      }
+      return 0;
+    };
+    out.stack_frame_bytes = grab(R"(([0-9]+) bytes stack frame)");
+    out.spill_stores_bytes = grab(R"(([0-9]+) bytes spill stores)");
+    out.spill_loads_bytes = grab(R"(([0-9]+) bytes spill loads)");
+    out.smem_bytes = grab(R"(([0-9]+) bytes smem)");
+    out.cmem_bytes = grab(R"(([0-9]+) bytes cmem)");
+  } catch (...) {
+    return out;
+  }
   return out;
 }
 

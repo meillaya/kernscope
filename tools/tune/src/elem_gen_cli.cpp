@@ -59,8 +59,13 @@ bool parse_shape(const std::string &s, std::int64_t *rows,
 } // namespace
 
 int main(int argc, char **argv) {
-  std::string kernel, arch, mode, shape, out_path;
-  int block = 0, vec = 0;
+  std::string kernel;
+  std::string arch;
+  std::string mode;
+  std::string shape;
+  std::string out_path;
+  int block = 0;
+  int vec = 0;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     auto need = [&](const char *name) -> const char * {
@@ -106,7 +111,8 @@ int main(int argc, char **argv) {
     usage(argv[0]);
     return 2;
   }
-  std::int64_t rows = 0, cols = 0;
+  std::int64_t rows = 0;
+  std::int64_t cols = 0;
   if (!parse_shape(shape, &rows, &cols)) {
     std::fprintf(stderr, "kernscope-tune-elem-gen: --shape must be R,C "
                          "(positive integers)\n");

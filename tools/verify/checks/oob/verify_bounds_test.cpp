@@ -55,7 +55,7 @@ namespace {
 // --------------------------------------------------------------------------
 
 struct Json {
-  enum class Type { Null, Bool, Number, String, Array, Object };
+  enum class Type : std::uint8_t { Null, Bool, Number, String, Array, Object };
   Type type = Type::Null;
   bool boolean = false;
   int64_t number = 0;
@@ -117,6 +117,7 @@ class JsonParser {
     std::abort();
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseValue() {
     pos_ = skipWs(pos_);
     const char c = peek();
@@ -146,6 +147,7 @@ class JsonParser {
     }
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseObject() {
     Json out;
     out.type = Json::Type::Object;
@@ -179,6 +181,7 @@ class JsonParser {
     return out;
   }
 
+  // NOLINTNEXTLINE(misc-no-recursion)  // test-side recursive JSON parser
   Json parseArray() {
     Json out;
     out.type = Json::Type::Array;
@@ -304,7 +307,7 @@ struct Analyzed {
   std::unique_ptr<VerifierState> state;
 };
 
-Analyzed runAnalyze(const std::string& file, IngestionOptions iopts,
+Analyzed runAnalyze(const std::string& file, const IngestionOptions& iopts,
                     VerifierOptions vopts = VerifierOptions()) {
   ClangIngester ingester;
   IngestionResult result = ingester.ingest(corpusDir() + "/" + file, iopts);
@@ -443,7 +446,7 @@ TEST(VerifyBounds, ManifestVerdictsMatch) {
                     << ": no plugin verdict emitted";
       continue;
     }
-    EXPECT_EQ(v->verdict, m.expected)
+    EXPECT_EQ(v.value().verdict, m.expected)
         << m.file << ":" << m.kernel << " check " << m.check;
   }
   // Emitted verdicts that are NOT in the manifest must not silently appear
@@ -463,9 +466,12 @@ TEST(VerifyBounds, CleanKernelSafeWithScevRangeProof) {
   const KernelInfo* k = findKernel(a, "oob_clean_kernel");
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v = pluginVerdict(a, k->name, CheckClass::kGlobalOob);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, oob::kVerdictSafe);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict for v";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, oob::kVerdictSafe);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   ASSERT_FALSE(findings->array.empty());
   const Json& f = findings->array.front();
@@ -473,7 +479,7 @@ TEST(VerifyBounds, CleanKernelSafeWithScevRangeProof) {
   const std::string range = f.getString("range");
   EXPECT_EQ(f.getString("kind"), "IN_BOUNDS");
   EXPECT_NE(range.find("[0,"), std::string::npos) << "range = " << range;
-  EXPECT_NE(range.find(")"), std::string::npos);
+  EXPECT_NE(range.find(')'), std::string::npos);
   // The bound is the statically known allocation size (65536 bytes).
   EXPECT_EQ(f.getInt("bound"), 65536);
   EXPECT_TRUE(f.getInt("bound") > 0);
@@ -486,10 +492,13 @@ TEST(VerifyBounds, OobKernelMayOobWithRangeAndBound) {
   const KernelInfo* k = findKernel(a, "oob_may_kernel");
   ASSERT_NE(k, nullptr);
   const std::optional<Verdict> v = pluginVerdict(a, k->name, CheckClass::kGlobalOob);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, oob::kVerdictMayOob);
-  EXPECT_GT(v->payload.getInt("may_oob"), 0);
-  const Json* findings = v->payload.find("findings");
+  if (!v.has_value()) {
+    FAIL() << "no verdict for v";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, oob::kVerdictMayOob);
+  EXPECT_GT(v.value().payload.getInt("may_oob"), 0);
+  const Json* findings = v.value().payload.find("findings");
   ASSERT_NE(findings, nullptr);
   ASSERT_FALSE(findings->array.empty());
   const Json& f = findings->array.front();
@@ -509,9 +518,12 @@ TEST(VerifyBounds, SmemOverflowPair) {
   ASSERT_NE(bug, nullptr);
   const std::optional<Verdict> vbug =
       pluginVerdict(a, bug->name, CheckClass::kSmemBounds);
-  ASSERT_TRUE(vbug.has_value());
-  EXPECT_EQ(vbug->verdict, oob::kVerdictMayOob);
-  const Json* fbug = vbug->payload.find("findings");
+  if (!vbug.has_value()) {
+    FAIL() << "no verdict for vbug";
+    return;
+  }
+  EXPECT_EQ(vbug.value().verdict, oob::kVerdictMayOob);
+  const Json* fbug = vbug.value().payload.find("findings");
   ASSERT_NE(fbug, nullptr);
   ASSERT_FALSE(fbug->array.empty());
   EXPECT_EQ(fbug->array.front().getInt("bound"), 256);  // s[64] = 256 bytes
@@ -520,8 +532,11 @@ TEST(VerifyBounds, SmemOverflowPair) {
   ASSERT_NE(clean, nullptr);
   const std::optional<Verdict> vclean =
       pluginVerdict(a, clean->name, CheckClass::kSmemBounds);
-  ASSERT_TRUE(vclean.has_value());
-  EXPECT_EQ(vclean->verdict, oob::kVerdictSafe);
+  if (!vclean.has_value()) {
+    FAIL() << "no verdict for vclean";
+    return;
+  }
+  EXPECT_EQ(vclean.value().verdict, oob::kVerdictSafe);
 }
 
 // 4. Dynamic smem (extern __shared__): the bound comes from the launch-site
@@ -533,9 +548,12 @@ TEST(VerifyBounds, DynamicSmemLaunchParamHandling) {
   ASSERT_NE(safe, nullptr);
   const std::optional<Verdict> vsafe =
       pluginVerdict(a, safe->name, CheckClass::kSmemBounds);
-  ASSERT_TRUE(vsafe.has_value());
-  EXPECT_EQ(vsafe->verdict, oob::kVerdictSafe);
-  const Json* fsafe = vsafe->payload.find("findings");
+  if (!vsafe.has_value()) {
+    FAIL() << "no verdict for vsafe";
+    return;
+  }
+  EXPECT_EQ(vsafe.value().verdict, oob::kVerdictSafe);
+  const Json* fsafe = vsafe.value().payload.find("findings");
   ASSERT_NE(fsafe, nullptr);
   ASSERT_FALSE(fsafe->array.empty());
   // <<<1, 64, 256, 0>>>: 256 bytes of dynamic smem bound the access.
@@ -545,9 +563,12 @@ TEST(VerifyBounds, DynamicSmemLaunchParamHandling) {
   ASSERT_NE(bug, nullptr);
   const std::optional<Verdict> vbug =
       pluginVerdict(a, bug->name, CheckClass::kSmemBounds);
-  ASSERT_TRUE(vbug.has_value());
-  EXPECT_EQ(vbug->verdict, oob::kVerdictMayOob);
-  const Json* fbug = vbug->payload.find("findings");
+  if (!vbug.has_value()) {
+    FAIL() << "no verdict for vbug";
+    return;
+  }
+  EXPECT_EQ(vbug.value().verdict, oob::kVerdictMayOob);
+  const Json* fbug = vbug.value().payload.find("findings");
   ASSERT_NE(fbug, nullptr);
   ASSERT_FALSE(fbug->array.empty());
   EXPECT_EQ(fbug->array.front().getInt("bound"), 256);
@@ -564,13 +585,16 @@ TEST(VerifyBounds, DeviceOnlyDegradesToSymbolicDims) {
   ASSERT_NE(k, nullptr);
   ASSERT_EQ(k->config.tier, LaunchTier::Symbolic);
   const std::optional<Verdict> v = pluginVerdict(a, k->name, CheckClass::kGlobalOob);
-  ASSERT_TRUE(v.has_value());
-  EXPECT_EQ(v->verdict, oob::kVerdictSymbolicDims);
-  EXPECT_NE(v->verdict, oob::kVerdictSafe);
+  if (!v.has_value()) {
+    FAIL() << "no verdict for v";
+    return;
+  }
+  EXPECT_EQ(v.value().verdict, oob::kVerdictSymbolicDims);
+  EXPECT_NE(v.value().verdict, oob::kVerdictSafe);
   std::cout << "device-only degraded verdict: "
-            << v->payload.getString("verdict") << " (check "
-            << v->payload.getInt("check") << ", kernel "
-            << v->payload.getString("kernel") << ")\n";
+            << v.value().payload.getString("verdict") << " (check "
+            << v.value().payload.getInt("check") << ", kernel "
+            << v.value().payload.getString("kernel") << ")\n";
 }
 
 // The plugin is registered and dispatched for both check classes.

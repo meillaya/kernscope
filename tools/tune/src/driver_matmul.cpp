@@ -119,7 +119,7 @@ struct MatmulTraits {
   static ConfigVerdict validate(const Config &c, const Problem &p) {
     return validate_config(c, p);
   }
-  static std::int64_t smem_bytes(const Config &c, const Problem &) {
+  static std::int64_t smem_bytes(const Config &c, const Problem & /*unused*/) {
     return kernscope::tune::smem_bytes(c);
   }
   static LaunchGeometry geometry(const Config &c, const Problem &p) {
@@ -137,9 +137,9 @@ struct MatmulTraits {
   // Fragment accumulator regs + the generator's 32-register overhead (the
   // same budget validate_config enforces; occupancy uses it as the VGPR
   // estimate).
-  static int estimated_regs(const Config &c, const Problem &) {
+  static int estimated_regs(const Config &c, const Problem & /*unused*/) {
     const int threads = 32 * c.warps;
-    return c.tile_m * c.tile_n / threads + 32;
+    return (c.tile_m * c.tile_n / threads) + 32;
   }
   static db::json::Value config_json(const Config &c) {
     return db::json::object(

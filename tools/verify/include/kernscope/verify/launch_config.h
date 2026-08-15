@@ -42,7 +42,7 @@ struct Dim3 {
   std::string render() const;
 };
 
-enum class LaunchTier {
+enum class LaunchTier : std::uint8_t {
   Exact,      ///< (a) constant dims at the launch site — exact ranges.
   UpperBound, ///< (b) nvvm.maxntid / __launch_bounds__ — sound upper bound.
   Symbolic,   ///< (c) runtime dims — degraded verdict + runtime check.

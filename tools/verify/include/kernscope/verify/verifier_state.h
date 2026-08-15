@@ -57,7 +57,7 @@ struct VerifierOptions {
 };
 
 /// Per-intrinsic range lane for thread/block coordinate intrinsics.
-enum class Lane {
+enum class Lane : std::uint8_t {
   ThreadX, ThreadY, ThreadZ,
   BlockDimX, BlockDimY, BlockDimZ,
   BlockX, BlockY, BlockZ,
@@ -129,7 +129,7 @@ struct VerifierContext {
   /// when neither can bound it (caller emits its own degraded verdict /
   /// may-analysis finding). `v` must be defined in the kernel (or be a
   /// constant).
-  std::optional<llvm::ConstantRange> queryRange(llvm::Value* v);
+  std::optional<llvm::ConstantRange> queryRange(llvm::Value* v) const;
 
   /// ScalarEvolution for the kernel's function (cached; created on first
   /// use). May be null only if analysis construction failed (never in
@@ -148,7 +148,7 @@ class VerifierState {
   /// Builds the state from an already-ingested module. The LLVMContext must
   /// outlive the module (both shared; IngestionResult keeps them together).
   VerifierState(std::shared_ptr<llvm::Module> module,
-                std::shared_ptr<llvm::LLVMContext> context,
+                const std::shared_ptr<llvm::LLVMContext>& context,
                 VerifierOptions options);
   ~VerifierState();
 

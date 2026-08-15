@@ -68,11 +68,11 @@ std::int64_t smem_bytes(const FlashAttentionConfig &cfg,
   const int pitch = d_pitch(cfg, prob);
   // Q tile + stages-double-buffered K/V tiles + S tile (+1 pad) + m/l arrays,
   // all fp32 (4 bytes/element). See the header for the documented formula.
-  const std::int64_t elements = static_cast<std::int64_t>(cfg.tile_m) * pitch +
-                                2 * static_cast<std::int64_t>(cfg.stages) *
-                                    cfg.tile_n * pitch +
-                                static_cast<std::int64_t>(cfg.tile_m) * (cfg.tile_n + 1) +
-                                2 * static_cast<std::int64_t>(cfg.tile_m);
+  const std::int64_t elements = (static_cast<std::int64_t>(cfg.tile_m) * pitch) +
+                                (2 * static_cast<std::int64_t>(cfg.stages) *
+                                    cfg.tile_n * pitch) +
+                                (static_cast<std::int64_t>(cfg.tile_m) * (cfg.tile_n + 1)) +
+                                (2 * static_cast<std::int64_t>(cfg.tile_m));
   return 4 * elements;
 }
 

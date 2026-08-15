@@ -131,7 +131,7 @@ uint64_t deriveTileSize(const kernscope::ArchInfo &A, uint64_t ElemBytes) {
 // Decline bookkeeping (mirrors the todo-40 promote annotation contract).
 // ---------------------------------------------------------------------------
 
-enum class DeclineReason {
+enum class DeclineReason : std::uint8_t {
   kStructure,      // not innermost/simplify-form/single-block (silent)
   kNoConstantTrip, // trip count not a compile-time constant (SCEV)
   kNoArch,         // no arch attribute/flag -> cannot derive a tile size
@@ -385,7 +385,7 @@ void tileOneLoop(Function &F, const TilePlan &Plan) {
       CheckB.CreatePHI(Plan.IVTy, 2, Plan.IV->getName() + ".t");
   TileIV->addIncoming(ConstantInt::get(Plan.IVTy, 0), OuterPre);
   SmallVector<std::pair<PHINode *, PHINode *>, 4> OuterCarried;
-  for (auto &[P, Vals] : Plan.Carried) {
+  for (const auto &[P, Vals] : Plan.Carried) {
     PHINode *Outer = CheckB.CreatePHI(P->getType(), 2, P->getName() + ".t");
     Outer->addIncoming(Vals.first, OuterPre);
     OuterCarried.push_back({P, Outer});
@@ -424,7 +424,7 @@ void tileOneLoop(Function &F, const TilePlan &Plan) {
   // Tile latch: LCSSA phi per carried value + next tile index.
   IRBuilder<> LatchB(TileLatch);
   SmallVector<PHINode *, 4> LcssaPhis;
-  for (auto &[P, Vals] : Plan.Carried) {
+  for (const auto &[P, Vals] : Plan.Carried) {
     PHINode *LC =
         LatchB.CreatePHI(P->getType(), 1, P->getName() + ".lcssa");
     LC->addIncoming(Vals.second, LoopBlock);
@@ -452,7 +452,7 @@ void tileOneLoop(Function &F, const TilePlan &Plan) {
         RemCheckB.CreatePHI(Plan.IVTy, 2, Plan.IV->getName() + ".r");
     RemIV->addIncoming(ConstantInt::get(Plan.IVTy, 0), RemPre);
     SmallVector<PHINode *, 4> RemCarried;
-    for (auto &[P, Vals] : Plan.Carried) {
+    for (const auto &[P, Vals] : Plan.Carried) {
       PHINode *RP = RemCheckB.CreatePHI(P->getType(), 2,
                                         P->getName() + ".rem");
       RP->addIncoming(Vals.first, RemPre);  // continues the outer carrier
@@ -574,6 +574,7 @@ bool bodyHasSimpleMemoryOnly(Loop *L, DeclineReason &Reason) {
 
 }  // namespace
 
+namespace {
 TileStats tileFunction(Function &F, ScalarEvolution &SE, LoopInfo &LI,
                        LoopAccessInfoManager &LAIM,
                        const std::optional<kernscope::ArchInfo> &Arch,
@@ -672,10 +673,12 @@ TileStats tileFunction(Function &F, ScalarEvolution &SE, LoopInfo &LI,
   }
   return Stats;
 }
+}  // namespace
 
 }  // namespace pass
 }  // namespace kernscope
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)  // LLVM pass-framework run() entry point
 PreservedAnalyses kernscope::pass::LoopTilingPass::run(
     Function &F, FunctionAnalysisManager &FAM) {
   ScalarEvolution &SE = FAM.getResult<ScalarEvolutionAnalysis>(F);
@@ -700,7 +703,7 @@ PreservedAnalyses kernscope::pass::LoopTilingPass::run(
 namespace {
 
 bool parseTileName(StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
+                   ArrayRef<PassBuilder::PipelineElement> /*unused*/) {
   if (Name == "kernscope-tile") {
     MPM.addPass(createModuleToFunctionPassAdaptor(
         kernscope::pass::LoopTilingPass()));
@@ -714,6 +717,7 @@ bool parseTileName(StringRef Name, ModulePassManager &MPM,
 // Self-registration (todo-36 contract — register_pass.h). Textual name +
 // pipeline-start EP; NO peephole EP (a loop restructure re-run after every
 // InstCombine would be useless — documented in tile.h).
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_PASS_CALLBACK([](PassBuilder &PB) {
   PB.registerPipelineParsingCallback(parseTileName);
 

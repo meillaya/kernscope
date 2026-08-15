@@ -52,7 +52,7 @@ inline constexpr int kBudgetExceeded = 102;
 /// Used by Diagnostic::render and todo 35's verdict JSON.
 std::string check_class_name(int class_id);
 
-enum class Severity { Info, Warning, Error };
+enum class Severity : std::uint8_t { Info, Warning, Error };
 
 const char* severity_name(Severity s);
 

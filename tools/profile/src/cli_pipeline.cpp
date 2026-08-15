@@ -153,6 +153,7 @@ std::optional<std::string> resolve_target(const std::string &target,
 // it with default args, so the CLI seeds that input (M=1024 x N=128,
 // deterministic bf16 values — profiling never depends on the payload).
 
+namespace {
 void SeedLayernormInput(const std::filesystem::path &scratch_dir) {
   constexpr std::int32_t kM = 1024;
   constexpr std::int32_t kN = 128;
@@ -163,7 +164,8 @@ void SeedLayernormInput(const std::filesystem::path &scratch_dir) {
   if (!f) {
     return;
   }
-  const std::int32_t m = kM, n = kN;
+  const std::int32_t m = kM;
+  const std::int32_t n = kN;
   f.write(reinterpret_cast<const char *>(&m), sizeof(m));
   f.write(reinterpret_cast<const char *>(&n), sizeof(n));
   std::vector<std::uint16_t> buf;
@@ -183,6 +185,7 @@ void SeedLayernormInput(const std::filesystem::path &scratch_dir) {
   f.write(reinterpret_cast<const char *>(vec.data()),
           static_cast<std::streamsize>(vec.size() * sizeof(std::uint16_t)));
 }
+}  // namespace
 
 //===--- trace runner ------------------------------------------------------------===//
 
@@ -334,7 +337,7 @@ void ParseVec3(const db::json::Value *v, std::int64_t *x, std::int64_t *y,
   }
   const auto &arr = v->as_array();
   if (!arr.empty()) {
-    *x = AsInt(&arr[0], 1);
+    *x = AsInt(arr.data(), 1);
   }
   if (arr.size() > 1) {
     *y = AsInt(&arr[1], 1);

@@ -111,7 +111,7 @@ class ThreadDivergenceTTIImpl : public llvm::TargetTransformInfoImplBase {
   explicit ThreadDivergenceTTIImpl(const llvm::DataLayout& DL)
       : llvm::TargetTransformInfoImplBase(DL) {}
 
-  bool hasBranchDivergence(const llvm::Function*) const override {
+  bool hasBranchDivergence(const llvm::Function* /*F*/) const override {
     return true;
   }
 
@@ -183,6 +183,7 @@ class ThreadDivergenceTTIImpl : public llvm::TargetTransformInfoImplBase {
 /// 21 / CUDA 12.6 emits llvm.nvvm.barrier.cta.sync.aligned.all); HIP
 /// __syncthreads() lowers to llvm.amdgcn.s.barrier. The cluster barriers
 /// (llvm.nvvm.barrier.cluster.*) are not block barriers and are excluded.
+namespace {
 bool isBarrierCall(const llvm::CallInst& CI) {
   const llvm::Function* CF = CI.getCalledFunction();
   if (CF == nullptr || !CF->isIntrinsic()) {
@@ -200,10 +201,12 @@ bool isBarrierCall(const llvm::CallInst& CI) {
   }
   return false;
 }
+}  // namespace
 
 /// Runs UniformityInfo (LLVM 21: GenericUniformityInfo<SSAContext>, the
 /// successor of DivergenceAnalysis + ConvergenceRegions) on `F` with the
 /// thread-dependence roots seeded through ThreadDivergenceTTIImpl.
+namespace {
 llvm::UniformityInfo computeUniformity(llvm::Function& F) {
   llvm::FunctionAnalysisManager FAM;
   FAM.registerPass([] { return llvm::PassInstrumentationAnalysis(); });
@@ -219,7 +222,9 @@ llvm::UniformityInfo computeUniformity(llvm::Function& F) {
   FAM.registerPass([] { return llvm::UniformityInfoAnalysis(); });
   return std::move(FAM.getResult<llvm::UniformityInfoAnalysis>(F));
 }
+}  // namespace
 
+namespace {
 SourceLoc sourceLocOf(const llvm::Instruction& I) {
   SourceLoc loc;
   if (const llvm::DebugLoc& dl = I.getDebugLoc()) {
@@ -229,6 +234,7 @@ SourceLoc sourceLocOf(const llvm::Instruction& I) {
   }
   return loc;
 }
+}  // namespace
 
 /// One barrier call site inside the kernel under analysis.
 struct BarrierSite {
@@ -295,6 +301,7 @@ struct CountState {
 /// conditional branch?  (branch strictly dominates bb; the reconvergence
 /// point — the branch's immediate post-dominator — does not dominate bb).
 /// Returns the diverging branch's block, or nullptr when bb is uniform.
+namespace {
 const llvm::BasicBlock* inDivergentRegion(
     const llvm::BasicBlock& bb, const llvm::DominatorTree& DT,
     const llvm::PostDominatorTree& PDT,
@@ -321,6 +328,7 @@ const llvm::BasicBlock* inDivergentRegion(
   }
   return nullptr;
 }
+}  // namespace
 
 /// The plugin: id "barrier", classes {3, 6}.
 class BarrierCheck : public CheckPlugin {
@@ -557,6 +565,7 @@ std::vector<Diagnostic> BarrierCheck::run(VerifierContext& ctx) const {
 
 // REGISTER_CHECK token-pastes the class name, so it must be expanded in the
 // scope where BarrierCheck is unqualified.
+// NOLINTNEXTLINE(misc-use-anonymous-namespace)  // macro-expanded plugin registry entry (must be namespace-scope static)
 REGISTER_CHECK(BarrierCheck);
 
 }  // namespace barrier

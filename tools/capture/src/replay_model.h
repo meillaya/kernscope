@@ -37,7 +37,7 @@ namespace kernscope {
 
 //===--- the replay plan ----------------------------------------------------===//
 
-enum class BufKind { kInput, kOutput, kSynthetic };
+enum class BufKind : std::uint8_t { kInput, kOutput, kSynthetic };
 
 struct DevBuffer {
   std::string id;          // "b0001" / "input-buffer-1.bin" / ptr hex

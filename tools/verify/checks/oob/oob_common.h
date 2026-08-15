@@ -42,7 +42,7 @@ inline constexpr const char* kVerdictSymbolicDims = "SYMBOLIC_DIMS";
 
 /// One memory-access finding (per load/store the plugin inspects).
 struct AccessFinding {
-  enum class Kind {
+  enum class Kind : std::uint8_t {
     InBounds,      ///< proven inside a statically sized allocation.
     MayOob,        ///< proven (or conservatively possible) outside it.
     Unbounded,     ///< index range unbounded -> cannot prove (may-analysis).
@@ -64,7 +64,7 @@ struct AccessFinding {
 
 /// Classification + size of the allocation a pointer expression is rooted in.
 struct AllocationInfo {
-  enum class Root {
+  enum class Root : std::uint8_t {
     Unknown,  ///< not recognized (call result, addrspacecast, ...).
     DeviceGlobal,   ///< addrspace(1) __device__ global.
     SharedArray,    ///< addrspace(3) __shared__ array.

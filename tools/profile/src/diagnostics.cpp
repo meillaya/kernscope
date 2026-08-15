@@ -289,7 +289,7 @@ std::vector<HotKernelEntry> rank_hot_kernels(
     if (sorted.size() % 2 == 1) {
       e.median_ns = sorted[sorted.size() / 2];
     } else if (!sorted.empty()) {
-      e.median_ns = (sorted[sorted.size() / 2 - 1] +
+      e.median_ns = (sorted[(sorted.size() / 2) - 1] +
                      sorted[sorted.size() / 2]) /
                     2;
     }

@@ -214,7 +214,7 @@ double pass_vector_width(const std::string &reports) {
     return 1.0;
   const double loads =
       std::atof(reports.substr(at + 10, loads_end - at - 10).c_str());
-  const std::size_t chains_at = reports.find("(", loads_end);
+  const std::size_t chains_at = reports.find('(', loads_end);
   const std::size_t chains_end = chains_at == std::string::npos
                                      ? std::string::npos
                                      : reports.find(" chains", chains_at);
@@ -292,7 +292,8 @@ Value build_delta(const std::string &kernel, const Value &before_doc,
   const double smem_a = ptx_smem_bytes(ptx_after);
   const double vw_before = 1.0;  // no vectorization before the pipeline
   const double vw_after = pass_vector_width(pass_reports);
-  double unc_b = -1, unc_a = -1;
+  double unc_b = -1;
+  double unc_a = -1;
   parse_coalesce_counts(coalesce_before, &unc_b);
   parse_coalesce_counts(coalesce_after, &unc_a);
 
@@ -338,6 +339,7 @@ Value build_delta(const std::string &kernel, const Value &before_doc,
   if (unc_a >= 0 && unc_b >= 0)
     delta_members.emplace_back("uncoalesced_delta", Value(unc_a - unc_b));
   std::vector<Value> improved_arr;
+  improved_arr.reserve(improved.size());
   for (const std::string &i : improved)
     improved_arr.emplace_back(i);
   delta_members.emplace_back("improved_metrics", Value(std::move(improved_arr)));

@@ -39,7 +39,7 @@
 // The process environment (POSIX): declared at GLOBAL scope so it keeps
 // external linkage (an `extern` inside an anonymous namespace would be an
 // internal-linkage undefined symbol under -Werror).
-extern char **environ;
+
 
 namespace {
 
@@ -187,7 +187,8 @@ int RunRecord(const char *argv0, const RecordArgs &args) {
   }
 
   std::string preload;
-  std::string bundle_var, blob_var;
+  std::string bundle_var;
+  std::string blob_var;
   if (vendor == "amd") {
     preload = dir + "/libkernscope_capture_hip.so";
     bundle_var = "KERNSCOPE_HIP_BUNDLE=" + args.bundle;
@@ -530,9 +531,13 @@ int main(int argc, char **argv) {
   if (cmd == "replay" || cmd == "bench") {
     kernscope::CaptureBundleOptions common;
     std::vector<std::string> ref_files;
-    std::string dump_dir, profile_out, mode, db_path = "capture-replay.jsonl";
+    std::string dump_dir;
+    std::string profile_out;
+    std::string mode;
+    std::string db_path = "capture-replay.jsonl";
     int reps = 10;
-    bool l2_flush = true, validate = true;
+    bool l2_flush = true;
+    bool validate = true;
     bool have_bundle = false;
     for (int i = 2; i < argc; ++i) {
       const std::string a = argv[i];
@@ -625,7 +630,10 @@ int main(int argc, char **argv) {
   }
 
   if (cmd == "db-query") {
-    std::string path, arch, family, shape;
+    std::string path;
+    std::string arch;
+    std::string family;
+    std::string shape;
     bool have_path = false;
     for (int i = 2; i < argc; ++i) {
       const std::string a = argv[i];

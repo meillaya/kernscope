@@ -45,7 +45,9 @@ std::vector<float> Bf16ToFp32(std::span<const std::uint8_t> bytes) {
 }
 
 double Cosine(const std::vector<float> &x, const std::vector<float> &y) {
-  double dot = 0.0, nx = 0.0, ny = 0.0;
+  double dot = 0.0;
+  double nx = 0.0;
+  double ny = 0.0;
   for (std::size_t i = 0; i < x.size(); ++i) {
     dot += static_cast<double>(x[i]) * y[i];
     nx += static_cast<double>(x[i]) * x[i];
@@ -68,14 +70,17 @@ double MaxRelErr(const std::vector<float> &x, const std::vector<float> &y) {
 }
 
 double Pcc(const std::vector<float> &x, const std::vector<float> &y) {
-  double mx = 0.0, my = 0.0;
+  double mx = 0.0;
+  double my = 0.0;
   for (std::size_t i = 0; i < x.size(); ++i) {
     mx += x[i];
     my += y[i];
   }
   mx /= static_cast<double>(x.size());
   my /= static_cast<double>(y.size());
-  double cov = 0.0, vx = 0.0, vy = 0.0;
+  double cov = 0.0;
+  double vx = 0.0;
+  double vy = 0.0;
   for (std::size_t i = 0; i < x.size(); ++i) {
     const double xc = static_cast<double>(x[i]) - mx;
     const double yc = static_cast<double>(y[i]) - my;

@@ -64,6 +64,7 @@ kernscope::db::json::Value kernel_json(const kernscope::PtxKernel &k) {
                        kernscope::db::json::Value(static_cast<int>(k.param_access_count)));
 
   std::vector<kernscope::db::json::Value::Member> widths;
+  widths.reserve(k.mem_width_counts.size());
   for (const auto &[bits, count] : k.mem_width_counts) {
     widths.emplace_back(std::to_string(bits),
                         kernscope::db::json::Value(static_cast<int>(count)));
@@ -72,6 +73,7 @@ kernscope::db::json::Value kernel_json(const kernscope::PtxKernel &k) {
                        kernscope::db::json::Value(std::move(widths)));
 
   std::vector<kernscope::db::json::Value::Member> classes;
+  classes.reserve(k.class_counts.size());
   for (const auto &[cls, count] : k.class_counts) {
     classes.emplace_back(
         kernscope::instruction_class_name(cls),
@@ -81,6 +83,7 @@ kernscope::db::json::Value kernel_json(const kernscope::PtxKernel &k) {
                        kernscope::db::json::Value(std::move(classes)));
 
   std::vector<kernscope::db::json::Value> tensors;
+  tensors.reserve(k.tensor_ops.size());
   for (const auto &op : k.tensor_ops) tensors.push_back(tensor_op_json(op));
   members.emplace_back("tensor_ops",
                        kernscope::db::json::Value(std::move(tensors)));

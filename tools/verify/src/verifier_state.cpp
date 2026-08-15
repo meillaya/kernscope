@@ -223,7 +223,7 @@ std::vector<ConstantRange> compute_intrinsic_ranges(const LaunchConfig& cfg) {
 // Range of an operand as seen by the lattice (constants handled directly).
 std::optional<ConstantRange> lattice_range(const Lattice& lat, const Value* v,
                                            unsigned width) {
-  if (auto* ci = llvm::dyn_cast<ConstantInt>(v)) {
+  if (const auto* ci = llvm::dyn_cast<ConstantInt>(v)) {
     return ConstantRange(ci->getValue());
   }
   auto it = lat.ranges.find(v);
@@ -380,7 +380,7 @@ void propagate(Lattice& lat, Function& f, KernelInfo& ki, DiagnosticEngine& engi
       if (!engine.budget().acquire(ki.name, 1)) {
         return;  // budget latched; caller emits the diagnostic
       }
-      if (lat.ranges.count(i)) {
+      if (lat.ranges.contains(i)) {
         continue;  // seeded intrinsic (fixed)
       }
       auto r = transfer(*i, lat);
@@ -414,7 +414,7 @@ void propagate(Lattice& lat, Function& f, KernelInfo& ki, DiagnosticEngine& engi
 // carries no debug info, e.g. compiled without -gline-tables-only).
 SourceLoc source_loc_of(const Instruction& i) {
   SourceLoc loc;
-  if (const llvm::DebugLoc dl = i.getDebugLoc()) {
+  if (const llvm::DebugLoc& dl = i.getDebugLoc()) {
     loc.file = dl->getFilename().str();
     loc.line = dl->getLine();
     loc.col = dl->getColumn();
@@ -547,7 +547,7 @@ std::optional<ConstantRange> query_range_impl(const VerifierState& state,
 // --------------------------------------------------------------------------
 
 VerifierState::VerifierState(std::shared_ptr<Module> module,
-                             std::shared_ptr<llvm::LLVMContext> context,
+                             const std::shared_ptr<llvm::LLVMContext>& context,
                              VerifierOptions options)
     : impl_(new Impl),
       module_(std::move(module)),
@@ -700,7 +700,7 @@ std::string VerifierState::dumpState() const {
 // VerifierContext
 // --------------------------------------------------------------------------
 
-std::optional<ConstantRange> VerifierContext::queryRange(Value* v) {
+std::optional<ConstantRange> VerifierContext::queryRange(Value* v) const {
   return query_range_impl(*state, kernel, v, kernel.function);
 }
 

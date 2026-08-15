@@ -109,5 +109,7 @@ class PassRegistrar {
 /// No shared-file edits needed — this is the registry contract todos 37-41
 /// rely on.
 #define REGISTER_PASS_CALLBACK(CallbackLambda)                                \
+  /* NOLINTNEXTLINE(misc-use-anonymous-namespace) - macro-expanded registry   \
+     entry (each expansion must register at namespace scope) */               \
   static ::kernscope::pass::PassRegistrar kernscope_pass_register_##__COUNTER__(\
       CallbackLambda)
