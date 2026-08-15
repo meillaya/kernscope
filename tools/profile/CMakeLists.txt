@@ -62,3 +62,48 @@ else()
   gtest_discover_tests(profile-cupti-test TEST_PREFIX "profile_tracer:"
     PROPERTIES LABELS "no-gpu")
 endif()
+
+# --- AMD tracer (live gfx1101) -------------------------------------------------
+# The rocprofiler-sdk TOOL .so + the live acceptance against the todo-5
+# layernorm_fused fixture. Gated on the SDK dev tree (same gate as
+# libs/capture-hip, todo 45).
+find_program(HIPCONFIG hipconfig REQUIRED)
+execute_process(COMMAND ${HIPCONFIG} --includedir
+  OUTPUT_VARIABLE HIP_INCLUDE_DIR
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT DEFINED ENV{ROCPROF_SDK_DEV} OR
+   NOT EXISTS "$ENV{ROCPROF_SDK_DEV}/include/rocprofiler-sdk/rocprofiler.h" OR
+   NOT DEFINED ENV{ROCPROF_SDK_OUT} OR
+   NOT EXISTS "$ENV{ROCPROF_SDK_OUT}/lib/librocprofiler-sdk.so")
+  message(STATUS "tools/profile: AMD tracer DISABLED (rocprofiler-sdk not "
+                 "found; set ROCPROF_SDK_DEV/ROCPROF_SDK_OUT, build inside "
+                 "`devenv shell`)")
+else()
+  add_library(kernscope_profile_hip SHARED src/amd_tracer.cpp)
+  target_include_directories(kernscope_profile_hip PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_include_directories(kernscope_profile_hip SYSTEM PRIVATE
+    "${HIP_INCLUDE_DIR}" "$ENV{ROCPROF_SDK_DEV}/include")
+  target_compile_definitions(kernscope_profile_hip PRIVATE __HIP_PLATFORM_AMD__)
+  target_link_libraries(kernscope_profile_hip PRIVATE
+    "$ENV{ROCPROF_SDK_OUT}/lib/librocprofiler-sdk.so")
+  set_target_properties(kernscope_profile_hip PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+  add_library(kernscope::profile_hip ALIAS kernscope_profile_hip)
+
+  # The live check: build the layernorm app (hipcc gfx1101), run it under
+  # LD_PRELOAD of the tool, parse the JSONL profile output and assert >= 1
+  # kernel record with duration_ns > 0, grid/workgroup matching the launch
+  # (M=1024 blocks x 128 threads) and the correlation_id linking the kernel
+  # dispatch record to the hipLaunchKernel HIP-API record.
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME profile_tracer_amd
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/profile_amd_check.py
+            ${CMAKE_BINARY_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(profile_tracer_amd PROPERTIES LABELS "gpu-amd"
+    TIMEOUT 600)
+endif()
