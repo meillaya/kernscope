@@ -530,13 +530,13 @@ Your next move: start work, or run the dual high-accuracy review first. Full exe
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete. Every F-item below is AGENT-EXECUTED with machine-checkable acceptance (review round-1 Oracle MEDIUM#6 fix - no human performs QA; the owner's only touchpoint is the final approval gate).
-- [ ] F1. Plan compliance audit
+- [x] F1. Plan compliance audit
   Acceptance (agent-executed): re-run every todo's acceptance command against the committed tree (scripted loop over the 57 acceptance lines extracted from this plan; all exit 0); audit dependency matrix vs every todo's Blocked by/Blocks lines programmatically (transpose check: for each "X Blocked by Y", matrix row Y Blocks contains X); assert `git log --oneline | wc -l` >= 57 implementation commits; assert all evidence files exist under .omo/evidence/ (one happy + one failure per todo). Verdict APPROVE iff all checks exit 0.
-- [ ] F2. Code quality review
+- [x] F2. Code quality review
   Acceptance (agent-executed): full rebuild with -Wall -Wextra (warnings-as-errors) exit 0; clang-tidy run over libs/ + tools/ with the committed .clang-tidy config -> zero errors; `git grep -n -E "TODO|FIXME|XXX" -- libs/ tools/` returns nothing; no `std::cout`-style debug leftovers in library code (grep-asserted); all public headers carry doc comments (script-checked). Verdict APPROVE iff all checks exit 0.
-- [ ] F3. Real adversarial QA (agent-executed defect seeding - NO human)
+- [x] F3. Real adversarial QA (agent-executed defect seeding - NO human)
   Acceptance (agent-executed): seed exactly six known defects, one per module, each in its own git stash/branch so the tree stays clean: (analyze) wrong sm_86 warp-max constant in libs/arch; (tune) broken validity rule admitting an over-budget smem config; (verify) flip one corpus expected verdict in the manifest; (capture) truncate a bundle blob by 1 byte; (pass) disable the padding pass's budget guard; (profile) misparse registersPerThread (off-by-one field). Assert EACH seeded defect is caught by its suite (the corresponding ctest/lit run FAILS with the expected diagnostic); then drop all seeds and assert the full suite is green again. Verdict APPROVE iff 6/6 defects caught and post-cleanup suite green.
-- [ ] F4. Scope fidelity + Must-NOT-have guard re-run
+- [x] F4. Scope fidelity + Must-NOT-have guard re-run
   Acceptance (agent-executed): re-run all Must-NOT-have guards: vendored-header file guard (todo 4) empty; `git grep -i "nvbit\|nvperf\|perworks" -- ':!.omo'` in code returns nothing; `git grep -i "roctracer" -- ':!.omo'` in code returns nothing; `git grep "cudaPackages_13" -- ':!.omo'` returns nothing; fixtures du <= 64MB; LICENSE + THIRD-PARTY.md + docs/research/owner-examples.md exist; feature-completeness script asserts: 10 analyses enumerated in kernscope-analyze --help/docs, 6 kernel families in kernscope-tune, 8 check classes in kernscope-verify corpus manifest, 7 passes registered in the plugin, 7 profiler features in kernscope-profile output schema. Verdict APPROVE iff all guards pass. (Each `-- ':!.omo'` exclusion follows the repo's own content-guard precedent in scripts/ci.sh - the orchestration docs there are excluded for the same reason.)
 
 ## Commit strategy

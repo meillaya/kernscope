@@ -230,6 +230,9 @@ Packet Filter) verifier.
 - `docs/research/`: cited research briefs (analyzer, verifier, autotuner,
   profiler, memory passes, capture/replay, RDNA3 constants, owner examples).
 - `docs/schema/`: `report.schema.json`, `capture-bundle.schema.json`.
+- `reports/research-report/`: 18-page research report (report.tex + compiled
+  report.pdf) with TikZ diagrams and 70+ references, covering the six-tool
+  loop, dual-path hardware strategy, and honesty/provenance design.
 
 ## Testing & CI
 
