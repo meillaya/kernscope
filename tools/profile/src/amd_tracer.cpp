@@ -1,4 +1,4 @@
-//===- amd_tracer.cpp - rocprofiler-sdk buffer-tracing tool (todo 49) ----*- C++ -*-===//
+//===- amd_tracer.cpp - rocprofiler-sdk buffer-tracing tool (todo 49/50) -*- C++ -*-===//
 //
 // kernscope tools/profile (C6 profiler track).
 //
@@ -21,9 +21,18 @@
 //      the acceptance asserts the layernorm kernel record links to the
 //      hipLaunchKernel API record through the shared correlation_id.
 //   3. CALLBACK TRACING CODE_OBJECT (kernel-symbol register): kernel_id ->
-//      kernel_name map (buffer-tracing dispatch records carry only the
-//      kernel_id; the name comes from the loaded code object's symbol table —
-//      the same join the todo-45 tool performs).
+//      kernel name AND the STATIC RESOURCE FACTS the code-object service
+//      reports per symbol (todo 50): sgpr_count, arch_vgpr_count,
+//      accum_vgpr_count, group_segment_size (static LDS), private_segment_size
+//      (scratch/work-item) and kernel_address.
+//
+// Enrichment (todo 50): every kernel record is enriched by the
+// vendor-neutral kernscope::profile::enrich_kernel() layer — theoretical
+// occupancy + limiter computed by LIBS/OCCUPANCY (todo 11) fed with
+// registersPerThread (= the code-object arch_vgpr_count), LDS bytes and the
+// block dims from the dispatch — and emitted in the enriched JSONL shape
+// (the todo-49 fields preserved field-for-field plus occupancy/limiter/
+// vgpr/sgpr/accum_vgpr/lds/scratch/kernel_address/ptx_available).
 //
 // Output: one JSONL line per record to KERNSCOPE_PROFILE_OUT (default:
 // stdout) in the shared record shape of the profile track (vendor "amd").
@@ -36,7 +45,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "kernscope/profile/kernel_record.h" // vendor-neutral model + JSONL
+#include "kernscope/profile/enrich.h"     // vendor-neutral model + enrichment
+#include "kernscope/profile/kernel_record.h"
 
 #include <rocprofiler-sdk/buffer.h>
 #include <rocprofiler-sdk/buffer_tracing.h>
@@ -81,10 +91,24 @@ void WriteJsonl(const char *line) {
   }
 }
 
-//===--- kernel_id -> name table (code-object kernel-symbol callbacks) ---------===//
+//===--- kernel_id -> code-object facts (kernel-symbol callbacks) ------------===//
+// Todo 50: the code-object service reports, per registered kernel symbol, the
+// STATIC resource facts (sgpr_count/arch_vgpr_count/accum_vgpr_count/
+// group_segment_size/private_segment_size) + kernel_address. The dispatch
+// record carries only the kernel_id, so the resources join here by id.
+
+struct KernelSymbolInfo {
+  std::string name;
+  std::uint32_t sgpr_count = 0;
+  std::uint32_t arch_vgpr_count = 0;
+  std::uint32_t accum_vgpr_count = 0;
+  std::uint32_t group_segment_size = 0;   // static LDS per work-group
+  std::uint32_t private_segment_size = 0; // scratch per work-item
+  std::uint64_t kernel_address = 0;
+};
 
 std::mutex g_kernels_mu;
-std::unordered_map<std::uint64_t, std::string> g_kernels; // kernel_id -> name
+std::unordered_map<std::uint64_t, KernelSymbolInfo> g_kernels;
 
 void CodeObjectCallback(rocprofiler_callback_tracing_record_t record,
                         rocprofiler_user_data_t * /*user_data*/,
@@ -102,9 +126,16 @@ void CodeObjectCallback(rocprofiler_callback_tracing_record_t record,
   if (data == nullptr) {
     return;
   }
-  const char *name = data->kernel_name != nullptr ? data->kernel_name : "";
+  KernelSymbolInfo info;
+  info.name = data->kernel_name != nullptr ? data->kernel_name : "";
+  info.sgpr_count = data->sgpr_count;
+  info.arch_vgpr_count = data->arch_vgpr_count;
+  info.accum_vgpr_count = data->accum_vgpr_count;
+  info.group_segment_size = data->group_segment_size;
+  info.private_segment_size = data->private_segment_size;
+  info.kernel_address = data->kernel_address.handle;
   std::lock_guard<std::mutex> lock(g_kernels_mu);
-  g_kernels[data->kernel_id] = name;
+  g_kernels[data->kernel_id] = std::move(info);
 }
 
 //===--- the buffer callback (SDK worker thread) -------------------------------===//
@@ -135,45 +166,64 @@ void BufferCallback(rocprofiler_context_id_t /*context*/,
       const auto blocks_of = [](std::uint64_t grid, std::uint64_t wg) {
         return wg > 0 ? static_cast<std::int64_t>(grid / wg) : 1;
       };
-      std::string name;
+      KernelSymbolInfo kinfo;
+      bool have_symbol = false;
       {
         std::lock_guard<std::mutex> lock(g_kernels_mu);
         const auto it = g_kernels.find(info.kernel_id);
         if (it != g_kernels.end()) {
-          name = it->second;
+          kinfo = it->second;
+          have_symbol = true;
         }
       }
-      const std::uint64_t duration =
+      // Build the vendor-neutral record (todo 49 model), then enrich it
+      // (todo 50): registersPerThread <- the code-object arch_vgpr_count,
+      // LDS <- dispatch group_segment_size, occupancy <- libs/occupancy.
+      kernscope::profile::KernelRecord rec_model;
+      rec_model.kernel_name = have_symbol ? kinfo.name : "";
+      rec_model.start_ns = rec->start_timestamp;
+      rec_model.end_ns = rec->end_timestamp;
+      rec_model.duration_ns =
           rec->end_timestamp >= rec->start_timestamp
               ? rec->end_timestamp - rec->start_timestamp
               : 0;
-      // correlation_id is rocprofiler_async_correlation_id_t {internal,
-      // ancestor}: `internal` is the API call's correlation id — the join
-      // key linking this dispatch to the HIP API record that enqueued it.
-      char line[1024];
-      const int n = std::snprintf(
-          line, sizeof(line),
-          "{\"vendor\":\"amd\",\"kind\":\"kernel\",\"name\":\"%s\","
-          "\"start_ns\":%" PRIu64 ",\"end_ns\":%" PRIu64
-          ",\"duration_ns\":%" PRIu64 ",\"grid\":[%lld,%lld,%lld],"
-          "\"workgroup\":[%lld,%lld,%lld],\"grid_size\":[%" PRIu64 ",%" PRIu64
-          ",%" PRIu64 "],\"lds_bytes\":%u,\"scratch_bytes\":%u,"
-          "\"correlation_id\":%" PRIu64 ",\"kernel_id\":%" PRIu64
-          ",\"agent_id\":%" PRIu64 ",\"queue_id\":%" PRIu64
-          ",\"dispatch_id\":%" PRIu64 ",\"thread_id\":%" PRIu64 "}",
-          kernscope::profile::json_escape(name).c_str(), rec->start_timestamp,
-          rec->end_timestamp, duration, blocks_of(info.grid_size.x, info.workgroup_size.x),
-          blocks_of(info.grid_size.y, info.workgroup_size.y),
-          blocks_of(info.grid_size.z, info.workgroup_size.z),
-          static_cast<long long>(info.workgroup_size.x),
-          static_cast<long long>(info.workgroup_size.y),
-          static_cast<long long>(info.workgroup_size.z), info.grid_size.x,
-          info.grid_size.y, info.grid_size.z, info.group_segment_size,
-          info.private_segment_size, rec->correlation_id.internal,
-          info.kernel_id, info.agent_id.handle, info.queue_id.handle,
-          info.dispatch_id, rec->thread_id);
-      if (n > 0) {
-        WriteJsonl(line);
+      rec_model.grid_x = blocks_of(info.grid_size.x, info.workgroup_size.x);
+      rec_model.grid_y = blocks_of(info.grid_size.y, info.workgroup_size.y);
+      rec_model.grid_z = blocks_of(info.grid_size.z, info.workgroup_size.z);
+      rec_model.block_x = static_cast<std::int64_t>(info.workgroup_size.x);
+      rec_model.block_y = static_cast<std::int64_t>(info.workgroup_size.y);
+      rec_model.block_z = static_cast<std::int64_t>(info.workgroup_size.z);
+      rec_model.static_shared_bytes =
+          static_cast<std::int32_t>(info.group_segment_size);
+      rec_model.registers_per_thread =
+          static_cast<std::uint16_t>(have_symbol ? kinfo.arch_vgpr_count : 0);
+      rec_model.correlation_id = rec->correlation_id.internal;
+
+      kernscope::profile::EnrichOptions opts;
+      opts.arch_name = "gfx1101"; // the local live target (todo-5 fixture)
+      opts.sgprs_per_thread =
+          static_cast<int>(have_symbol ? kinfo.sgpr_count : 0);
+      kernscope::profile::EnrichedKernel ek =
+          kernscope::profile::enrich_kernel(rec_model, opts);
+      if (have_symbol) {
+        // The code-object service facts (todo 50) ride along in the record.
+        ek.arch_vgpr_count = static_cast<int>(kinfo.arch_vgpr_count);
+        ek.sgpr_count = static_cast<int>(kinfo.sgpr_count);
+        ek.accum_vgpr_count = static_cast<int>(kinfo.accum_vgpr_count);
+        ek.group_segment_bytes = static_cast<int>(kinfo.group_segment_size);
+        ek.private_segment_bytes = static_cast<int>(kinfo.private_segment_size);
+        ek.kernel_address = kinfo.kernel_address;
+      } else {
+        // Degradation: no code-object facts for this kernel id yet -> the
+        // record stays honest (vgpr/sgpr -1, occupancy unknown-resources
+        // since registersPerThread is 0); never fabricate.
+        ek.group_segment_bytes = static_cast<int>(info.group_segment_size);
+        ek.private_segment_bytes = static_cast<int>(info.private_segment_size);
+      }
+      const std::string line =
+          kernscope::profile::enriched_kernel_to_json("amd", ek);
+      if (!line.empty()) {
+        WriteJsonl(line.c_str());
       }
       ++g_kernel_count;
       break;
