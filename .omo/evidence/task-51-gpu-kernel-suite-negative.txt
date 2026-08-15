@@ -1,0 +1,27 @@
+kernscope dev shell (llvmPackages_21 MLIR / cudaPackages_12_6 / rocmPackages 7.2.3)
+todo 51 (gpu-kernel-suite) QA negative: kernel with NO PTX + unknown family -> diagnostics
+degrade to the "insufficient-evidence" rule (asserted), NO fabricated hints.
+Contract: a kernel record with no evidence axis (occupancy_unknown == true — no regs/block
+resource evidence, unknown kernel family, ptx_available == false) must NOT get fabricated
+hints. The rules engine degrades to exactly one hint, rule id "insufficient_evidence", with
+honest evidence about what was missing: ptx_available="false", occupancy_known="false",
+family="unknown", reason="unknown-occupancy;unknown-family;no-ptx". The healthy-kernel twin
+case (occupancy 1.0, unknown family, no PTX) emits ZERO hints — nothing is ever invented.
+Asserted in the unit suite (tests/profile_diag_test.cpp InsufficientEvidenceDegradation +
+HealthyKernelEmitsNoHints), evidence captured via the gtest filter below.
+Date: 2026-08-15
+
+=== gtest filter run (insufficient-evidence negative) ===
+Running main() from /build/source/googletest/src/gtest_main.cc
+Note: Google Test filter = ProfileDiag.InsufficientEvidenceDegradation:ProfileDiag.HealthyKernelEmitsNoHints
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from ProfileDiag
+[ RUN      ] ProfileDiag.InsufficientEvidenceDegradation
+[       OK ] ProfileDiag.InsufficientEvidenceDegradation (0 ms)
+[ RUN      ] ProfileDiag.HealthyKernelEmitsNoHints
+[       OK ] ProfileDiag.HealthyKernelEmitsNoHints (0 ms)
+[----------] 2 tests from ProfileDiag (0 ms total)
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 2 tests.

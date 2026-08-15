@@ -1,0 +1,51 @@
+{
+  "todo": 51,
+  "track": "gpu-kernel-suite",
+  "title": "profile: hot-kernel ranking + \"why is this slow?\" compiler-aware diagnostics",
+  "date": "2026-08-15",
+  "executor": "implementation worker (todo 51 of gpu-kernel-suite plan)",
+  "commits": [
+    "b90a05f feat(profile): hot ranking + compiler-aware diagnostics invoking the analyzer (this commit; evidence force-added here)"
+  ],
+  "files_created": [
+    "tools/profile/include/kernscope/profile/diagnostics.h (HotKernelEntry + KernelDiagnostics + DiagnosticsOptions + rank_hot_kernels/diagnose_kernel/diagnostics_to_json public API)",
+    "tools/profile/src/diagnostics.cpp (ranking aggregation + SOL-style rules engine: occupancy resource hints, libs/roofline memory-traffic classification, kernscope-analyze subprocess merge, insufficient-evidence degradation, JSON emission)",
+    "tools/profile/tests/profile_diag_test.cpp (todo-51 acceptance suite, TEST_PREFIX profile_diag:, label no-gpu, 7 gtest cases)",
+    "tests/fixtures/profile/profile_bank_conflict.ptx (analyzer-merge fixture: 68-word shared stride -> 4-way bank conflict, the owner's golden class)"
+  ],
+  "files_modified": [
+    "tools/profile/CMakeLists.txt (kernscope::profile_diag lib linking libs/roofline + libs/report + libs/db via headers + profile-diag-test depending on the REAL kernscope-analyze target)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "ctest -R profile_diag",
+      "exit": 0,
+      "result": "7/7 passed, 0 failed (no-gpu label); all three acceptance assertions green",
+      "details": [
+        "profile_diag:ProfileDiag.HotRankingOrderExact — RANKING ORDER EXACT: [bloated_kernel (3 launches, total 900000 ns, median 300000 ns, 64.2857142857% of wall time), layernorm_fused (2, 400000 ns, 200000 ns, 28.5714285714%), tiny_coalesced (1, 100000 ns, 100000 ns, 7.1428571428%)]; wall = 1400000 ns; top_n truncation deterministic",
+        "profile_diag:ProfileDiag.RegisterBloatedGetsOccupancyLimiterAndRegisterBloat — the register-bloated kernel (168 regs/thread, block 256, sm_80; enrichment: occupancy 0.125, limiter 'registers') gets limiter == \"occupancy\" (the owner's 'Likely limiter: occupancy') + hint rule id \"register_bloat\" with evidence fields regs_per_thread = \"168\", occupancy = \"0.125\", limiter = \"registers\", text = 'accumulator array likely expanded into registers; consider split reduction or lower unroll factor, or cap registers with maxrregcount/launch_bounds' (owner-examples.md Section B phrasing + the plan's maxrregcount/launch_bounds suggestion)",
+        "profile_diag:ProfileDiag.MemoryBoundHintForKnownFamily — layernorm_fused (32 regs -> full occupancy) -> limiter \"memory\" + memory_bound hint with evidence family=\"layernorm\", bytes_moved_estimate=\"2097152\" (derived from the record's 1024x256 work items, fp32 default), arithmetic_intensity=1.375 < ridge (sm_80 fp32), bound_class=\"memory\" (libs/roofline todo-12 reuse)",
+        "profile_diag:ProfileDiag.AnalyzerMergeBankConflictFinding — the REAL kernscope-analyze CLI was INVOKED (subprocess) on the extracted-PTX fixture with --arch sm_86 --block 256 --json; its bank_conflict warning (way == 4) was MERGED as a compiler hint: id \"bank_conflict\", evidence analyze_finding_id = \"bank_conflict\", source = \"kernscope-analyze\", way = \"4\" — the profiler<->analyzer cross-tool multiplier",
+        "profile_diag:ProfileDiag.JsonEmissionCarriesRuleIdsAndEvidence — diagnostics_to_json renders every diagnostic with its rule id + evidence refs; parsed back with libs/db json::Value: ranking[0].kernel_name == \"bloated_kernel\", pct_wall_time == 64.2857142857 (1e-6, %.10g rendering), kernels[0].limiter == \"occupancy\", register_bloat evidence regs_per_thread == \"168\" numeric, kernels[1].limiter == \"insufficient-evidence\" (Metis: numeric JSON assertions only)"
+      ]
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "full tree builds Werror-clean (-Wall -Wextra -Werror), 0 errors 0 warnings"
+    }
+  ],
+  "qa_negative": {
+    "file": ".omo/evidence/task-51-gpu-kernel-suite-negative.txt",
+    "contract": "kernel with NO PTX + unknown family -> diagnostics degrade to the 'insufficient-evidence' rule (asserted), NO fabricated hints",
+    "result": "profile_diag:ProfileDiag.InsufficientEvidenceDegradation PASSED: limiter == \"insufficient-evidence\", exactly 1 hint (id \"insufficient_evidence\") with evidence ptx_available=\"false\", occupancy_known=\"false\", family=\"unknown\", reason=\"unknown-occupancy;unknown-family;no-ptx\" — no other hints emitted; additionally ProfileDiag.HealthyKernelEmitsNoHints PASSED: a healthy kernel (occupancy 1.0, unknown family, no PTX) gets ZERO hints"
+  },
+  "constraints_honored": [
+    "MUST NOT modify libs/* — libs/roofline + libs/report + libs/db + libs/occupancy reused via headers/linking only",
+    "MUST NOT modify tools/analyze — kernscope-analyze is INVOKED as a subprocess (exit-code contract 0/1 = successful analysis honored)",
+    "MUST NOT touch other tools / sibling projects / scripts/ci-baseline.txt",
+    "MUST NOT require counters/PerfWorks — records + static analysis only",
+    "MUST NOT emit hints without evidence fields — every hint carries machine-readable evidence (asserted)",
+    "no NVIDIA runtime use — no-gpu label only"
+  ]
+}
