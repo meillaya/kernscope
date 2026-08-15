@@ -138,3 +138,9 @@ polykernel kernel sources copied (pattern only), sibling projects touched,
 libs/* modified (consumed via headers: gpuruntime API + golden CLI), NVIDIA
 headers vendored. Unrelated untracked private_key.pem/public_key.pem left
 untouched and uncommitted.
+
+## SECURITY NOTE (2026-08-14) — secret hygiene
+- PrimeIntellect rental SSH keys (`private_key.pem`, `public_key.pem`) now gitignored via .gitignore:13-14 (commit b939440).
+- Confirmed never tracked: `git ls-files | grep -iE "private_key|public_key|\.env"` = EMPTY; `git log --all -- private_key.pem public_key.pem` = EMPTY.
+- `.env*` also ignored (with `!.env.example` keep-trackable exception); `.omo/` added as future-untracked guard only — pre-existing tracked .omo/ files remain tracked (no git rm).
+- REMINDER: the key VALUE must NEVER be written to any repo file; keys stay live rental credentials on disk only.

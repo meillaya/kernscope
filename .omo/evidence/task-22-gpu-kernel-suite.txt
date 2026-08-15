@@ -115,3 +115,42 @@ no-gpu    =   0.01 sec*proc (3 tests)
 
 Total Test time (real) =   0.01 sec
 EXIT=0
+
+--- FIX (2026-08-14T17:52:08Z) flaky BenchLive.PeakBwD2dCopyExceedsSanityFloor ---
+
+FLAKE: 2/6 independent-verifier runs failed today on this RX 7800 XT (gfx1101):
+  "Expected: (bw_gbps) > (300.0), actual: 296.78946130892729"
+  Single-shot D2D copy measurement hovers right at ~296-301 GB/s, so the
+  fixed 300.0 floor flipped on/off with clock/thermal variance.
+
+ROOT CAUSE: the test asserted a single measurement (one Result from the
+kernscope::bench::run harness) against a fixed floor. Sustained D2D copy on
+this card is ~half the ~624 GB/s GDDR6 peak (~296-301 GB/s), i.e. the floor
+was a peak-adjacent assertion, not a broken-environment sentinel.
+
+FIX: max-of-5 sampling in libs/bench/tests/bench_live_test.cpp
+  (commit subject: "fix(bench): stabilize PeakBwD2dCopy sanity floor via max-of-N sampling"):
+  - Take N=5 consecutive full measurements (each through the whole harness:
+    L2 flush + calibration + timed reps), assert the MAX against the floor.
+  - Floor kept at 300.0 GB/s: empirically max-of-5 lands 303-476 GB/s on this
+    card (10/10 observed batches >= 303.1 GB/s), so 300 still catches every
+    broken-environment scenario (PCIe fallback ~16-32 GB/s, no acceleration
+    /driver ~0) by an order of magnitude.
+  - Comments updated to document the sampling strategy + floor rationale.
+  - Test count / ctest labels / ci-baseline.txt untouched (still 550).
+
+VERIFICATION (5 consecutive runs, measured max GB/s over 5 samples):
+  run 1: max 308.775 GB/s  -> ctest PASS (exit 0, 6.69 sec)
+  run 2: max 303.124 GB/s  -> ctest PASS (exit 0, 0.76 sec)
+  run 3: max 314.296 GB/s  -> ctest PASS (exit 0, 0.75 sec)
+  run 4: max 347.186 GB/s  -> ctest PASS (exit 0, 3.77 sec)
+  run 5: max 475.719 GB/s  -> ctest PASS (exit 0, 0.78 sec)
+  (additional evidence, runs 6-10: max 472.545 / 473.295 / 474.735 / 476.2 /
+  475.643 GB/s — all PASS)
+
+VERIFICATION full gated suite: ctest -L "no-gpu|gpu-amd" -> 550/550 passed,
+  0 failed (gpu-amd 20 tests, no-gpu 530 tests).
+
+VERIFICATION ci.sh: run 1 -> [PASS] kernscope CI gate green (10 pass, 0 skip,
+  0 fail), count guard 550 >= 550. run 2 -> identical [PASS] verdict.
+--- end ---

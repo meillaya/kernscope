@@ -69,3 +69,18 @@ Design notes:
   regexes; tests capture reports into %t.json and FileCheck the file, so
   the CLI's exit-1-with-warnings (a successful analysis) does not fail the
   pipeline while exit-2/3 errors still fail via FileCheck on empty output.
+
+FIX 2026-08-14 (todo 20 follow-up, independent verifier finding):
+- Defect: analyze_divergence.cpp emitted an unconditional numeric loop-depth
+  dump to stderr on every PTX analysis run (debug noise in kernscope-analyze CLI).
+- Removed lines (was at old lines 273-274):
+    for (int d : loop_depth) std::fprintf(stderr, " %d", d);
+    std::fprintf(stderr, "\n");
+- Verified: cmake --build build exit 0.
+  stderr byte-count after run
+  (./build/bin/kernscope-analyze tests/fixtures/fused_attention.ptx --arch sm_86 --block 64 --json 2>/tmp/stderr_check.txt):
+  0 bytes (was 212 bytes at baseline commit 147899b).
+  CLI exit=1 on a successful analysis is pre-existing tool behavior (confirmed
+  identical at baseline), unrelated to this change.
+- Verified: bash scripts/ci.sh exit 0 (8 pass, 2 skip, 0 fail; test count unchanged).
+- Commit: b7a8b22 fix(analyze): remove leftover loop-depth debug print in divergence analysis
