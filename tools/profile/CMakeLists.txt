@@ -184,4 +184,75 @@ else()
             ${CMAKE_CURRENT_SOURCE_DIR})
   set_tests_properties(profile_enrich_amd PROPERTIES LABELS "gpu-amd"
     TIMEOUT 600)
+
+  # The todo-52 e2e GOLDEN (local HIP): build the layernorm_fused app into
+  # build/tests/fixtures/layernorm_fused/, run `kernscope-profile <dir>
+  # --json` piped through tests/fixtures/check_profile.py (numeric/range
+  # assertions vs expected_layernorm_profile.json — no absolute durations),
+  # plus the --text owner Section B shape and the --html libs/report
+  # embedded-JSON parse check.
+  add_test(NAME profile_cli_amd
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/profile_cli_amd_check.py
+            ${CMAKE_BINARY_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(profile_cli_amd PROPERTIES LABELS "gpu-amd"
+    TIMEOUT 600)
+
+  # The todo-52 QA negative: profile a binary with NO GPU kernels -> the
+  # report says "no kernels traced" + exit 0 (not an error).
+  add_test(NAME profile_cli_no_kernels
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/profile_cli_negative_check.py
+            ${CMAKE_BINARY_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(profile_cli_no_kernels PROPERTIES LABELS "gpu-amd"
+    TIMEOUT 300)
 endif()
+
+# --- kernscope-profile CLI (todo 52) -------------------------------------------
+# The Wave-9 closer: one command running trace (49) -> enrich (50) -> rank +
+# diagnose (51) -> report (libs/report reuse). Pure host-side (the HIP tracer
+# is invoked via LD_PRELOAD at runtime), so the CLI + its no-gpu units build
+# unconditionally — the CUDA path is compile+unit only (rental-gated runtime).
+add_executable(kernscope-profile src/main.cpp src/cli_pipeline.cpp)
+target_include_directories(kernscope-profile PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(kernscope-profile PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src) # cli_pipeline.h lives with the impl
+target_link_libraries(kernscope-profile PRIVATE
+  kernscope::profile_diag kernscope::profile_enrich kernscope::roofline
+  kernscope::report kernscope::db)
+target_compile_definitions(kernscope-profile PRIVATE
+  PROFILE_HIP_TOOL="${CMAKE_BINARY_DIR}/libkernscope_profile_hip.so"
+  KERNSCOPE_ANALYZE_CLI="$<TARGET_FILE:kernscope-analyze>")
+# The diag engine invokes the REAL kernscope-analyze CLI (todo 20) on PTX;
+# AMD has no PTX path, but the CLI must still be built after it.
+add_dependencies(kernscope-profile kernscope-analyze)
+# Land the binary in <build>/bin/ (tt-flow convention, same as kernscope-analyze).
+set_target_properties(kernscope-profile PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+add_test(NAME profile-cli-version COMMAND kernscope-profile --version)
+set_tests_properties(profile-cli-version PROPERTIES LABELS "no-gpu")
+
+# --- CLI unit suite (no-gpu) ---------------------------------------------------
+# The todo-52 acceptance units: enriched-JSONL parsing back into the
+# EnrichedKernel model, the "no kernels traced" QA negative (exit-0 report,
+# never an error), the profile JSON + owner Section B text renderers, and the
+# libs/report HTML path (embedded JSON payload). No GPU required.
+find_package(GTest REQUIRED)
+add_executable(profile-cli-test tests/profile_cli_test.cpp
+  src/cli_pipeline.cpp)
+target_include_directories(profile-cli-test PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(profile-cli-test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(profile-cli-test PRIVATE
+  kernscope::profile_diag kernscope::profile_enrich kernscope::roofline
+  kernscope::report kernscope::db GTest::gtest_main)
+target_compile_definitions(profile-cli-test PRIVATE
+  KERNSCOPE_ANALYZE_CLI="$<TARGET_FILE:kernscope-analyze>")
+include(GoogleTest)
+gtest_discover_tests(profile-cli-test TEST_PREFIX "profile_cli:"
+  PROPERTIES LABELS "no-gpu")
