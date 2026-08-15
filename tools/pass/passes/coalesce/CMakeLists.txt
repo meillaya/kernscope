@@ -18,7 +18,10 @@
 # binary) so it can drive classifyGlobalAccess()/analyzeFunction() with its
 # own analysis managers and assert the classification classes on the
 # committed fixtures (tests/pass/Inputs/coalesce/).
-target_sources(kernscope-pass PRIVATE src/coalesce.cpp)
+target_sources(kernscope-pass PRIVATE
+  src/coalesce.cpp
+  src/as1.cpp
+)
 target_include_directories(kernscope-pass PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

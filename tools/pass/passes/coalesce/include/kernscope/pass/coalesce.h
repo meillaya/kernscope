@@ -87,6 +87,17 @@ class CoalescePass : public llvm::PassInfoMixin<CoalescePass> {
                               llvm::FunctionAnalysisManager &FAM);
 };
 
+/// NVPTX generic-address-space canonicalization (src/as1.cpp, registered as
+/// `kernscope-as1`). Restores direct AS1/AS3 accesses from clang-21's
+/// generic (flat, p0) lowering so the committed v1 passes (AS1/AS3-scoped)
+/// can consume real clang IR. Runs ONLY via the explicit pipeline name —
+/// deliberately not on the default-pipeline EPs.
+class As1CanonPass : public llvm::PassInfoMixin<As1CanonPass> {
+ public:
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &FAM);
+};
+
 /// Classify ONE global memory access. `Ptr` is the memory pointer, WidthBytes
 /// its access width, SE the function's ScalarEvolution, LaneValue the
 /// function's threadIdx.x / workitem.id.x intrinsic call (nullptr when the

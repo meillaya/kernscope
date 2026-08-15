@@ -96,17 +96,52 @@ Value *findLaneValue(Function &F) {
 
 // A value that is safe to treat as a uniform (warp-invariant) address
 // term: kernel parameters (the analyzer's ld.param -> base_pointer_expr),
-// globals (cvta.to.global) and constants. Anything data-derived (loads,
-// calls, computed pointers, ...) makes the per-lane affine UNRESOLVABLE —
-// the analyzer's !e.known -> unknown-pattern honesty rule
+// globals (cvta.to.global), constants, and the BLOCK index intrinsics
+// (ctaid/workgroup.id — per-BLOCK values, uniform across any warp by
+// construction; the analyzer's %ctaid.x -> base_pointer_expr case).
+// Anything data-derived (loads, calls, computed pointers, threadIdx.y/z —
+// warp-varying whenever blockDim.x is not a multiple of 32, and blockDim
+// is not a compile-time constant in IR) makes the per-lane affine
+// UNRESOLVABLE — the analyzer's !e.known -> unknown-pattern honesty rule
 // (analyze_coalescing.cpp: "indirect/data-dependent index; coalescing not
 // assumed"). NEVER claimed coalesced without proof.
+//
+// Divergence from the analyzer, documented: analyze_coalescing.cpp treats
+// %tid.y/%tid.z as uniform bases; this IR-level classifier treats them as
+// warp-varying -> unknown-pattern, because blockDim.x is not provably a
+// warp multiple at IR level. Stricter = honest.
 bool isUniformTerm(const Value *V) {
   if (isa<Argument>(V) || isa<GlobalValue>(V) || isa<Constant>(V)) {
     return true;
   }
   if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
     return isUniformTerm(GEP->getPointerOperand());
+  }
+  // An addrspacecast preserves warp-uniformity (the kernscope-as1 param
+  // casts land here).
+  if (auto *ASC = dyn_cast<AddrSpaceCastInst>(V)) {
+    return isUniformTerm(ASC->getPointerOperand());
+  }
+  if (auto *CB = dyn_cast<CallBase>(V)) {
+    const Function *F = CB->getCalledFunction();
+    if (!F) {
+      return false;
+    }
+    const StringRef N = F->getName();
+    // Block/block-dimension ids: uniform across the whole block, hence
+    // across any warp.
+    return N == "llvm.nvvm.read.ptx.sreg.ctaid.x" ||
+           N == "llvm.nvvm.read.ptx.sreg.ctaid.y" ||
+           N == "llvm.nvvm.read.ptx.sreg.ctaid.z" ||
+           N == "llvm.nvvm.read.ptx.sreg.ntid.x" ||
+           N == "llvm.nvvm.read.ptx.sreg.ntid.y" ||
+           N == "llvm.nvvm.read.ptx.sreg.ntid.z" ||
+           N == "llvm.amdgcn.workgroup.id.x" ||
+           N == "llvm.amdgcn.workgroup.id.y" ||
+           N == "llvm.amdgcn.workgroup.id.z" ||
+           N == "llvm.amdgcn.workgroup.size.x" ||
+           N == "llvm.amdgcn.workgroup.size.y" ||
+           N == "llvm.amdgcn.workgroup.size.z";
   }
   return false;
 }
@@ -190,49 +225,99 @@ void collectLaneCoeff(const SCEV *S, const Value *LaneValue, int64_t &Coeff,
     return;
   }
   if (auto *Mul = dyn_cast<SCEVMulExpr>(S)) {
-    // The canonical affine shape: one factor is the bare lane term (or its
-    // extension), every other factor a constant. A factor that is
-    // warp-uniform (e.g. a loop AddRec — both lanes of a warp see the same
-    // iteration) shifts the base, not the stride; when the lane IS present
-    // such a factor would make the per-lane stride iteration-dependent, so
-    // it must be a constant.
-    const bool HasLane = mentionsLane(S, LaneValue);
+    // Affine-in-lane shape: the product must decompose into ONE factor
+    // containing the lane (constant or affine-in-lane — nested AddExpr
+    // factors distribute: (base + tid)*4 = 4*base + 4*tid) and constants.
+    // Two lane-containing factors would be quadratic -> non-affine.
+    // A uniform-but-non-constant factor beside the lane (e.g. a loop
+    // AddRec or ctaid) makes the per-lane stride iteration/block-dependent
+    // -> not a compile-time constant -> unknown.
+    if (!mentionsLane(S, LaneValue)) {
+      if (!isKnownUniformSCEV(S)) {
+        Ok = false;  // data-dependent term
+      }
+      return;
+    }
     int64_t Factor = 1;
-    bool SeenLane = false;
-    bool LaneShapeOk = true;
+    int LaneFactors = 0;
     for (const SCEV *Op : Mul->operands()) {
       if (auto *C = dyn_cast<SCEVConstant>(Op)) {
         Factor *= C->getAPInt().getSExtValue();
         continue;
       }
-      if (isBareLaneTerm(Op, LaneValue) && !SeenLane) {
-        SeenLane = true;
+      if (isBareLaneTerm(Op, LaneValue)) {
+        ++LaneFactors;
         continue;
       }
-      if (HasLane) {
-        LaneShapeOk = false;  // lane inside a non-bare factor
-        break;
+      if (mentionsLane(Op, LaneValue)) {
+        // Distribute: extract the lane coefficient of the nested factor.
+        int64_t Inner = 0;
+        collectLaneCoeff(Op, LaneValue, Inner, Ok);
+        if (!Ok) {
+          return;
+        }
+        Factor *= Inner;
+        ++LaneFactors;
+        continue;
       }
-      // No lane in the term: the factor must still be known-uniform
-      // (arguments/globals/constants/AddRecs), else the address is
-      // data-dependent.
-      if (!isKnownUniformSCEV(Op)) {
-        Ok = false;
-        return;
-      }
+      // Uniform-but-non-constant factor beside a lane factor.
+      Ok = false;
+      return;
     }
-    if (HasLane) {
-      if (!LaneShapeOk || !SeenLane) {
-        Ok = false;  // per-lane stride not a compile-time constant
-        return;
-      }
-      Coeff += Factor;
+    if (LaneFactors > 1) {
+      Ok = false;  // quadratic in the lane
+      return;
+    }
+    Coeff += Factor;
+    return;
+  }
+  // zext/sext/trunc are coefficient-transparent: ext(base + c*lane) has
+  // the same per-lane coefficient as its operand (the byte stride is
+  // decided by the address arithmetic around the extension, not by the
+  // extension itself). Recurse into the operand.
+  if (auto *Ext = dyn_cast<SCEVZeroExtendExpr>(S)) {
+    collectLaneCoeff(Ext->getOperand(), LaneValue, Coeff, Ok);
+    return;
+  }
+  if (auto *Ext = dyn_cast<SCEVSignExtendExpr>(S)) {
+    collectLaneCoeff(Ext->getOperand(), LaneValue, Coeff, Ok);
+    return;
+  }
+  if (auto *T = dyn_cast<SCEVTruncateExpr>(S)) {
+    collectLaneCoeff(T->getOperand(), LaneValue, Coeff, Ok);
+    return;
+  }
+  if (auto *AR = dyn_cast<SCEVAddRecExpr>(S)) {
+    // Loop IVs are warp-uniform (all lanes execute the same iteration), so
+    // an AddRec contributes to the BASE, not the stride. A lane term in the
+    // START is a plain per-lane offset (distribute it); a lane term in the
+    // STEP would make the per-lane stride iteration-dependent -> not a
+    // compile-time constant -> unknown. (clang-21 shape: the loop-carried
+    // address is {base + tid,+,64}-style for row-strided inner loops.)
+    if (AR->getNumOperands() < 2) {
+      Ok = false;
+      return;
+    }
+    const SCEV *Start = AR->getOperand(0);
+    const SCEV *Step = AR->getOperand(1);
+    if (mentionsLane(Start, LaneValue)) {
+      collectLaneCoeff(Start, LaneValue, Coeff, Ok);
+    } else if (!isKnownUniformSCEV(Start)) {
+      Ok = false;
+      return;
+    }
+    if (mentionsLane(Step, LaneValue)) {
+      Ok = false;  // iteration-dependent per-lane stride
+      return;
+    }
+    if (!isKnownUniformSCEV(Step)) {
+      Ok = false;
     }
     return;
   }
-  // Any other node (AddRec, min/max, ...): lane inside -> the per-lane
-  // stride is not a compile-time constant; no lane -> the node must still
-  // be free of data-dependent unknowns, else the address is unresolvable.
+  // Any other node (min/max, ...): lane inside -> the per-lane stride is
+  // not a compile-time constant; no lane -> the node must still be free of
+  // data-dependent unknowns, else the address is unresolvable.
   if (mentionsLane(S, LaneValue)) {
     Ok = false;
     return;
@@ -384,6 +469,14 @@ bool parseCoalescePass(llvm::StringRef Name, llvm::ModulePassManager &MPM,
   if (Name == "kernscope-coalesce") {
     MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
         kernscope::pass::CoalescePass()));
+    return true;
+  }
+  // The canonicalization step of the todo-42 artifact pipeline (see
+  // src/as1.cpp): restores direct AS1/AS3 accesses from clang-21's generic
+  // flat-space lowering. Deliberately NOT on the EP callbacks below.
+  if (Name == "kernscope-as1") {
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+        kernscope::pass::As1CanonPass()));
     return true;
   }
   return false;
