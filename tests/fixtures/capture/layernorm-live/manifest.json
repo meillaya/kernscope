@@ -1,0 +1,32 @@
+{
+  "format": "kernscope-capture-live-fixture",
+  "capture_track": "todo-45 capture-hip live run (gfx1101)",
+  "app": "tests/fixtures/layernorm_fused/layernorm.hip",
+  "capture": {
+    "mechanism": "LD_PRELOAD=libkernscope_capture_hip.so (rocprofiler-sdk intercept)",
+    "tool_version": "kernscope-capture-hip (todo 45)",
+    "rocprofiler_sdk": "7.2.3",
+    "hipcc": "7.2.53211-9999 (ROCm 7.2.3)",
+    "arch": "gfx1101"
+  },
+  "bundle": {
+    "path": "bundle.v0",
+    "format": "kernscope-capture-v0 text (todo-45 output shape)",
+    "kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
+    "grid": "1024x1x1",
+    "block": "128x1x1",
+    "args": 6
+  },
+  "blobs": {
+    "dir": "blobs/",
+    "inputs": ["blobs/input-buffer-1.bin", "blobs/input-buffer-2.bin", "blobs/input-buffer-3.bin"],
+    "kernel_binary": "blobs/code-object-2.hsaco",
+    "kernel_binary_sha256": "fe32aafba2708420efb28e22936ed7fc289df24523ea55206bbbf30578236fcd"
+  },
+  "output": {
+    "path": "output.bin",
+    "bytes": 262144,
+    "sha256": "a0027ed9a8ef2e3453aeb194aa64108c1f300a87fbfa292cca5222a725449eec"
+  },
+  "purpose": "todo 47: committed capture for the check-reproducers compile gate (GPU-less emit + hipcc build); the live acceptance (ctest -R capture_repro_gen -L gpu-amd) re-captures fresh and asserts the emitted reproducer's output hash == the captured output hash."
+}

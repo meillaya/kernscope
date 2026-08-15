@@ -592,6 +592,7 @@ bool BuildPlanV0(const V0Bundle &model, const V0Sidecars &side, Plan &plan) {
     *unknown_size = false;
     for (std::size_t i = 0; i < plan.buffers.size(); ++i) {
       if (plan.buffers[i].va == va) {
+        *unknown_size = plan.buffers[i].size_unknown;
         return static_cast<int>(i);
       }
     }
@@ -1180,7 +1181,7 @@ std::string EmitCmake(const Plan &plan) {
     os << "  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}\n";
     os << "  COMMENT \"hipcc: standalone reproducer for ${KERNSCOPE_REPRO_KERNEL}\"\n";
     os << "  VERBATIM)\n";
-    os << "add_custom_target(kernscope_repro ALL\n";
+    os << "add_custom_target(kernscope_repro_standalone ALL\n";
     os << "  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/kernscope_repro)\n";
   } else {
     os << "# CUDA COMPILE-ONLY (no NVIDIA hardware in this environment; the\n";
@@ -1198,7 +1199,7 @@ std::string EmitCmake(const Plan &plan) {
     os << "  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}\n";
     os << "  COMMENT \"nvcc: compile-only reproducer for ${KERNSCOPE_REPRO_KERNEL}\"\n";
     os << "  VERBATIM)\n";
-    os << "add_custom_target(kernscope_repro ALL\n";
+    os << "add_custom_target(kernscope_repro_standalone ALL\n";
     os << "  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/kernscope_repro.cu.o)\n";
   }
   return os.str();

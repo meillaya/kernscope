@@ -1,0 +1,9 @@
+kernscope-capture-v0
+api cudaLaunchKernel calls=1
+api cudaMalloc calls=1
+api cudaMemcpy calls=1
+alloc ptr=0x7f0000000000 size=1024
+launch kernel="neg_kernel" via=runtime grid=2x1x1 block=32x1x1 shared=0 stream=0x0 graph=0x0 args=2 [8:0000adde00000000] [8:00000000007f0000]
+copy kind=memcpy dst=0xdead0000 src=0x7f0000001000 bytes=512 cuda-kind=1 dst-size=0 src-size=0 stream=0x0
+fatbin mod=1 sha256=0000000000000000000000000000000000000000000000000000000000000000 kernels="neg_kernel"
+end-capture-v0
