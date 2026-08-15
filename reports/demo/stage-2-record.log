@@ -1,0 +1,3 @@
+[kernscope-capture-hip] info: HIP runtime intercept table registered (lib v7.2.0)
+[kernscope-capture-hip] info: bundle written to /home/mei/projects/llvm.h/reports/demo/capture/bundle.v0
+kernscope-capture: record: vendor auto-detect -> amd

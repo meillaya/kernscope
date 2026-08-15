@@ -1,0 +1,63 @@
+{
+  "todo": 55,
+  "track": "gpu-kernel-suite",
+  "title": "integration: profiler<->analyzer diagnostics + one-command end-to-end loop demo",
+  "date": "2026-08-15",
+  "machine": "local gfx1101 (RX 7800 XT, /dev/kfd present)",
+  "mode": "measured",
+  "executor": "implementation worker (todo 55 of gpu-kernel-suite plan)",
+  "commits": [
+    "c6474b7 feat(integration): one-command end-to-end loop demo (scripts/demo.sh + scripts/demo_aggregate.py + tests/integration/check_loop.py)",
+    "d759083 fix(integration): demo loop pipefail SIGPIPE race + negative gpu-required check (evidence force-added here)"
+  ],
+  "files_created": [
+    "scripts/demo.sh — the ONE-COMMAND loop: GPU gate (/dev/kfd OR KERNSCOPE_NO_GPU=1) -> stage 1 kernscope-profile layernorm_fused (todo 52) -> stage 2 kernscope-capture record+replay bitwise (todo 45/48) -> stage 3 kernscope-analyze on the CAPTURED kernel's disassembled AMDGPU ISA (todo 20) -> stage 4 kernscope-tune --from-capture launch-config search (todo 53) -> stage 5 kernscope-tune --verify verifier-gated template tune + kernscope-pass-report --report-pipeline layernorm (todo 54) -> aggregate -> check_loop assert; runtime asserted < 900 s; all stage CLI invocations mirror the todo-52/53/54 test scripts verbatim",
+    "scripts/demo_aggregate.py — the aggregator (libs/report conventions REUSED via the CLIs' outputs; no libs/* modified): sanitize-isa (llvm-objdump -d + objdump-scaffolding strip -> plain AMDGPU ISA text that libs/amdparse parses), aggregate (one report.json + self-contained report.html with embedded <script id=\"report-data\"> payload, zero network), skipped (KERNSCOPE_NO_GPU=1 graceful all-skipped report)",
+    "tests/integration/check_loop.py — the todo-owned assertion helper: 5 stage entries with evidence paths EXISTING on disk, runtime_seconds < 900, hot-kernel identification, the profiler->analyzer cross-reference (every profiler hint references analyzer finding ids that EXIST in the stage-3 report), stage-4 capture_tune status, stage-5 verify_gate + pass-delta fields, report.html embedded payload round-trip (html.parser, check_html.py contract), and --allow-skipped for the QA negative contract"
+  ],
+  "files_modified": [],
+  "acceptance_commands": [
+    {
+      "command": "bash scripts/demo.sh",
+      "exit": 0,
+      "result": "exit 0 in 152-153 s (well under the asserted 15-min/900 s budget); all five stages ok; reports/demo/report.json is a kernscope_demo_report (schema_version 1.0) with FIVE stage entries, every evidence path existing on disk",
+      "details": [
+        "stage 1 profile: 3 kernels traced, hot layernorm_fused (_Z15layernorm_fusedPKtS0_S0_Ptfi.kd) with 1 compiler hint (memory_bound, roofline evidence arithmetic_intensity 1.375, bound_class memory) — kernscope-profile build/tests/fixtures/layernorm_fused --json (+ --html libs/report page)",
+        "stage 2 capture: kernscope-capture record (vendor auto-detect -> amd) of layernorm_app on the committed golden input (1024x128 uint16) -> bundle.v0 + blobs (code-object-2.hsaco = the layernorm module); replay --mode bitwise: ref/replay sha 9dc20c320e4d... bitwise EQUAL -> PASS (validation: PASS)",
+        "stage 3 analyze: the CAPTURED code-object-2.hsaco disassembled (llvm-objdump -d) -> 298 instructions sanitized to layernorm.isa -> kernscope-analyze --arch gfx1101 --block 128 -> exit 1 (report with warnings), 4 findings: possibly_divergent_branch (warning), no_tensor_core_usage, occupancy_not_applicable, suggestions_not_applicable; metrics mix_count_ALU 216, shared_bank_way 1, spill_bytes 0",
+        "stage 4 capture->tune: kernscope-tune --from-capture bundle.v0 --vendor amd --arch gfx1101 --ref output.bin -> status ok, mode capture_tune, 4 candidates ALL bitwise-validated (baseline 128x1x1 first), best median 0.011880 ms (baseline tie, speedup 1.0 — baseline-first guarantee), db records written to stage-4-tune.jsonl",
+        "stage 5a verifier-gated template tune: kernscope-tune --kernel bias_gelu --shape 4096,4096 --arch gfx1101 --verify --inject-risky tools/tune/tests/fixtures/risky_oob.hip --no-cache -> status ok, verify_gate true, 1 variant verifier_gated with MAY_OOB verdict (the injected risky variant), 12 compiled + benchmarked (layernorm's own templates are honestly verifier-rejected — same verdict as the todo-54 softmax negative — so the todo-54 happy family bias_gelu is the stage's subject, per the test-script mirror rule)",
+        "stage 5b pass->analyzer delta: kernscope-pass-report --report-pipeline layernorm -> kernscope_report with before/after analyzer measurements: vector_width 1 -> 4, vectorized_ld_global 0 -> 12, improved_metrics [vectorized_ld_global, vector_width, coalescing], no_transform false"
+      ]
+    },
+    {
+      "command": "python3 tests/integration/check_loop.py reports/demo/report.json",
+      "exit": 0,
+      "result": "all assertions green (happy mode): report_type kernscope_demo_report, schema_version 1.0, runtime_seconds 152 < 900, exactly five stage entries (profile/capture/analyze/capture_tune/verify_tune_pass_delta) all status ok with evidence paths EXISTING on disk (15 paths checked), hot kernel _Z15layernorm_fusedPKtS0_S0_Ptfi.kd matches stage-1 owner_example, cross_tool: profiler hint memory_bound -> analyzer_cross_refs.finding_ids [possibly_divergent_branch, no_tensor_core_usage, occupancy_not_applicable, suggestions_not_applicable] ALL EXIST in the stage-3 analyzer report (4 ids) with stage_3_evidence on disk — the profiler<->analyzer cross-tool diagnostic asserted in the demo JSON; stage-4 capture_tune status ok + baseline-first; stage-5a verify_gate true; stage-5b kernscope_report with delta; report.html embedded payload round-trips byte-exact (check_html.py contract)"
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "Werror-clean, 0 errors 0 warnings (ninja: no work to do — no C++ touched; the demo invokes the five stage CLIs and reuses libs/report via their outputs)"
+    },
+    {
+      "command": "bash scripts/demo.sh (happy, repeated for evidence)",
+      "exit": 0,
+      "result": "152-153 s wall, deterministic across runs (same stage summaries, same cross-reference ids)"
+    }
+  ],
+  "qa_negative": {
+    "file": ".omo/evidence/task-55-gpu-kernel-suite-negative.txt",
+    "contract": "KERNSCOPE_NO_GPU=1 masks /dev/kfd: demo ABORTS EARLY with a clear 'gpu-amd required' message, no stage runs, reports/demo/report.json is a well-formed all-skipped report (graceful), exit 1; check_loop.py --allow-skipped exits 0 on that report",
+    "result": "exit 1; stderr 'gpu-amd required: /dev/kfd not available (KERNSCOPE_NO_GPU=1) — aborting the loop before any stage'; report.json: machine.gpu_required false, runtime_seconds 0, all five stages status skipped with reason containing 'gpu-amd required', zero evidence, zero fabricated cross-tool hints; check_loop --allow-skipped: all assertions green (skipped-negative mode)"
+  },
+  "constraints_honored": [
+    "MUST NOT modify the five stage tools — they are INVOKED via their CLIs only (kernscope-profile, kernscope-capture, kernscope-analyze, kernscope-tune, kernscope-pass-report)",
+    "MUST NOT modify libs/* — libs/report REUSED via the stage CLIs' outputs + the libs/report conventions (schema_version 1.0, embedded-JSON self-contained HTML, machine-readable evidence refs)",
+    "MUST NOT touch sibling projects or scripts/ci-baseline.txt (untouched; the committed floor stays valid)",
+    "MUST NOT require network or rentals — zero network requests (report.html is self-contained), local gfx1101 only, no CUDA runtime path (rental-gated)",
+    "MUST NOT auto-run on NVIDIA — the demo gates on /dev/kfd + HIP toolchain; the CUDA path remains rental-gated in the profile CLI",
+    "no fabricated hints — the cross-tool reference attaches the ACTUAL stage-3 finding ids; the KERNSCOPE_NO_GPU negative emits zero hints",
+    "stage CLI invocations mirror the todo-52/53/54 test scripts verbatim (kernscope-profile --json, capture record/replay bitwise, tune --from-capture, tune --verify + --inject-risky, pass-report --report-pipeline)"
+  ]
+}

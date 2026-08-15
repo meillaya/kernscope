@@ -1,0 +1,30 @@
+task-55-gpu-kernel-suite-negative — KERNSCOPE_NO_GPU=1 masks /dev/kfd
+
+contract: demo ABORTS EARLY with a clear "gpu-amd required" message; no
+stage runs; reports/demo/report.json is a WELL-FORMED all-skipped report
+(graceful, never a crash); exit code 1; the negative contract itself is
+asserted by tests/integration/check_loop.py --allow-skipped (exit 0).
+
+command:
+  KERNSCOPE_NO_GPU=1 bash scripts/demo.sh
+
+output (verbatim):
+
+[demo] gpu-amd required: /dev/kfd not available (KERNSCOPE_NO_GPU=1) — aborting the loop before any stage
+demo_aggregate: wrote /home/mei/projects/llvm.h/reports/demo/report.json + /home/mei/projects/llvm.h/reports/demo/report.html
+[demo] wrote all-skipped report to /home/mei/projects/llvm.h/reports/demo/report.json (graceful negative)
+
+exit code: 1 (abort — the QA negative is the expected failure mode)
+
+reports/demo/report.json (the graceful negative artifact):
+  - report_type: kernscope_demo_report, schema_version 1.0
+  - machine.gpu_required: false, machine.device: unavailable
+  - runtime_seconds: 0 (aborted before any stage)
+  - loop.hot_kernel: ""
+  - all five stages: status "skipped", reason contains
+    "gpu-amd required: /dev/kfd masked (KERNSCOPE_NO_GPU=1)", evidence []
+  - cross_tool.profiler_hints: [] (no fabricated hints in the negative)
+
+assertion:
+  python3 tests/integration/check_loop.py --allow-skipped <negative report.json>
+  -> [PASS] check_loop: all assertions green (skipped-negative mode), exit 0
