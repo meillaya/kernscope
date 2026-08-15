@@ -1,0 +1,614 @@
+% kernscope research report bibliography.
+% Compiled 2026-08-15 from the project's own research briefs (docs/research/*.md)
+% plus canonical foundational references verified against arXiv/ACM/DOI during
+% writing.  Entries flagged "% UNVERIFIED" could not be confirmed against an
+% external source at write time and are retained only because the project briefs
+% cite them; they are listed as unverified in README.md.
+
+% ============================== foundational ==============================
+
+@article{roofline2009,
+  author  = {Williams, Samuel and Waterman, Andrew and Patterson, David},
+  title   = {Roofline: An Insightful Visual Performance Model for Multicore Architectures},
+  journal = {Communications of the ACM},
+  volume  = {52},
+  number  = {4},
+  pages   = {65--76},
+  year    = {2009},
+  doi     = {10.1145/1498765.1498785},
+}
+
+@inproceedings{llvm2004,
+  author    = {Lattner, Chris and Adve, Vikram},
+  title     = {{LLVM}: A Compilation Framework for Lifelong Program Analysis \& Transformation},
+  booktitle = {Proceedings of the 2004 International Symposium on Code Generation and Optimization (CGO)},
+  pages     = {75--86},
+  year      = {2004},
+  doi       = {10.1109/CGO.2004.1281665},
+}
+
+@inproceedings{mlirCGO2021,
+  author    = {Lattner, Chris and Amini, Mehdi and Bondhugula, Uday and Cohen, Albert and Davis, Andy and Pienaar, Jacques and Riddle, River and Shpeisman, Tatiana and Vasilache, Nicolas and Zinenko, Oleksandr},
+  title     = {{MLIR}: Scaling Compiler Infrastructure for Domain Specific Computation},
+  booktitle = {IEEE/ACM International Symposium on Code Generation and Optimization (CGO)},
+  year      = {2021},
+  doi       = {10.1109/CGO51591.2021.9370308},
+}
+
+@article{mlirEndEra,
+  author = {Lattner, Chris and Amini, Mehdi and Bondhugula, Uday and Cohen, Albert and Davis, Andy and Pienaar, Jacques and Riddle, River and Shpeisman, Tatiana and Vasilache, Nicolas and Zinenko, Oleksandr},
+  title  = {{MLIR}: A Compiler Infrastructure for the End of the Specialization Era},
+  year   = {2019},
+  note   = {arXiv:1903.10267},
+  url    = {https://arxiv.org/abs/1903.10267},
+  journal = {arXiv preprint}
+}
+
+@inproceedings{halide2013,
+  author    = {Ragan-Kelley, Jonathan and Barnes, Connelly and Adams, Andrew and Paris, Sylvain and Durand, Fr{\'e}do and Amarasinghe, Saman},
+  title     = {Halide: A Language and Compiler for Optimizing Parallelism, Locality, and Recomputation in Image Processing Pipelines},
+  booktitle = {Proceedings of the 34th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  pages     = {519--530},
+  year      = {2013},
+  doi       = {10.1145/2491956.2462176},
+}
+
+@inproceedings{tvm2018,
+  author    = {Chen, Tianqi and Moreau, Thierry and Jiang, Ziheng and Zheng, Lianmin and Yan, Eddie and Shen, Haichen and Cowan, Meghan and Wang, Leyuan and Hu, Yuwei and Ceze, Luis and Guestrin, Carlos and Krishnamurthy, Arvind},
+  title     = {{TVM}: An Automated End-to-End Optimizing Compiler for Deep Learning},
+  booktitle = {Proceedings of the 13th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  pages     = {578--594},
+  year      = {2018},
+  note      = {arXiv:1802.04799},
+  url       = {https://arxiv.org/abs/1802.04799},
+}
+
+@inproceedings{ansor2020,
+  author    = {Zheng, Lianmin and Jia, Chengfan and Sun, Minmin and Wu, Zhao and Yu, Cody Hao and Haj-Ali, Ameer and Wang, Yida and Yang, Jun and Zhuo, Danyang and Sen, Koushik and Gonzalez, Joseph E. and Stoica, Ion},
+  title     = {Ansor: Generating High-Performance Tensor Programs for Deep Learning},
+  booktitle = {Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  pages     = {863--879},
+  year      = {2020},
+  note      = {arXiv:2006.06762},
+  url       = {https://arxiv.org/abs/2006.06762},
+}
+
+@inproceedings{triton2019,
+  author    = {Tillet, Philippe and Kung, H. T. and Cox, David},
+  title     = {{Triton}: An Intermediate Language and Compiler for Tiled Neural Network Computations},
+  booktitle = {Proceedings of the 3rd ACM SIGPLAN International Workshop on Machine Learning and Programming Languages (MAPL@PLDI)},
+  pages     = {10--19},
+  year      = {2019},
+  doi       = {10.1145/3315508.3329973},
+}
+
+@inproceedings{flashattention2022,
+  author    = {Dao, Tri and Fu, Daniel Y. and Ermon, Stefano and Rudra, Atri and R{\'e}, Christopher},
+  title     = {{FlashAttention}: Fast and Memory-Efficient Exact Attention with IO-Awareness},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS 35)},
+  year      = {2022},
+  note      = {arXiv:2205.14135},
+  url       = {https://arxiv.org/abs/2205.14135},
+}
+
+@inproceedings{flashdecoding2024,
+  author    = {Hong, Ke and Dai, Guohao and Xu, Jiaming and Mao, Qiuli and Li, Xiuhong and Liu, Jun and Chen, Kangdi and Dong, Yuhan and Wang, Yu},
+  title     = {{FlashDecoding++}: Faster Large Language Model Inference on GPUs},
+  booktitle = {Proceedings of Machine Learning and Systems (MLSys)},
+  year      = {2024},
+  note      = {arXiv:2311.01282},
+  url       = {https://arxiv.org/abs/2311.01282},
+}
+
+@inproceedings{cudasmith2020,
+  author    = {Zhang, Zhenyu and Jiang, Bo and Chan, W. K. and Tong, Yuting and Liu, Lei and Yang, Xiaofei},
+  title     = {{CUDAsmith}: A Fuzzer for {CUDA} Compilers},
+  booktitle = {IEEE 44th Annual Computers, Software, and Applications Conference (COMPSAC)},
+  year      = {2020},
+}
+
+% ============================== analyzer prior art ==============================
+
+@article{volta2018,
+  author = {Jia, Zhe and Maggioni, Marco and Staiger, Benjamin and Scipioni, Daniele P.},
+  title  = {Dissecting the {NVidia} {Volta} {GPU} Architecture via Microbenchmarking},
+  year   = {2018},
+  note   = {arXiv:1804.06826},
+  url    = {https://arxiv.org/abs/1804.06826},
+  journal = {arXiv preprint}
+}
+
+@article{turing2019,
+  author = {Jia, Zhe and Maggioni, Marco and Smith, Jeffrey and Scipioni, Daniele P.},
+  title  = {Dissecting the {NVidia} {Turing} {T4} {GPU} via Microbenchmarking},
+  year   = {2019},
+  note   = {arXiv:1903.07486},
+  url    = {https://arxiv.org/abs/1903.07486},
+  journal = {arXiv preprint}
+}
+
+@article{hopper2024,
+  author = {Luo, Weile and Fan, Ruibo and Li, Zeyu and Zhang, Dayou and Liang, Yan and Du, Xing},
+  title  = {Dissecting the {NVIDIA} {Hopper} Architecture through Microbenchmarking and Multiple Level Analysis},
+  year   = {2024},
+  note   = {arXiv:2501.12084; IPDPS 2024 version doi:10.1109/IPDPS.2024.00070},
+  url    = {https://arxiv.org/abs/2501.12084},
+  journal = {arXiv preprint}
+}
+
+@article{model26,
+  author = {Jarmusch, Lucas and Chandrasekaran, Sunita},
+  title  = {Microbenchmark-Driven Analytical Performance Modeling Across Modern {GPU} Architectures},
+  year   = {2026},
+  note   = {arXiv:2605.04178},
+  url    = {https://arxiv.org/abs/2605.04178},
+  journal = {arXiv preprint}
+}
+
+@inproceedings{mall25,
+  author    = {Tee, Henry and {et al.}},
+  title     = {The {MALL} is Open: Exploring Shared Caches and Latency in {AMD} {CDNA3} {GPUs}},
+  booktitle = {Workshop on Memory-Centric Accelerator and Machine Learning (MEMO), at SC25},
+  year      = {2025},
+}
+
+@inproceedings{microbenchmark2010,
+  author    = {Wong, Henry and Papadopoulou, Mise-Martha and Sadooghi-Alvandi, Maryam and Moshovos, Andreas},
+  title     = {Demystifying {GPU} Microarchitecture through Microbenchmarking},
+  booktitle = {IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS)},
+  pages     = {235--246},
+  year      = {2010},
+  doi       = {10.1109/ISPASS.2010.5452013},
+}
+
+@inproceedings{gpgpusim2009,
+  author    = {Bakhoda, Ali and Yuan, George L. and Fung, Wilson W. L. and Wong, Henry and Aamodt, Tor M.},
+  title     = {Analyzing {CUDA} Workloads Using a Detailed {GPU} Simulator},
+  booktitle = {IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS)},
+  pages     = {163--174},
+  year      = {2009},
+}
+
+@inproceedings{accelsim2020,
+  author    = {Khairy, Mahmoud and Shen, Zhesheng and Aamodt, Tor M. and Rogers, Timothy G.},
+  title     = {{Accel-Sim}: An Extensible Simulation Framework for Validated {GPU} Modeling},
+  booktitle = {Proceedings of the 47th Annual International Symposium on Computer Architecture (ISCA)},
+  pages     = {473--486},
+  year      = {2020},
+}
+
+@inproceedings{nvbit2019,
+  author    = {Vijaykumar, N. and {et al.}},
+  title     = {{NVBit}: A Dynamic Binary Instrumentation Framework for {NVIDIA} {GPUs}},
+  booktitle = {Proceedings of the 52nd Annual IEEE/ACM International Symposium on Microarchitecture (MICRO)},
+  year      = {2019},
+}
+
+@inproceedings{volkov2010,
+  author    = {Volkov, Vasily},
+  title     = {Better Performance at Lower Occupancy},
+  booktitle = {GPU Technology Conference (GTC)},
+  year      = {2010},
+}
+
+@inproceedings{adamshalide2019,
+  author    = {Adams, Andrew and Ma, Krzysztof and Anderson, Luke and Baghdadi, Riyadh and Li, Tzu-Mao and Gharbi, Micha{\"e}l and Steinberger, Ben and Johnson, Stefan and Gascuel, Micha{\"e}l and Smith, Kevin and Izadi, Shahram and Durand, Fr{\'e}do},
+  title     = {Learning to Optimize {Halide} with Tree Search and Random Programs},
+  booktitle = {ACM Transactions on Graphics (Proceedings of SIGGRAPH)},
+  volume    = {38},
+  year      = {2019},
+}
+
+@inproceedings{gargv2002,
+  author    = {Gargi, Karthik},
+  title     = {A Sparse Algorithm for Predicated Global Value Numbering},
+  booktitle = {Proceedings of the ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  pages     = {45--56},
+  year      = {2002},
+}
+
+% ============================== verifier prior art ==============================
+
+@inproceedings{gpuverify2012,
+  author    = {Betts, Adam and Chong, Nathan and Donaldson, Alastair F. and Qadeer, Shaz and Thomson, Paul},
+  title     = {{GPUVerify}: A Verifier for {GPU} Kernels},
+  booktitle = {Proceedings of the 27th Annual ACM SIGPLAN Conference on Object-Oriented Programming, Systems, Languages, and Applications (OOPSLA)},
+  pages     = {113--132},
+  year      = {2012},
+  doi       = {10.1145/2384616.2384625},
+}
+
+@article{gpuverify2015,
+  author  = {Betts, Adam and Chong, Nathan and Donaldson, Alastair F. and Ketema, Jeroen and Qadeer, Shaz and Thomson, Paul and Wickerson, John},
+  title   = {The Design and Implementation of a Verification Technique for {GPU} Kernels},
+  journal = {ACM Transactions on Programming Languages and Systems (TOPLAS)},
+  volume  = {37},
+  number  = {3},
+  pages   = {10:1--10:49},
+  year    = {2015},
+  doi     = {10.1145/2743017},
+}
+
+@inproceedings{gpuverify2014cav,
+  author    = {Deligiannis, Pantazis and Donaldson, Alastair F. and Ketema, Jeroen and Liew, Daniel and Qadeer, Shaz},
+  title     = {Engineering a Static Verification Tool for {GPU} Kernels},
+  booktitle = {Proceedings of the 26th International Conference on Computer Aided Verification (CAV)},
+  pages     = {226--242},
+  year      = {2014},
+}
+
+@inproceedings{pug2010,
+  author    = {Li, Guodong and Gopalakrishnan, Ganesh},
+  title     = {Scalable {SMT}-Based Verification of {GPU} Kernel Functions},
+  booktitle = {Proceedings of the 18th ACM SIGSOFT International Symposium on Foundations of Software Engineering (FSE)},
+  pages     = {187--196},
+  year      = {2010},
+  doi       = {10.1145/1882291.1882320},
+}
+
+@inproceedings{sesa2014,
+  author    = {Li, Peng and Li, Guodong and Gopalakrishnan, Ganesh},
+  title     = {Practical Symbolic Race Checking of {GPU} Programs},
+  booktitle = {Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC)},
+  year      = {2014},
+  doi       = {10.1109/SC.2014.20},
+}
+
+@inproceedings{gklee2012,
+  author    = {Li, Guodong and Li, Peng and Sawaya, Geoffrey and Gopalakrishnan, Ganesh and Ghosh, Indradeep and Rajan, Sreeranga P.},
+  title     = {{GKLEE}: Concolic Verification and Test Generation for {GPUs}},
+  booktitle = {Proceedings of the 17th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP)},
+  pages     = {215--224},
+  year      = {2012},
+}
+
+@inproceedings{faial2024,
+  author    = {Liew, Daniel and Barbosa, Haniel and Cogumbreiro, Tiago and {et al.}},
+  title     = {Sound and Partially-Complete Static Analysis of Data-Races in {GPU} Programs ({FaialAA})},
+  booktitle = {Proceedings of the ACM on Programming Languages (OOPSLA)},
+  year      = {2024},
+  doi       = {10.1145/3689797},
+}
+
+@article{hgrd2026,
+  author = {{HGRD authors}},
+  title  = {Towards an Accurate {GPU} Data Race Detector},
+  year   = {2026},
+  note   = {arXiv:2604.02106},
+  url    = {https://arxiv.org/abs/2604.02106},
+  journal = {arXiv preprint}
+}
+
+@article{hirace2024,
+  author = {Jacobson, Tyler and Burtscher, Martin and Gopalakrishnan, Ganesh},
+  title  = {{HiRace}: A Data-Race Detector for {GPU} Kernels},
+  year   = {2024},
+  note   = {arXiv:2401.04701},
+  url    = {https://arxiv.org/abs/2401.04701},
+  journal = {arXiv preprint}
+}
+
+@article{esbmcgpu2017,
+  author  = {Pereira, P{\'a}vel and Albuquerque, Higo and da Silva, Isabela and Marques, Hendrio and Monteiro, Felipe and Ferreira, Ricardo and Cordeiro, Lucas},
+  title   = {{SMT}-Based Context-Bounded Model Checking for {CUDA} Programs ({ESBMC-GPU})},
+  journal = {Concurrency and Computation: Practice and Experience},
+  volume  = {29},
+  number  = {22},
+  year    = {2017},
+  doi     = {10.1016/j.scico.2017.09.005},
+}
+
+@inproceedings{gpuila2018,
+  author    = {Xing, Yixiao and Huang, Bo-Yuan and Gupta, Aarti and Malik, Sharad},
+  title     = {A Formal Instruction-Level {GPU} Model for Scalable Verification},
+  booktitle = {Proceedings of the International Conference on Computer-Aided Design (ICCAD)},
+  year      = {2018},
+  doi       = {10.1145/3240765.3240771},
+}
+
+@article{llov2020,
+  author  = {Afzal, Ayesha and Balakrishnan, Ganesh and {et al.}},
+  title   = {{LLOV}: A Fast Static Data-Race Checker for {OpenMP} Programs},
+  journal = {ACM Transactions on Architecture and Code Optimization (TACO)},
+  volume  = {17},
+  number  = {4},
+  year    = {2020},
+  doi     = {10.1145/3418597},
+}
+
+@inproceedings{grace2011,
+  author    = {Zheng, Mai and Ravi, Vignesh T. and Qin, Feng and Agrawal, Gagan},
+  title     = {{GRace}: A Low-Overhead Mechanism for Detecting Data Races in {GPU} Programs},
+  booktitle = {Proceedings of the 16th ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP)},
+  pages     = {135--146},
+  year      = {2011},
+  doi       = {10.1145/1941553.1941574},
+}
+
+@article{gmrace2014,
+  author  = {Zheng, Mai and Ravi, Vignesh T. and Qin, Feng and Agrawal, Gagan},
+  title   = {{GMRace}: Detecting Data Races in {GPU} Programs via a Low-Overhead Scheme},
+  journal = {IEEE Transactions on Parallel and Distributed Systems},
+  volume  = {25},
+  number  = {1},
+  pages   = {104--115},
+  year    = {2014},
+  doi     = {10.1109/TPDS.2013.44},
+}
+
+@inproceedings{curd2018,
+  author    = {Peng, Yuanfeng and Grover, Vinod and Devietti, Joseph},
+  title     = {{CURD}: A Dynamic {CUDA} Race Detector},
+  booktitle = {Proceedings of the 39th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  pages     = {390--403},
+  year      = {2018},
+  doi       = {10.1145/3296979.3192368},
+}
+
+@inproceedings{barracuda2017,
+  author    = {Eizenberg, Alexander and Peng, Yuanfeng and Pigli, Tommaso and Mansky, William and Devietti, Joseph},
+  title     = {{BARRACUDA}: Binary-Level Analysis of Runtime {RAces} in {CUDA} Programs},
+  booktitle = {Proceedings of the 38th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  year      = {2017},
+  doi       = {10.1145/3062341.3062342},
+}
+
+@inproceedings{scord2020,
+  author    = {Eizenberg, Alexander and Hu, Shiliang and Devietti, Joseph},
+  title     = {{ScoRD}: A Scoped Race Detector for {GPU}s},
+  booktitle = {Proceedings of the 47th Annual International Symposium on Computer Architecture (ISCA)},
+  year      = {2020},
+  doi       = {10.1109/ISCA45697.2020.00088},
+}
+
+@inproceedings{iguard2021,
+  author    = {Kamath, Anant and Basu, Arkaprava},
+  title     = {{iGUARD}: {In-GPU} Advanced Race Detection},
+  booktitle = {Proceedings of the 28th ACM Symposium on Operating Systems Principles (SOSP)},
+  year      = {2021},
+  doi       = {10.1145/3477132.3483545},
+}
+
+@article{spmddivergence2021,
+  author  = {Rosemann, Jannik and Moll, Simon and Hack, Sebastian},
+  title   = {An Abstract Interpretation for {SPMD} Divergence on Reducible Control Flow Graphs},
+  journal = {Proceedings of the ACM on Programming Languages (POPL)},
+  volume  = {5},
+  year    = {2021},
+  doi     = {10.1145/3434312},
+}
+
+@inproceedings{phasar2019,
+  author    = {Schubert, Philipp Dominik and Hermann, Ben and Bodden, Eric},
+  title     = {{PhASAR}: An Inter-Procedural Static Analysis Framework for {C/C++}},
+  booktitle = {Proceedings of the 25th International Conference on Tools and Algorithms for the Construction and Analysis of Systems (TACAS)},
+  pages     = {393--410},
+  year      = {2019},
+  doi       = {10.1007/978-3-030-17465-1_22},
+}
+
+@inproceedings{svf2016,
+  author    = {Sui, Yulei and Xue, Jingling},
+  title     = {{SVF}: Interprocedural Static Value-Flow Analysis in {LLVM}},
+  booktitle = {Proceedings of the 25th International Conference on Compiler Construction (CC)},
+  pages     = {265--266},
+  year      = {2016},
+}
+
+@inproceedings{msan2015,
+  author    = {Serebryany, Konstantin and Stepanov, Evgenii},
+  title     = {{MemorySanitizer}: Fast Detector of Uninitialized Memory Use in {C++}},
+  booktitle = {Proceedings of the 2015 IEEE/ACM International Symposium on Code Generation and Optimization (CGO)},
+  pages     = {46--55},
+  year      = {2015},
+}
+
+% ============================== capture / replay prior art ==============================
+
+@inproceedings{mneme2023,
+  author    = {Parasyris, Konstantinos and Georgakoudis, Giorgis and Rangel, Enrique and Laguna, Ignacio and Doerfert, Johannes},
+  title     = {Scalable Tuning of ({OpenMP}) {GPU} Applications via Kernel Record and Replay},
+  booktitle = {Proceedings of the International Conference for High Performance Computing, Networking, Storage and Analysis (SC)},
+  year      = {2023},
+}
+
+@article{kerncap2026,
+  author = {Ramos, Cole and Lowery, Keith},
+  title  = {{Kerncap}: Automated Kernel Extraction and Isolation for {AMD} {GPUs}},
+  year   = {2026},
+  note   = {arXiv:2605.03208 (AMD Research, IntelliKit)},
+  url    = {https://arxiv.org/abs/2605.03208},
+  journal = {arXiv preprint}
+}
+
+@article{r3-2026,
+  author = {{LLNL}},
+  title  = {Record-Remix-Replay ({R$^3$}): LLM Evolutionary Search and Bayesian Optimization over Source, Compiler, and Launch Configuration on a Record-Replay Engine},
+  year   = {2026},
+  note   = {arXiv:2604.11109},
+  url    = {https://arxiv.org/abs/2604.11109},
+  journal = {arXiv preprint}
+}
+
+@article{tally2024,
+  author = {{Tally authors}},
+  title  = {Tally: Transparent Virtualization Layer Intercepting Kernel-Launch {APIs} with {PTX} Rewriting},
+  year   = {2024},
+  note   = {arXiv:2410.07381},
+  url    = {https://arxiv.org/abs/2410.07381},
+  journal = {arXiv preprint}
+}
+
+@article{sip2024,
+  author = {{SIP authors}},
+  title  = {{SIP}: {SASS} Schedule Autotuning via Interception},
+  year   = {2024},
+  note   = {arXiv:2403.16863},
+  url    = {https://arxiv.org/abs/2403.16863},
+  journal = {arXiv preprint}
+}
+
+@article{kperfir2025,
+  author = {{KPerfIR authors}},
+  title  = {{KPerfIR}: In-Compiler Instrumentation and Trace Replay for {GPU} Kernels},
+  year   = {2025},
+  note   = {arXiv:2505.21661},
+  url    = {https://arxiv.org/abs/2505.21661},
+  journal = {arXiv preprint}
+}
+
+@article{kerneltuner2024,
+  author = {van Werkhoven, Ben},
+  title  = {Kernel Tuner: A Search-Optimizing {GPU} Kernel Auto-Tuner ({HIP} extension)},
+  year   = {2024},
+  note   = {arXiv:2407.11488},
+  url    = {https://arxiv.org/abs/2407.11488},
+  journal = {arXiv preprint}
+}
+
+% ============================== tuning / hardware modeling prior art ==============================
+
+@inproceedings{baremetal2017,
+  author    = {Ma, Wenhao and Wang, Chunlin and {et al.}},
+  title     = {Understanding the {GPU} Microarchitecture to Achieve Bare-Metal Performance},
+  booktitle = {Proceedings of the 22nd ACM SIGPLAN Symposium on Principles and Practice of Parallel Programming (PPoPP)},
+  pages     = {31--42},
+  year      = {2017},
+}
+
+@article{scalesim2019,
+  author = {Samajdar, Ananda and Zhu, Yuhao and Whatmough, Paul N. and Mattina, Matthew and Krishna, Tushar},
+  title  = {{SCALE-Sim}: Systolic {CNN} Accelerator Simulator},
+  year   = {2019},
+  note   = {arXiv:1811.02883},
+  url    = {https://arxiv.org/abs/1811.02883},
+  journal = {arXiv preprint}
+}
+
+% Gist could not be verified against an external source at write time; the
+% project briefs do not cite it, and no authoritative reference was found.
+@misc{gist-unverified,
+  author       = {{Gist authors}},
+  title        = {Gist: A {CUDA} Kernel Instantiator},
+  year         = {N/A},
+  note         = {\% UNVERIFIED -- no arXiv/DOI could be confirmed for this work at write time},
+}
+
+% ============================== standards / vendor documentation ==============================
+
+@misc{cudaProgrammingGuide,
+  author       = {{NVIDIA}},
+  title        = {{CUDA} {C++} Programming Guide},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/cuda/cuda-programming-guide/}},
+  note         = {v13.3; occupancy model and launch configuration worked examples ({\S}2.3.7)},
+}
+
+@misc{ptxISA,
+  author       = {{NVIDIA}},
+  title        = {{PTX}: Parallel Thread Execution {ISA} Version},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/cuda/parallel-thread-execution/}},
+}
+
+@misc{cudaBestPractices,
+  author       = {{NVIDIA}},
+  title        = {{CUDA} {C++} Best Practices Guide},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/}},
+  note         = {Coalesced memory access and occupancy guidelines},
+}
+
+@misc{nsightComputeSOL,
+  author       = {{NVIDIA}},
+  title        = {{NVIDIA} {Nsight} Compute Profiling Guide -- Speed of Light ({SOL}) Analysis},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/nsight-compute/ProfilingGuide/}},
+  note         = {Sections and rules architecture: SpeedOfLight, Occupancy, SchedulerStats, WarpStateStats},
+}
+
+@misc{cupti,
+  author       = {{NVIDIA}},
+  title        = {{CUDA} Profiling Tools Interface ({CUPTI})},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/cupti/}},
+  note         = {Activity API; Kernel9 vs Kernel10 record kinds; Event/Metric APIs removed in CUDA 13},
+}
+
+@misc{kineto,
+  author       = {{PyTorch}},
+  title        = {PyTorch {Kineto}: {GPU} Profiling and Tracing Library},
+  year         = {2026},
+  howpublished = {\url{https://github.com/pytorch/kineto}},
+  note         = {CUPTI-based activity tracing with correlation-id join and Chrome trace output},
+}
+
+@misc{rocprofilerSDK,
+  author       = {{AMD}},
+  title        = {{ROCm} {rocprofiler-sdk}},
+  year         = {2026},
+  howpublished = {\url{https://rocm.docs.amd.com/projects/rocprofiler-sdk/}},
+  note         = {HIP\_RUNTIME\_API + kernel dispatch interception; correlation\_id join; replay target of kernscope-capture},
+}
+
+@misc{ebpfVerifier,
+  author       = {{Linux kernel}},
+  title        = {Linux Kernel {eBPF} Verifier},
+  year         = {2026},
+  howpublished = {\url{https://github.com/torvalds/linux/tree/master/kernel/bpf/verifier.c}},
+  note         = {Tnum + register-bound analysis, check\_map\_access(), path-sensitive pruning; the engineering template for kernscope-verify},
+}
+
+@misc{iree,
+  author       = {{Google}},
+  title        = {{IREE}: Intermediate Representation Execution Environment ({GPUPromoteMatmulOperands}, {GPUReduceBankConflicts}, {GPUConvertToCoalescedDMA})},
+  year         = {2026},
+  howpublished = {\url{https://github.com/iree-org/iree}},
+  note         = {MLIR-based production analog for shared-memory promotion and coalescing passes},
+}
+
+@misc{llvmtutor,
+  author       = {{banach-space}},
+  title        = {{llvm-tutor}: A Collection of Out-of-Tree {LLVM} Passes and Tests},
+  year         = {2026},
+  howpublished = {\url{https://github.com/banach-space/llvm-tutor}},
+  note         = {The standard wiring model for out-of-tree pass plugins with lit tests},
+}
+
+@misc{cutlass,
+  author       = {{NVIDIA}},
+  title        = {{CUTLASS}: {CUDA} Templates for Linear Algebra Subroutines and Solvers (incl. {CuTe} layout library)},
+  year         = {2026},
+  howpublished = {\url{https://github.com/NVIDIA/cutlass}},
+}
+
+@misc{cublas,
+  author       = {{NVIDIA}},
+  title        = {{cuBLAS}: {CUDA} Basic Linear Algebra Subroutines Library},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/cuda/cublas/}},
+}
+
+@misc{cudnn,
+  author       = {{NVIDIA}},
+  title        = {{cuDNN}: {NVIDIA} {CUDA} Deep Neural Network Library},
+  year         = {2026},
+  howpublished = {\url{https://docs.nvidia.com/deeplearning/cudnn/}},
+  note         = {Tensor-core kernels; implicit-GEMM convolutions referenced by Triton and FlashAttention evaluations},
+}
+
+@misc{spirvSpec,
+  author       = {{Khronos Group}},
+  title        = {{SPIR-V} Specification},
+  year         = {2026},
+  howpublished = {\url{https://registry.khronos.org/SPIR-V/}},
+  note         = {Universal limits {\S}2.17; spirv-val as the well-formedness gate},
+}
+
+@misc{ikos,
+  author       = {{NASA}},
+  title        = {{IKOS}: A Framework for Static Analysis Based on Abstract Interpretation},
+  year         = {2026},
+  howpublished = {\url{https://github.com/NASA-SW-VnV/ikos}},
+  note         = {LLVM-based; proves absence of runtime errors incl. buffer overflow},
+}

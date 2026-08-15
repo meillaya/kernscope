@@ -1,0 +1,71 @@
+% kernscope library dependency graph: libs/ -> tools/ (nothing depends downward on a tool)
+% Included from report.tex via \input.  Requires tikz + positioning + arrows.meta.
+\begin{tikzpicture}[
+    node distance=2.6cm and 0.5cm,
+    lib/.style={draw, rectangle, rounded corners=2pt, align=center,
+                minimum width=15mm, minimum height=7mm, fill=blue!8, font=\scriptsize},
+    tool/.style={draw, rectangle, rounded corners=2pt, align=center,
+                 minimum width=17mm, minimum height=7mm, fill=green!12, font=\scriptsize,
+                 text width=17mm},
+    edge/.style={-{Stealth[length=1.8mm]}, gray!75, thick},
+    lbl/.style={font=\scriptsize\bfseries},
+  ]
+  % ---- libs tier ----
+  \node[lib, minimum width=34mm] (arch) {libs/arch\\ \scriptsize GPU arch DB + measured peaks};
+  \node[lib, below left=1.15cm and 0.6cm of arch]  (ptx)   {libs/ptxparse};
+  \node[lib, below right=1.15cm and 0.6cm of arch] (amd)   {libs/amdparse};
+  \node[lib, below=1.0cm of ptx, xshift=6mm]       (occ)   {libs/occupancy};
+  \node[lib, below=1.0cm of amd, xshift=-6mm]      (rfl)   {libs/roofline};
+  \node[lib, below=1.0cm of occ, xshift=-4mm]      (gold)  {libs/golden};
+  \node[lib, below=1.0cm of gold, xshift=2mm]      (bench) {libs/bench};
+  \node[lib, below=1.0cm of bench, xshift=-4mm]    (db)    {libs/db};
+  \node[lib, below=1.0cm of db, xshift=4mm]        (rep)   {libs/report};
+  \node[lib, below=1.0cm of rep, xshift=-6mm]      (cs)    {libs/cupti-sub};
+  \node[lib, below=1.0cm of cs, xshift=6mm]        (rt)    {libs/runtime};
+
+  % ---- tools tier (right column) ----
+  \node[tool, right=5.2cm of arch, yshift=0cm] (t_ana)   {tools/analyze};
+  \node[tool, below=0.5cm of t_ana]            (t_tune)  {tools/tune};
+  \node[tool, below=0.5cm of t_tune]           (t_ver)   {tools/verify};
+  \node[tool, below=0.5cm of t_ver]            (t_cap)   {tools/capture};
+  \node[tool, below=0.5cm of t_cap]            (t_pass)  {tools/pass};
+  \node[tool, below=0.5cm of t_pass]           (t_prof)  {tools/profile};
+
+  % ---- lib -> lib edges (arch at the root) ----
+  \draw[edge] (arch) -- (ptx);
+  \draw[edge] (arch) -- (amd);
+  \draw[edge] (arch) -- (occ);
+  \draw[edge] (arch) -- (rfl);
+  \draw[edge] (rfl)  -- (gold);
+  \draw[edge] (gold) -- (bench);
+  \draw[edge] (bench) -- (db);
+  \draw[edge] (db)   -- (rep);
+  \draw[edge] (arch) -- (cs);
+  \draw[edge] (arch) -- (rt);
+
+  % ---- lib -> tool edges ----
+  \draw[edge] (ptx.south east)  -- (t_ana.west);
+  \draw[edge] (amd.south east)  -- (t_ana.west);
+  \draw[edge] (occ.south east)  -- (t_tune.west);
+  \draw[edge] (rfl.south east)  -- (t_tune.west);
+  \draw[edge] (gold.south east) -- (t_tune.west);
+  \draw[edge] (bench.south east) -- (t_tune.west);
+  \draw[edge] (rt.south east)   -- (t_ver.west);
+  \draw[edge] (rt.south east)   -- (t_cap.west);
+  \draw[edge] (cs.south east)   -- (t_cap.west);
+  \draw[edge] (rt.south east)   -- (t_prof.west);
+  \draw[edge] (cs.south east)   -- (t_prof.west);
+  \draw[edge] (occ.south east)  -- (t_prof.west);
+
+  % ---- tool-to-tool validation edges (the closed loop) ----
+  \draw[edge, blue!60!black] (t_ana.south east) -- (t_tune.east);
+  \draw[edge, blue!60!black] (t_ana.south east) -- (t_pass.east);
+  \draw[edge, blue!60!black] (t_tune.east) -- (t_ver.east);
+  \draw[edge, blue!60!black] (t_cap.south east) -- (t_prof.east);
+  \draw[edge, blue!60!black] (t_ver.south east) -- (t_pass.east);
+
+  \node[lbl, above=0.6cm of t_ana, anchor=base] {tools/ (six CLIs)};
+  \node[lbl, above=0.6cm of arch, anchor=base]  {libs/ (shared C++)};
+  \node[font=\scriptsize\itshape, text=blue!60!black, below=1.6cm of t_prof.east,
+        anchor=east, align=right] {blue = cross-tool validation edges\\ (profile $\to$ capture, capture $\to$ analyze,\\ tune $\to$ verify, pass $\to$ analyze)};
+\end{tikzpicture}

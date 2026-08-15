@@ -1,0 +1,61 @@
+% kernscope dual-path hardware strategy: CUDA (compile-only, rental-gated) vs HIP (live on gfx1101)
+% Included from report.tex via \input.  Requires tikz + positioning + arrows.meta.
+\begin{tikzpicture}[
+    node distance=2.2cm and 0.5cm,
+    head/.style={draw, rectangle, rounded corners=2pt, align=center,
+                 minimum height=8mm, font=\small\bfseries},
+    row/.style={draw, rectangle, rounded corners=2pt, align=left,
+                minimum height=8mm, minimum width=58mm, font=\scriptsize,
+                text width=52mm},
+    live/.style={fill=green!10},
+    compile/.style={fill=gray!8},
+    gate/.style={fill=orange!8},
+    arrow/.style={-{Stealth[length=1.8mm]}, thick, gray!70},
+  ]
+  % ---- column headers ----
+  \node[head, fill=gray!15]  (h_cuda) {CUDA / NVIDIA (no local runtime)};
+  \node[head, fill=green!15, right=2.4cm of h_cuda] (h_hip) {HIP / AMD gfx1101 (live, local)};
+
+  % ---- capability rows (shared left label) ----
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize\bfseries, align=right]
+        (l0) {Capability};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-1.0cm] (l1) {Compile};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-2.0cm] (l2) {Static analysis};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-3.0cm] (l3) {Capture / replay};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-4.0cm] (l4) {Profiling};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-5.0cm] (l5) {Tuning / benchmark};
+  \node[draw=none, left=1.0cm of h_cuda, anchor=east, font=\scriptsize, align=right,
+        yshift=-6.0cm] (l6) {LLVM passes};
+
+  % ---- CUDA column ----
+  \node[row, compile, below=0.6cm of h_cuda]  (c1) {\textbf{compile-only:} nvcc sm\_80/sm\_90 (vendored headers from the nix store; none committed)};
+  \node[row, compile, below=0.6cm of c1]      (c2) {PTX corpus (sm\_80/sm\_90/sm\_100 examples)};
+  \node[row, compile, below=0.6cm of c2]      (c3) {CUPTI callback/injection + LD\_PRELOAD shim; record $\to$ reproducer \textbf{compile check only}};
+  \node[row, compile, below=0.6cm of c3]      (c4) {CUPTI activity tracer: compile + unit only (synthetic Kernel9 buffers)};
+  \node[row, gate,   below=0.6cm of c4]       (c5) {template + launch-config search compile-only; runtime benchmark \textbf{rental-gated}};
+  \node[row, compile, below=0.6cm of c5]      (c6) {llc nvptx64 PTX compile-only (sm\_80)};
+
+  % ---- HIP column ----
+  \node[row, live, below=0.6cm of h_hip]  (h1) {\textbf{compile + live run:} hipcc gfx1101};
+  \node[row, live, below=0.6cm of h1]     (h2) {AMDGPU ISA corpus (gfx1101)};
+  \node[row, live, below=0.6cm of h2]     (h3) {rocprofiler-sdk intercept: record $\to$ \textbf{bitwise replay PASS}};
+  \node[row, live, below=0.6cm of h3]     (h4) {rocprofiler-sdk live: layernorm\_fused traced, hot-kernel ranked};
+  \node[row, live, below=0.6cm of h4]     (h5) {full correctness-gated live benchmark on gfx1101};
+  \node[row, live, below=0.6cm of h5]     (h6) {llc amdgcn + live gfx1101 benchmark};
+
+  % ---- headers row separator ----
+  \draw[arrow] (h_cuda.south) -- (c1.north);
+  \draw[arrow] (h_hip.south)  -- (h1.north);
+
+  % ---- honesty banner ----
+  \node[draw, rounded corners=2pt, fill=yellow!12, align=center, font=\scriptsize,
+        below=0.7cm of c6, xshift=1.2cm, text width=100mm]
+        {Honesty guards: provenance.mode = measured | projected (asserted by tests/report/check\_dashboard.py);\\
+        NVIDIA runtime is owner-gated (\texttt{scripts/rental-validate.sh}), never auto-triggered;\\
+        \texttt{reports/rentals/} stays empty until the owner produces numbers.};
+\end{tikzpicture}
