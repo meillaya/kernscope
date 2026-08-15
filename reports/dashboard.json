@@ -107,7 +107,7 @@
         },
         "capture_tune_validated": null,
         "capture_tune_best_block": 256,
-        "capture_tune_speedup": 1.0033222069683347,
+        "capture_tune_speedup": 1.0016583487952058,
         "verify_gate": true,
         "verifier_gated_variants": null,
         "compiled_variants": null
@@ -220,9 +220,9 @@
       },
       "summary": {
         "kernel_count": 3,
-        "wall_time_ns": 20120,
+        "wall_time_ns": 19600,
         "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
-        "hot_kernel_duration_ns": 9040,
+        "hot_kernel_duration_ns": 9200,
         "hot_kernel_occupancy": 1,
         "hot_kernel_registers": 24,
         "hot_kernel_hints": [

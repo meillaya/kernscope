@@ -1,5 +1,5 @@
 [replay] dumped /home/mei/projects/llvm.h/reports/demo/capture/dump/output-0.bin (262144 bytes)
 kernscope-capture: replay _Z15layernorm_fusedPKtS0_S0_Ptfi.kd (amd/gfx1101) on AMD Radeon RX 7800 XT
-  output 0x7ff38c242000 ref=a0027ed9a8ef replay=a0027ed9a8ef bitwise EQUAL -> PASS (ref: ref file /home/mei/projects/llvm.h/reports/demo/capture/output.bin)
+  output 0x7f43d1442000 ref=a0027ed9a8ef replay=a0027ed9a8ef bitwise EQUAL -> PASS (ref: ref file /home/mei/projects/llvm.h/reports/demo/capture/output.bin)
 validation: PASS
 launch records: 1 (profiling hook contract, docs/capture.md §profiling-hooks)

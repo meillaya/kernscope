@@ -6,7 +6,7 @@
     "device": "AMD Radeon RX 7800 XT",
     "gpu_required": true
   },
-  "runtime_seconds": 152.0,
+  "runtime_seconds": 153.0,
   "runtime_budget_seconds": 900.0,
   "loop": {
     "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
@@ -18,7 +18,7 @@
         "tool": "kernscope-profile build/tests/fixtures/layernorm_fused",
         "summary": {
           "kernel_count": 3,
-          "wall_time_ns": 20120,
+          "wall_time_ns": 19600,
           "hint_count": 1,
           "hints": [
             "memory_bound"
@@ -89,7 +89,7 @@
           "status": "ok",
           "mode": "capture_tune",
           "validated": 4,
-          "speedup": 1.0033222069683347,
+          "speedup": 1.0016583487952058,
           "best_block": 256
         },
         "evidence": [

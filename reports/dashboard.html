@@ -109,7 +109,7 @@ Six module sections aggregate the committed per-module reports below.</p>
   },
   &quot;capture_tune_validated&quot;: null,
   &quot;capture_tune_best_block&quot;: 256,
-  &quot;capture_tune_speedup&quot;: 1.0033222069683347,
+  &quot;capture_tune_speedup&quot;: 1.0016583487952058,
   &quot;verify_gate&quot;: true,
   &quot;verifier_gated_variants&quot;: null,
   &quot;compiled_variants&quot;: null
@@ -151,9 +151,9 @@ Six module sections aggregate the committed per-module reports below.</p>
   &quot;demo_bundle_replay&quot;: &quot;PASS&quot;
 }</pre><p class='prov'>provenance: mode=<code>measured</code>, measured=<code>True</code> — live gfx1101 capture (rocprofiler-sdk intercept) + replay with bitwise-equal validation.</p><ul class='evidence'><li><code>tests/fixtures/capture/layernorm-live/manifest.json</code></li><li><code>tests/fixtures/capture/layernorm-live/bundle.v0</code></li><li><code>tests/fixtures/capture/v0-sample.bundle</code></li><li><code>reports/demo/capture/bundle.v0</code></li><li><code>reports/demo/capture/replay.txt</code></li><li><code>reports/demo/capture/output.bin</code></li></ul></section><section class='module' id='module-profile' data-available='true'><h2>Profiler (C6) <span class='status measured'>measured</span></h2><pre class='summary'>{
   &quot;kernel_count&quot;: 3,
-  &quot;wall_time_ns&quot;: 20120,
+  &quot;wall_time_ns&quot;: 19600,
   &quot;hot_kernel&quot;: &quot;_Z15layernorm_fusedPKtS0_S0_Ptfi.kd&quot;,
-  &quot;hot_kernel_duration_ns&quot;: 9040,
+  &quot;hot_kernel_duration_ns&quot;: 9200,
   &quot;hot_kernel_occupancy&quot;: 1,
   &quot;hot_kernel_registers&quot;: 24,
   &quot;hot_kernel_hints&quot;: [
@@ -362,7 +362,7 @@ six module sections + provenance.measured on each).</footer>
         },
         "capture_tune_validated": null,
         "capture_tune_best_block": 256,
-        "capture_tune_speedup": 1.0033222069683347,
+        "capture_tune_speedup": 1.0016583487952058,
         "verify_gate": true,
         "verifier_gated_variants": null,
         "compiled_variants": null
@@ -475,9 +475,9 @@ six module sections + provenance.measured on each).</footer>
       },
       "summary": {
         "kernel_count": 3,
-        "wall_time_ns": 20120,
+        "wall_time_ns": 19600,
         "hot_kernel": "_Z15layernorm_fusedPKtS0_S0_Ptfi.kd",
-        "hot_kernel_duration_ns": 9040,
+        "hot_kernel_duration_ns": 9200,
         "hot_kernel_occupancy": 1,
         "hot_kernel_registers": 24,
         "hot_kernel_hints": [

@@ -1,0 +1,38 @@
+====================================================================
+task-57-gpu-kernel-suite — NEGATIVE PATH EVIDENCE
+(devenv.lock deletion -> reproduce-all.sh fails fast)
+====================================================================
+Date: 2026-08-15   Repo: fresh clone of HEAD 3b15660
+
+--------------------------------------------------------------------
+Command sequence (real, scripted):
+--------------------------------------------------------------------
+  rm -rf /tmp/opencode/ks-neg && mkdir -p /tmp/opencode/ks-neg
+  cd /tmp/opencode/ks-neg
+  git clone --quiet /home/mei/projects/llvm.h repo
+  cd repo
+  rm devenv.lock
+  ls devenv.lock            # -> "ls: cannot access 'devenv.lock': No such file or directory"
+  bash scripts/reproduce-all.sh
+
+--------------------------------------------------------------------
+Observed behavior (exact output):
+--------------------------------------------------------------------
+[reproduce-all] FAIL: devenv.lock is missing — run devenv update to
+regenerate the lock (the pinned toolchain contract is broken)
+
+Exit code: 1
+
+--------------------------------------------------------------------
+Assertion results:
+--------------------------------------------------------------------
+[x] FAILS FAST: script exited 1 at the lock check, BEFORE running ci.sh
+    (no configure/build/test output followed; the run took < 1 s)
+[x] MESSAGE: contains the exact required text "run devenv update to
+    regenerate the lock"
+[x] NO SILENT REGENERATION: the script never runs devenv update itself
+    (the lock is the reproducibility contract; regeneration is owner-only)
+[x] SECOND GUARD (untracked lock): reproduce-all.sh also exits 1 with the
+    same message if devenv.lock exists but `git ls-files devenv.lock` is
+    empty (committed-pin requirement) — code path present in
+    scripts/reproduce-all.sh stage 1

@@ -21,22 +21,22 @@ api cuModuleGetFunction calls=0
 api cuFuncGetParamInfo calls=0
 api cuLaunchKernel calls=0
 api cuLaunchKernelEx calls=0
-alloc ptr=0x7ff38c200000 size=262144
-alloc ptr=0x7ff38c240000 size=256
-alloc ptr=0x7ff38c241000 size=256
-alloc ptr=0x7ff38c242000 size=262144
-free ptr=0x7ff38c200000 size=262144
-free ptr=0x7ff38c240000 size=256
-free ptr=0x7ff38c241000 size=256
-free ptr=0x7ff38c242000 size=262144
+alloc ptr=0x7f43d1400000 size=262144
+alloc ptr=0x7f43d1440000 size=256
+alloc ptr=0x7f43d1441000 size=256
+alloc ptr=0x7f43d1442000 size=262144
+free ptr=0x7f43d1400000 size=262144
+free ptr=0x7f43d1440000 size=256
+free ptr=0x7f43d1441000 size=256
+free ptr=0x7f43d1442000 size=262144
 launch kernel="__amd_rocclr_copyBuffer.kd" via=runtime grid=1x1x1 block=512x1x1 shared=0 stream=0x0 graph=0x0 args=1 [48:]
 launch kernel="__amd_rocclr_copyBuffer.kd" via=runtime grid=1x1x1 block=512x1x1 shared=0 stream=0x0 graph=0x0 args=1 [48:]
-launch kernel="_Z15layernorm_fusedPKtS0_S0_Ptfi.kd" via=runtime grid=1024x1x1 block=128x1x1 shared=0 stream=0x0 graph=0x0 args=6 [8:0000208cf37f0000] [8:0000248cf37f0000] [8:0010248cf37f0000] [8:0020248cf37f0000] [4:acc52737] [4:80000000]
-copy kind=memcpy dst=0x7ff38c200000 src=0x55c126408950 bytes=262144 cuda-kind=1 dst-size=262144 src-size=0 stream=0x0
-copy kind=memcpy dst=0x7ff38c240000 src=0x55c125ff2d90 bytes=256 cuda-kind=1 dst-size=256 src-size=0 stream=0x0
-copy kind=memcpy dst=0x7ff38c241000 src=0x55c125ff5170 bytes=256 cuda-kind=1 dst-size=256 src-size=0 stream=0x0
-copy kind=memcpy dst=0x55c1262a2fa0 src=0x7ff38c242000 bytes=262144 cuda-kind=2 dst-size=0 src-size=262144 stream=0x0
+launch kernel="_Z15layernorm_fusedPKtS0_S0_Ptfi.kd" via=runtime grid=1024x1x1 block=128x1x1 shared=0 stream=0x0 graph=0x0 args=6 [8:000040d1437f0000] [8:000044d1437f0000] [8:001044d1437f0000] [8:002044d1437f0000] [4:acc52737] [4:80000000]
+copy kind=memcpy dst=0x7f43d1400000 src=0x5652f9614950 bytes=262144 cuda-kind=1 dst-size=262144 src-size=0 stream=0x0
+copy kind=memcpy dst=0x7f43d1440000 src=0x5652f91fed90 bytes=256 cuda-kind=1 dst-size=256 src-size=0 stream=0x0
+copy kind=memcpy dst=0x7f43d1441000 src=0x5652f9201170 bytes=256 cuda-kind=1 dst-size=256 src-size=0 stream=0x0
+copy kind=memcpy dst=0x5652f94aefa0 src=0x7f43d1442000 bytes=262144 cuda-kind=2 dst-size=0 src-size=262144 stream=0x0
 stream sync handle=0x0 id=0
-fatbin mod=1 sha256=13a5f407373f4a1f49b2c3427d4cbd403420ed11767c9fadf0578937d8108596 kernels="__amd_rocclr_initHeap.kd","__amd_rocclr_streamOpsWait.kd","__amd_rocclr_fillBufferAligned.kd","__amd_rocclr_copyBufferRect.kd","__amd_rocclr_copyBufferAligned.kd","__amd_rocclr_copyBufferRectAligned.kd","__amd_rocclr_copyBufferToImage.kd","__amd_rocclr_fillBufferAligned2D.kd","__amd_rocclr_copyImage.kd","__amd_rocclr_copyBuffer.kd","__amd_rocclr_batchMemOp.kd","__amd_rocclr_copyImage1DA.kd","__amd_rocclr_fillImage.kd","__amd_rocclr_copyImageToBuffer.kd","__amd_rocclr_streamOpsWrite.kd"
+fatbin mod=1 sha256=13a5f407373f4a1f49b2c3427d4cbd403420ed11767c9fadf0578937d8108596 kernels="__amd_rocclr_initHeap.kd","__amd_rocclr_streamOpsWait.kd","__amd_rocclr_streamOpsWrite.kd","__amd_rocclr_copyBuffer.kd","__amd_rocclr_copyBufferAligned.kd","__amd_rocclr_batchMemOp.kd","__amd_rocclr_fillImage.kd","__amd_rocclr_fillBufferAligned2D.kd","__amd_rocclr_copyBufferRect.kd","__amd_rocclr_copyImage.kd","__amd_rocclr_copyImage1DA.kd","__amd_rocclr_copyBufferToImage.kd","__amd_rocclr_fillBufferAligned.kd","__amd_rocclr_copyBufferRectAligned.kd","__amd_rocclr_copyImageToBuffer.kd"
 fatbin mod=2 sha256=a30f60fc281db1b069dbf491cc6d6d0f2b886338de686db6fdc903b4338f29ff kernels="_Z15layernorm_fusedPKtS0_S0_Ptfi.kd"
 end-capture-v0

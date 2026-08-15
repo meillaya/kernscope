@@ -1,0 +1,139 @@
+====================================================================
+task-57-gpu-kernel-suite — HAPPY PATH EVIDENCE (final todo: docs +
+README resume bullets + architecture + master reproducibility +
+clean-checkout CI green)
+====================================================================
+Date: 2026-08-15   Machine: gfx1101 (AMD Radeon RX 7800 XT), entropyos-nix
+Commits: 69c9d64 (docs + reproduce-all skeleton), 1566871 (regenerated
+  reports), 3b15660 (fix(cupti-sub): equiv_hip_app in ALL — exposed by the
+  clean-checkout gate)
+
+--------------------------------------------------------------------
+1. ACCEPTANCE: bash scripts/reproduce-all.sh exit 0 END-TO-END
+--------------------------------------------------------------------
+Command: cd /home/mei/projects/llvm.h && bash scripts/reproduce-all.sh
+Exit code: 0
+
+Key output (full log: reproduce-all.sh -> ci.sh -> demo.sh -> dashboard):
+
+[reproduce-all] lock check OK — devenv.lock tracked and present
+== kernscope CI gate ==
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)
+[PASS] ctest -L "no-gpu|gpu-amd"          (645/645, 0 failed)
+[PASS] ctest count guard: 645 tests >= baseline 550 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)        (16/16 lit tests)
+[PASS] pytest tests/golden -q             (31 passed)
+[PASS] generated-code compile checks      (7/7)
+[PASS] fixture size: 2MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard (no vendored CUDA/CUPTI/NVTX .h files tracked)
+[PASS] NVIDIA-content guard (no vendor NVIDIA copyright markers outside documented exceptions)
+[PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail)
+
+== [demo] stages 1-5 (profile/capture/analyze/capture_tune/verify_tune_pass_delta)
+[demo]   profile ok: 3 kernels, hot layernorm hint(s): 1
+[demo]   bundle: reports/demo/capture/bundle.v0 (bitwise replay PASS)
+[demo]   analyzer ok: 4 findings (warnings+suggestions)
+[demo]   capture-tune ok: 4 bitwise-validated candidates, speedup 1.003
+[demo]   verify-tune ok: 1 variant(s) gated (incl. injected MAY_OOB), 12 compiled
+[demo]   pass-delta ok: vector_width 1 -> 4, vectorized loads 0 -> 12
+[PASS] check_loop: all assertions green (happy mode)
+== demo OK: loop closed on entropyos-nix in 153s (< 900s budget)
+
+[reproduce-all]   dashboard ok: 6 section(s) with data: analyzer, tune,
+                  verify, capture, profile, pass
+== reproduce-all OK: lock check + ci.sh + demo.sh + dashboard all green
+
+--------------------------------------------------------------------
+2. ACCEPTANCE: CLEAN-CHECKOUT ci.sh exit 0 (fresh clone, zero build state)
+--------------------------------------------------------------------
+Commands:
+  rm -rf /tmp/opencode/ks-clean2 && mkdir -p /tmp/opencode/ks-clean2
+  cd /tmp/opencode/ks-clean2
+  git clone --quiet /home/mei/projects/llvm.h repo
+  cd repo && ls build   # -> "No such file or directory" (zero build state)
+  bash scripts/ci.sh
+Exit code: 0   (clone HEAD = 3b15660)
+
+[PASS] configure (scripts/configure.sh)
+[PASS] build (cmake --build build)          (full tree from zero, Werror clean)
+[PASS] ctest -L "no-gpu|gpu-amd"            (645/645, 0 failed)
+[PASS] ctest count guard: 645 tests >= baseline 550 (scripts/ci-baseline.txt)
+[PASS] check-kernscope (lit suite)
+[PASS] pytest tests/golden -q
+[PASS] generated-code compile checks (scripts/compile_checks.sh)
+[PASS] fixture size: 2MB <= 64MB (tests/fixtures)
+[PASS] NVIDIA-header filename guard
+[PASS] NVIDIA-content guard
+[PASS] kernscope CI gate green (10 pass, 0 skip, 0 fail)
+
+NOTE: the FIRST clean-checkout attempt (clone at 1566871) failed exactly
+one test — capture_equiv, "required artifact missing:
+build/libs/cupti-sub/equiv_hip_app". Root cause: equiv_hip_app_build was a
+custom target OUTSIDE the default build; in-tree it only passed because the
+artifact was stale from an earlier explicit --target build. Fixed with a
+test-wiring-only change (libs/cupti-sub/CMakeLists.txt: custom target added
+to ALL, no tool behavior change) in 3b15660; the clean-checkout gate then
+passed 10/10. This is precisely the class of regression the final gate was
+specified to catch.
+
+--------------------------------------------------------------------
+3. ACCEPTANCE: README contains 7 resume bullets (1 umbrella + 6 modules)
+--------------------------------------------------------------------
+Command: grep -c '^[0-9]\. ' README.md   ->   7
+Bullets (README.md "## Resume bullets", each with "(numbers from …)"
+pointers to committed artifacts; NO rental/H100 claims — reports/rentals/
+does not exist):
+  1. Umbrella — one toolchain, one loop (demo loop 152 s / 900 s budget,
+     reports/demo/report.json)
+  2. C1 static analyzer (10 analysis classes, 24 PTX/AMDGPU corpus files,
+     216 ALU-instruction metrics, 1 warning + 3 info findings,
+     reports/demo/stage-3-analyze.json)
+  3. C2 autotuning kernel generator (GPU-free pre-screen, 4 bitwise-
+     validated capture-tune candidates, reports/demo/stage-4-capture-tune.json)
+  4. C3 static verifier (8 check classes, bug+clean corpus, verifier-gated
+     tuning with injected MAY_OOB rejected, reports/demo/stage-5-verify-tune.json)
+  5. C4 capture/replay (CUPTI + LD_PRELOAD + rocprofiler-sdk, bitwise replay
+     PASS on gfx1101, reports/demo/capture/replay.txt)
+  6. C5 LLVM passes (LLVM-21 out-of-tree plugin, vector width 1->4,
+     0->12 vectorized loads analyzer-measured, reports/passes/layernorm/)
+  7. C6 profiler (rocprofiler-sdk live on gfx1101, hot-kernel ranking,
+     roofline-ridge-point memory-bound hint,
+     reports/demo/stage-1-profile.json)
+
+--------------------------------------------------------------------
+4. ACCEPTANCE: docs/architecture.md loop diagram + migration surface
+--------------------------------------------------------------------
+Commands:
+  grep -c "migration surface" docs/architecture.md            -> 3
+  grep -c "├──\|└──" docs/architecture.md                     -> 16 (dep graph)
+  grep -n "The loop" docs/architecture.md                     -> § The loop
+  grep -n "CUDA-13 migration surface (Metis H-2)"             -> § present
+Sections: the loop (ASCII diagram), library dependency graph, dual-path
+hardware strategy, CUDA-13 migration surface (Kernel9->Kernel10 adapter,
+removed Event/Metric APIs, V2 multi-subscriber APIs, CUPTI_API_VERSION),
+capture mechanism comparison, verifier soundness scope links.
+
+--------------------------------------------------------------------
+5. ACCEPTANCE: cmake --build build exit 0 (Werror clean)
+--------------------------------------------------------------------
+Covered by ci.sh stage (a) in both runs above: "[PASS] build (cmake
+--build build)" — the in-tree build and the zero-state clean build both
+compile the full tree with warnings-as-errors clean.
+
+--------------------------------------------------------------------
+6. devenv.lock committed + require_version honored
+--------------------------------------------------------------------
+  git ls-files devenv.lock  ->  devenv.lock   (tracked)
+  devenv.yaml: require_version: ">=2.2"       (devenv 2.2.1 in shell)
+  reproduce-all.sh fails fast if the lock is missing/untracked (see
+  task-57-gpu-kernel-suite-negative.txt).
+
+--------------------------------------------------------------------
+7. README honesty: no rental/H100 claims
+--------------------------------------------------------------------
+  ls reports/rentals/  ->  No such file or directory
+  README states numbers are LOCAL gfx1101 only; "nothing here claims
+  rental/H100 results (they do not exist yet — reports/rentals/ gets them
+  only when the owner produces them)". Rental runbook is owner-executed
+  (docs/reproducibility.md, scripts/rental-validate.sh --dry-run first).
