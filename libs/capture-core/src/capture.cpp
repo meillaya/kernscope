@@ -366,6 +366,11 @@ std::optional<std::size_t> CaptureSession::param_size(
   return p.size == 0 ? std::nullopt : std::optional<std::size_t>(p.size);
 }
 
+const std::unordered_map<std::uint64_t, std::vector<ParamInfo>> &
+CaptureSession::param_infos() const {
+  return param_infos_;
+}
+
 void CaptureSession::register_host_function(std::uint64_t host_fun,
                                             std::string_view kernel_name) {
   std::lock_guard<std::mutex> lock(mu_);

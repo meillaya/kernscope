@@ -1,0 +1,118 @@
+task-46-gpu-kernel-suite: bundle format v1 + VA-faithful device-state snapshot + size governance (HAPPY PATH)
+==============================================================================================================
+Commit: feat(capture): bundle format v1 with VA-faithful snapshots + size governance
+Date:   2026-08-14 (devenv shell; pure host-side, no GPU needed)
+
+FILES CREATED (todo 46, libs/capture-core only - no mechanism/tool modified):
+  docs/capture-format.md                    v1 bundle spec: manifest, arg
+                                            marshalling table, VA-faithful
+                                            blobs + patch tables, size
+                                            governance, provenance, v0->v1
+                                            compatibility decision (SS7)
+  docs/schema/capture-bundle.schema.json    JSON Schema (draft 2020-12):
+                                            manifest/events/blobs; u64 fields
+                                            as hex strings (SS1.1)
+  libs/capture-core/include/kernscope/bundle.h   v1 API: BufferRole,
+                                            BufferSnapshot, PatchEntry,
+                                            BundleWriteOptions (default
+                                            max_snapshot_bytes = 1 GiB),
+                                            scan_embedded_pointers,
+                                            apply_remap, write_bundle_v1,
+                                            BundleReader (v1 + v0)
+  libs/capture-core/src/bundle.cpp          writer + reader + v0 text parser
+  libs/capture-core/tests/bundle_test.cpp   8 gtest cases (no-gpu)
+  tests/fixtures/capture/v0-sample.bundle   committed v0 fixture (1.3 KiB;
+                                            tests/fixtures total stays 1 MB
+                                            << 64 MB ci.sh guard)
+  libs/capture-core/CMakeLists.txt          bundle.cpp in the lib, links
+                                            kernscope::db (todo 8 JSON
+                                            conventions), capture_bundle:
+                                            test prefix
+  libs/capture-core/include/kernscope/capture.h + src/capture.cpp
+                                            param_infos() accessor (v1
+                                            param_info events); header doc
+                                            updated to the v1 decision
+
+v0 -> v1 COMPATIBILITY DECISION (docs/capture-format.md SS7):
+  v1 is an UPGRADE LAYER, not a replacement. create_v0() keeps its exact
+  deterministic text output (the todo-43 smoke + todo-44 equivalence
+  assertions depend on it) and the existing mechanisms (shim/cupti-sub/
+  capture-hip) keep emitting v0 - this todo MUST NOT modify them. The
+  BundleReader loads BOTH: v1 *.kcap/ directories AND the v0 line-oriented
+  text shape todos 43/44/45 produce (incl. *.bin sidecar input blobs from
+  the todo-44 equivalence bundles). Record semantics are frozen (v1 event
+  types mirror the v0 line tokens; v1 adds only seq + param_info).
+
+ACCEPTANCE 1: ctest -R capture_bundle (write->read ROUNDTRIP field-exact)
+--------------------------------------------------------------------------------
+100% tests passed, 0 tests failed out of 8
+  1/8 capture_bundle:BundleV1Test.RoundtripIsFieldExact               Passed
+  2/8 capture_bundle:BundleV1Test.EmbeddedPointerRemapPatchesDeepPointer Passed
+  3/8 capture_bundle:BundleV1Test.SizeCapAbortsWithPartialManifest    Passed
+  4/8 capture_bundle:BundleV0Test.ReaderLoadsCommittedV0TextBundle    Passed
+  5/8 capture_bundle:BundleV0Test.ReaderLoadsV0BundleWithSidecarBlobs Passed
+  6/8 capture_bundle:BundleNegativeTest.TruncatedV1EventsJsonReportsByteOffset Passed
+  7/8 capture_bundle:BundleNegativeTest.TruncatedV0TextReportsLineAndByteOffset Passed
+  8/8 capture_bundle:BundleNegativeTest.CorruptedBlobFailsSha256Verification Passed
+
+  Roundtrip asserts (field-exact):
+  - manifest: format_id=kernscope-capture, schema_version=1, vendor=mock,
+    arch=sm_80, capture_mechanism=preload, timestamp (fixed), first_kernel
+  - api table: every entry name + calls equal
+  - allocs (incl. free) + unknown-free: ptr/size/is_alloc/seq equal
+  - launch: kernel_name/via/grid/block/shared/stream/graph_handle/seq and
+    arg bytes BYTE-EXACT; arg marshalling table: slot 0 classified POINTER
+    with original VA 0x1000, slot 1 scalar
+  - copy/memset/stream records equal; modules (fatbin+cubin) sha256/kernels
+    equal; param_info events equal
+  - blobs: input blob at ORIGINAL VA 0x1000 with sha256 verified on read,
+    kernel-binary blob; total_blob_bytes exact; embedded-pointer patch
+    table: exactly {offset 16 -> target_va 0x2000} in blobs.json
+
+ACCEPTANCE 2: embedded-pointer fixture patched on remap (synthetic VA table)
+--------------------------------------------------------------------------------
+  T** deep pointer: 64-byte blob, LE 0x2000 at offset 16; VA table
+  {0x1000, 0x2000}. scan_embedded_pointers -> patch {16, 0x2000};
+  apply_remap {0x2000 -> 0x9000}: bytes at 16 become LE 0x9000; sha256
+  changes; every byte OUTSIDE the pointer window is byte-identical; a remap
+  table without the target VA leaves the blob untouched. All asserted.
+
+ACCEPTANCE 3: size-cap abort (--max-snapshot-bytes)
+--------------------------------------------------------------------------------
+  max_snapshot_bytes=64, one 1024-byte input snapshot:
+  status=1 (kAbortedSizeCap) error:
+    "snapshot exceeds --max-snapshot-bytes=64 (total 1024 bytes); capture
+     aborted"
+  Partial manifest written: manifest.json carries "aborted":true +
+  abort_reason naming the cap; NO blob written (budget checked BEFORE each
+  write); the partial bundle stays LOADABLE via BundleReader:
+    reader ok=1 aborted=1 reason="snapshot exceeds --max-snapshot-bytes=64
+    (total 1024 bytes); capture aborted"
+  Default cap: kDefaultMaxSnapshotBytes = 1 GiB (pinned per plan, configurable
+  via BundleWriteOptions.max_snapshot_bytes; the todo-48 CLI wires
+  --max-snapshot-bytes to it).
+
+ACCEPTANCE 4: reader loads the v0 output shape (todos 43/44/45) AND v1
+--------------------------------------------------------------------------------
+  - committed fixture tests/fixtures/capture/v0-sample.bundle (the todo-43
+    smoke-capture grammar: 22 api lines, allocs, unknown-free, vec_add
+    launch with [8:0010000000000000] pointer + [4:00020000] scalar slots,
+    copy/memset/stream/fatbin/cubin, end-capture-v0): parsed with
+    pointer-slot classification (arg0 -> pointer, VA 0x1000) and all record
+    fields asserted
+  - v0 dir with input-buffer-1.bin sidecar (the todo-44 equivalence shape):
+    blob loaded with role input + sha256, read back byte-exact
+
+ACCEPTANCE 5: fixtures size governance
+--------------------------------------------------------------------------------
+  du -sm tests/fixtures -> 1 (64 MB ci.sh guard untouched, trivially met;
+  new fixture is 1.3 KiB). Bundles gitignored: .gitignore `*.kcap/` verified
+  with git check-ignore (directories ending .kcap are ignored).
+
+ACCEPTANCE 6: cmake --build build (Werror clean) + full no-gpu suite
+--------------------------------------------------------------------------------
+  cmake --build build  -> 0 errors / 0 warnings (exit 0)
+  ctest --test-dir build -L no-gpu  -> 100% tests passed, 0 tests failed
+  out of 572 (587-gate + 8 new bundle tests = 595 total registered)
+  ctest --test-dir build -R capture -L no-gpu -> 100% passed out of 25
+  (capture_shim 17 + capture_bundle 8; v0 writer + shim behavior UNCHANGED)

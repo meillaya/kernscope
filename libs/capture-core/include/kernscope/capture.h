@@ -23,10 +23,11 @@
 //      memsets, streams, module/fatbin registrations and param introspection -
 //      everything the shim observes at the API boundary, in call order.
 //   4. the BUNDLE WRITER INTERFACE: a v0 minimal serializer the shim records
-//      through (deterministic text). The FORMAL format/schema (JSON schema,
-//      VA-faithful snapshots, provenance hashes) is todo 46's deliverable;
-//      this interface is deliberately tiny so todo 46 swaps the writer
-//      without touching the session model or the shim.
+//      through (deterministic text). The FORMAL format (v1: JSON schema,
+//      VA-faithful snapshots, provenance hashes) is kernscope/bundle.h
+//      (todo 46) - v1 is an UPGRADE LAYER: this v0 writer keeps its exact
+//      output for the existing mechanisms (docs/capture-format.md §7) and
+//      BundleReader loads both formats.
 //
 // KNOWN LIMITATIONS of the LD_PRELOAD mechanism (recorded here per
 // docs/research/capture-replay-research-brief.md §2 pitfalls 1-5; they are
@@ -299,6 +300,10 @@ public:
   /// Param layout learned for `cufunction` (by param_index), if any.
   std::optional<std::size_t> param_size(std::uint64_t cufunction,
                                         std::size_t param_index) const;
+  /// All (CUfunction, paramIndex) layout facts (the v1 bundle's param_info
+  /// events; the v0 writer dropped them).
+  const std::unordered_map<std::uint64_t, std::vector<ParamInfo>> &
+  param_infos() const;
 
   bool empty() const;
   void clear();

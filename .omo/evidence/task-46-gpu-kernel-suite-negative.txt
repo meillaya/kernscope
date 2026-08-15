@@ -1,0 +1,46 @@
+task-46-gpu-kernel-suite: bundle format v1 - QA NEGATIVE (truncated bundle)
+===========================================================================
+Commit: feat(capture): bundle format v1 with VA-faithful snapshots + size governance
+Date:   2026-08-14 (devenv shell; no GPU needed)
+
+Scenario: a bundle file is TRUNCATED (mid-file cut). The reader must report
+a SCHEMA VIOLATION WITH OFFSET - no UB, no crash (asserted in
+BundleNegativeTest.*, and reproduced standalone below for the evidence).
+
+(a) v1 bundle, events.json truncated to 40% of its bytes
+--------------------------------------------------------------------------------
+$ qa46 /tmp/qa46.kcap   (valid v1 bundle written, then events.json cut)
+write status=0 err=
+reader after truncation: REJECTED
+error: schema violation: events.json: byte 557: unterminated string
+
+  -> "schema violation" + exact BYTE OFFSET (557); the reader returns
+     nullptr, the process exits 0, no UB/crash. The offset is in range of
+     the truncated file (asserted in the gtest case).
+  Note: this is the exact QA contract from the plan - the json::Value parser
+  (todo 8 conventions) reports byte-offset errors and the reader wraps them
+  as schema violations.
+
+(b) v0 text bundle (todo-43 shape), truncated to 2/3 of its bytes
+--------------------------------------------------------------------------------
+$ qa_v0 /tmp/v0trunc.bundle
+reader: REJECTED
+error: schema violation: v0 parse error at line 28 byte 872: line 'copy':
+       missing key 'kind'
+
+  -> "schema violation" + LINE + BYTE offset (line 28, byte 872); nullptr,
+     no crash. (A cut that removes the end-capture-v0 terminator is reported
+     as "missing 'end-capture-v0' terminator (truncated bundle at line N)".)
+
+(c) sha256 provenance mismatch (corruption, not truncation)
+--------------------------------------------------------------------------------
+BundleNegativeTest.CorruptedBlobFailsSha256Verification: one flipped byte in
+blobs/b0001.bin -> read_blob fails with
+  "schema violation: sha256 mismatch for 'blobs/b0001.bin' (expected <64 hex>,
+   got <64 hex>)" - never silent corruption (provenance contract, format doc
+  SS6).
+
+All three are asserted in ctest (tests 6/7/8 of capture_bundle, exit 0):
+  6/8 capture_bundle:BundleNegativeTest.TruncatedV1EventsJsonReportsByteOffset Passed
+  7/8 capture_bundle:BundleNegativeTest.TruncatedV0TextReportsLineAndByteOffset Passed
+  8/8 capture_bundle:BundleNegativeTest.CorruptedBlobFailsSha256Verification Passed

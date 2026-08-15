@@ -16,9 +16,12 @@
 # shim's copies never interpose with an app/test binary's own copies (the shim
 # exports ONLY its interposed API table + flush entry point). Static consumers
 # (unit tests, smoke) are unaffected by the visibility preset.
-add_library(kernscope_capture_core STATIC src/capture.cpp)
+add_library(kernscope_capture_core STATIC src/capture.cpp src/bundle.cpp)
 target_include_directories(kernscope_capture_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# bundle.cpp (todo 46) serializes/parses the v1 bundle JSON with the repo's
+# dependency-free json::Value model (libs/db, todo 8 conventions).
+target_link_libraries(kernscope_capture_core PUBLIC kernscope::db)
 target_compile_features(kernscope_capture_core PUBLIC cxx_std_20)
 set_target_properties(kernscope_capture_core PROPERTIES
   POSITION_INDEPENDENT_CODE ON
@@ -34,6 +37,20 @@ target_link_libraries(capture-shim-test PRIVATE
   kernscope::capture_core kernscope::gpuruntime GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(capture-shim-test TEST_PREFIX "capture_shim:"
+  PROPERTIES LABELS "no-gpu")
+
+# --- bundle format v1 + reader (todo 46) -------------------------------------
+# TEST_PREFIX "capture_bundle:" so `ctest -R capture_bundle` selects this
+# suite: v1 write->read roundtrip (field-exact), embedded-pointer remap with
+# a synthetic VA table, size-cap abort w/ partial manifest, v0 compatibility
+# (committed fixture + sidecar blobs), truncated-bundle schema violations
+# with byte offsets, and sha256 provenance verification.
+add_executable(capture-bundle-test tests/bundle_test.cpp)
+target_link_libraries(capture-bundle-test PRIVATE
+  kernscope::capture_core GTest::gtest_main)
+target_compile_definitions(capture-bundle-test PRIVATE
+  KERNSCOPE_V0_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/capture/v0-sample.bundle")
+gtest_discover_tests(capture-bundle-test TEST_PREFIX "capture_bundle:"
   PROPERTIES LABELS "no-gpu")
 
 # --- LD_PRELOAD shim + mock-cudart smoke --------------------------------------
