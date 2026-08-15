@@ -111,6 +111,27 @@ struct DriverOptions {
   // shape (the gate's job — reject wrong kernels — is unchanged: the
   // injected bad variant still fails it). Empty = the `shape` itself.
   std::vector<std::int64_t> gate_shape;
+
+  // --- todo 54: verifier SAFETY gate (polykernel precedent extended) -------
+  // When true, the driver runs kernscope-verify (the todo-35 CLI, invoked
+  // as a subprocess on a verifier-facing rendering of each generated
+  // variant's source) BEFORE compilation. An error-class verdict (exit 1)
+  // or an ingestion failure (exit 2) DISCARDS the variant and records it
+  // with the verdict ids — a verifier error-class verdict NEVER reaches
+  // compilation (`compiled` counts only post-gate compiles). The gate
+  // artifact is a shape-specialized + launch-concrete rendering (exact
+  // launch tier, constant shape, `cudaMalloc` sizes) with the element type
+  // abstracted to float (sound span over-approximation of bf16; identical
+  // access structure) — documented in driver_pipeline_impl.h.
+  bool verify_gate = false;
+  // Path to the kernscope-verify binary (configure-time; the CLI resolves
+  // its own sibling by default).
+  std::string verify_cli;
+  // Optional path to a verifier-risky kernel source (the e2e's injected
+  // config): one EXTRA variant is appended to the grid and its source is
+  // replaced by this file, so the SAFETY gate must reject it while the
+  // regular variants proceed. Never used by real tuning runs.
+  std::string inject_risky_source;
 };
 
 // --- test hook --------------------------------------------------------------
@@ -143,6 +164,10 @@ struct DriverResult {
   int benchmarked = 0;             // measured (fresh or replayed from cache)
   int cached = 0;                  // skipped because the tunecache had it
   int compiled = 0;                // sources actually compiled this run
+  // todo 54: variants discarded by the verifier SAFETY gate before compile
+  // (error-class verdicts AND ingestion failures — nothing unverified ever
+  // compiles). Mirrored in the evidence summary as `verifier_gated`.
+  int verifier_gated = 0;
 
   // Selection. has_best == true iff at least one variant has timings.
   bool has_best = false;

@@ -1,0 +1,508 @@
+{
+ "todo": 54,
+ "task": "integration: verifier-gated tuning + pass->analyzer before/after reports",
+ "date": "2026-08-15",
+ "machine": "local gfx1101 (RX 7800 XT)",
+ "mode": "measured",
+ "happy": {
+  "ctest": "ctest -R integ_verify_tune (gpu-amd, exit 0)",
+  "command": "kernscope-tune --kernel bias_gelu --shape 4096,4096 --arch gfx1101 --verify --inject-risky tools/tune/tests/fixtures/risky_oob.hip --no-cache --json",
+  "tune_evidence": {
+   "baseline": {
+    "config": {
+     "block": 128,
+     "mode": "-",
+     "vec_width": 1
+    },
+    "timings": {
+     "median": 0.2026600018143654
+    }
+   },
+   "best": {
+    "config": {
+     "block": 128,
+     "mode": "-",
+     "vec_width": 4
+    },
+    "gate": {
+     "block": "128x1",
+     "grid": "32768",
+     "shape": "4096,4096",
+     "symbol": "kernscope_tune_bias_gelu_b128_v4"
+    },
+    "timings": {
+     "median": 0.17212000489234924,
+     "p20": 0.1690007984638214,
+     "p80": 0.17387999594211578
+    }
+   },
+   "cache": {
+    "path": "reports/tune/bias_gelu-fnv1a64:31e21035b9c6866a.jsonl.tunecache.json"
+   },
+   "cache_key": "gfx1101:bias_gelu:fnv1a64:31e21035b9c6866a",
+   "cache_warning": "cache read skipped (--no-cache); fresh results are written",
+   "db": {
+    "path": "reports/tune/bias_gelu-fnv1a64:31e21035b9c6866a.jsonl",
+    "records": 12,
+    "written": true
+   },
+   "gate_shape": [
+    4096,
+    4096
+   ],
+   "gpu_arch": "gfx1101",
+   "grid_preset": "auto",
+   "grid_size": 13,
+   "kernel_family": "bias_gelu",
+   "message": "best config median=0.172120 ms; variants=13 (prescreen 0, golden-fail 0, benchmarked 12, cached 0, compiled 12), verifier-gated 1; cache: reports/tune/bias_gelu-fnv1a64:31e21035b9c6866a.jsonl.tunecache.json",
+   "min_occupancy": 0,
+   "occupancy": 1,
+   "occupancy.limiter": "registers",
+   "roofline": {
+    "arithmetic_intensity": 2.3333333333333335,
+    "attained_flops": 1379000000000.0,
+    "bound": "memory",
+    "bound_class": "memory",
+    "bytes_moved": 100663296.0,
+    "compute_bound_ceiling": 16320000000000.0,
+    "family": "bias_gelu",
+    "flops": 234881024.0,
+    "memory_bound_ceiling": 1379000000000.0,
+    "ok": true,
+    "position": 0.08449754901960785,
+    "ridge_point": 27.614213197969544
+   },
+   "schema_version": 1,
+   "shape": [
+    4096,
+    4096
+   ],
+   "shape_hash": "fnv1a64:31e21035b9c6866a",
+   "speedup": 1.1774343252030297,
+   "status": "ok",
+   "summary": {
+    "bench_failed": 0,
+    "benchmarked": 12,
+    "cached": 0,
+    "compile_failed": 0,
+    "compiled": 12,
+    "golden_gate_failed": 0,
+    "prescreen_rejected": 0,
+    "variants_total": 13,
+    "verifier_gated": 1
+   },
+   "tool_version": "kernscope-tune 0.1.0",
+   "variants": [
+    {
+     "best": true,
+     "blocks_per_sm": 8,
+     "cached": false,
+     "config": {
+      "block": 128,
+      "mode": "-",
+      "vec_width": 4
+     },
+     "gate": {
+      "block": "128x1",
+      "grid": "32768",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b128_v4"
+     },
+     "index": 2,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.17212000489234924,
+      "p20": 0.1690007984638214,
+      "p80": 0.17387999594211578
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 4,
+     "cached": false,
+     "config": {
+      "block": 256,
+      "mode": "-",
+      "vec_width": 4
+     },
+     "gate": {
+      "block": "256x1",
+      "grid": "16384",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b256_v4"
+     },
+     "index": 5,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.17231999337673187,
+      "p20": 0.16915999352931976,
+      "p80": 0.17399999499320984
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 2,
+     "cached": false,
+     "config": {
+      "block": 512,
+      "mode": "-",
+      "vec_width": 4
+     },
+     "gate": {
+      "block": "512x1",
+      "grid": "8192",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b512_v4"
+     },
+     "index": 8,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.1728604957461357,
+      "p20": 0.17084799706935883,
+      "p80": 0.17479300498962402
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 1,
+     "cached": false,
+     "config": {
+      "block": 1024,
+      "mode": "-",
+      "vec_width": 4
+     },
+     "gate": {
+      "block": "1024x1",
+      "grid": "4096",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b1024_v4"
+     },
+     "index": 11,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.18107999861240387,
+      "p20": 0.17847999930381775,
+      "p80": 0.1842639982700348
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 8,
+     "cached": false,
+     "config": {
+      "block": 128,
+      "mode": "-",
+      "vec_width": 2
+     },
+     "gate": {
+      "block": "128x1",
+      "grid": "65536",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b128_v2"
+     },
+     "index": 1,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.18323999643325806,
+      "p20": 0.18073600232601167,
+      "p80": 0.18471199572086333
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 4,
+     "cached": false,
+     "config": {
+      "block": 256,
+      "mode": "-",
+      "vec_width": 2
+     },
+     "gate": {
+      "block": "256x1",
+      "grid": "32768",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b256_v2"
+     },
+     "index": 4,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.18386000394821167,
+      "p20": 0.18104800283908845,
+      "p80": 0.1863200068473816
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 2,
+     "cached": false,
+     "config": {
+      "block": 512,
+      "mode": "-",
+      "vec_width": 2
+     },
+     "gate": {
+      "block": "512x1",
+      "grid": "16384",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b512_v2"
+     },
+     "index": 7,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.18476000428199768,
+      "p20": 0.1825760006904602,
+      "p80": 0.18807999789714813
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 1,
+     "cached": false,
+     "config": {
+      "block": 1024,
+      "mode": "-",
+      "vec_width": 2
+     },
+     "gate": {
+      "block": "1024x1",
+      "grid": "8192",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b1024_v2"
+     },
+     "index": 10,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.19632000476121902,
+      "p20": 0.19171999394893646,
+      "p80": 0.19995999336242676
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 8,
+     "cached": false,
+     "config": {
+      "block": 128,
+      "mode": "-",
+      "vec_width": 1
+     },
+     "gate": {
+      "block": "128x1",
+      "grid": "131072",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b128_v1"
+     },
+     "index": 0,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.2026600018143654,
+      "p20": 0.1987600028514862,
+      "p80": 0.2054000049829483
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 4,
+     "cached": false,
+     "config": {
+      "block": 256,
+      "mode": "-",
+      "vec_width": 1
+     },
+     "gate": {
+      "block": "256x1",
+      "grid": "65536",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b256_v1"
+     },
+     "index": 3,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.2064010053873062,
+      "p20": 0.2040800005197525,
+      "p80": 0.2099210023880005
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 2,
+     "cached": false,
+     "config": {
+      "block": 512,
+      "mode": "-",
+      "vec_width": 1
+     },
+     "gate": {
+      "block": "512x1",
+      "grid": "32768",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b512_v1"
+     },
+     "index": 6,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.21480000019073486,
+      "p20": 0.2117999941110611,
+      "p80": 0.21843199729919432
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 1,
+     "cached": false,
+     "config": {
+      "block": 1024,
+      "mode": "-",
+      "vec_width": 1
+     },
+     "gate": {
+      "block": "1024x1",
+      "grid": "16384",
+      "shape": "4096,4096",
+      "symbol": "kernscope_tune_bias_gelu_b1024_v1"
+     },
+     "index": 9,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "benchmarked",
+     "timings": {
+      "median": 0.24238000065088272,
+      "p20": 0.24011199474334716,
+      "p80": 0.24785600304603578
+     }
+    },
+    {
+     "best": false,
+     "blocks_per_sm": 8,
+     "cached": false,
+     "config": {
+      "block": 128,
+      "mode": "-",
+      "vec_width": 1
+     },
+     "index": 12,
+     "limiter": "registers",
+     "occupancy": 1,
+     "status": "verifier_gated",
+     "verdicts": [
+      "MAY_OOB",
+      "PTR_OOB"
+     ]
+    }
+   ],
+   "verify_gate": true,
+   "workdir": "/tmp/kernscope-tune-bias_gelu-fnv1a64:31e21035b9c6866a-1205752"
+  },
+  "gated": {
+   "count": 1,
+   "status": "verifier_gated",
+   "verdict_ids": [
+    "MAY_OOB",
+    "PTR_OOB"
+   ],
+   "discarded_before_compile": true,
+   "never_selected_best": true
+  },
+  "summary": {
+   "bench_failed": 0,
+   "benchmarked": 12,
+   "cached": 0,
+   "compile_failed": 0,
+   "compiled": 12,
+   "golden_gate_failed": 0,
+   "prescreen_rejected": 0,
+   "variants_total": 13,
+   "verifier_gated": 1
+  },
+  "best_median_ms": 0.17212000489234924
+ },
+ "pass_analyze": {
+  "ctest": "ctest -R integ_pass_analyze (no-gpu, exit 0)",
+  "tool": "kernscope-pass-report --report-pipeline layernorm",
+  "delta_report": {
+   "after": {
+    "bank_conflict_way": null,
+    "coalescing_class": "coalescing_unknown",
+    "registers_estimate": 175,
+    "smem_bytes": 0,
+    "vector_width": 4,
+    "vectorized_ld_global": 12
+   },
+   "before": {
+    "bank_conflict_way": null,
+    "coalescing_class": "coalescing_unknown",
+    "registers_estimate": 175,
+    "smem_bytes": 0,
+    "vector_width": 1,
+    "vectorized_ld_global": 0
+   },
+   "delta": {
+    "bank_conflict_way_delta": null,
+    "improved_metrics": [
+     "vectorized_ld_global",
+     "vector_width",
+     "coalescing"
+    ],
+    "no_transform": false,
+    "registers_estimate_delta": 0,
+    "smem_bytes_delta": 0,
+    "uncoalesced_delta": -48,
+    "vector_width_delta": 3,
+    "vectorized_ld_global_delta": 12
+   },
+   "kernel": {
+    "arch": "sm_80",
+    "name": "layernorm"
+   },
+   "provenance": {
+    "mode": "projected",
+    "note": "static IR/PTX artifacts (llc compile-only); analyzer deltas on before/after PTX; measured numbers are the gfx1101 analog in the libs/db records"
+   },
+   "report_type": "kernscope_report",
+   "schema_version": "1.0",
+   "tool": "kernscope-pass-report"
+  },
+  "improved_metrics": [
+   "vectorized_ld_global",
+   "vector_width",
+   "coalescing"
+  ],
+  "measured_deltas": {
+   "vector_width": [
+    1,
+    4
+   ],
+   "vectorized_ld_global": [
+    0,
+    12
+   ],
+   "registers_estimate": [
+    175,
+    175
+   ],
+   "uncoalesced_delta": -48
+  }
+ }
+}

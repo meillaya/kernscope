@@ -81,6 +81,32 @@ inline int run_command(const std::string &dir, const std::string &cmd) {
   return WEXITSTATUS(status);
 }
 
+// Run `cmd` with cwd `dir` and CAPTURE stdout (a pipe read back after the
+// child exits); stderr is merged into the returned stdout. Returns the
+// child exit code, or -1 on spawn/non-normal exit. Used by the todo-54
+// verifier gate, which needs the kernscope-verify --json verdict document
+// (the JSON goes to stdout, diagnostics to stderr).
+inline int run_command_capture(const std::string &dir, const std::string &cmd,
+                               std::string *stdout_out) {
+  const std::string full = "cd " + dir + " && " + cmd + " 2>&1";
+  FILE *pipe = ::popen(full.c_str(), "r");
+  if (!pipe)
+    return -1;
+  std::string out;
+  char buf[4096];
+  std::size_t n = 0;
+  while ((n = std::fread(buf, 1, sizeof(buf), pipe)) > 0)
+    out.append(buf, n);
+  const int status = ::pclose(pipe);
+  if (status == -1)
+    return -1;
+  if (!WIFEXITED(status))
+    return -1;
+  if (stdout_out)
+    *stdout_out = std::move(out);
+  return WEXITSTATUS(status);
+}
+
 // A default scratch dir under the system temp dir: deterministic prefix +
 // pid so parallel tests never collide.
 inline std::string default_workdir(const std::string &family,

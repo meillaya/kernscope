@@ -30,6 +30,7 @@
 #include "driver_util.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -67,6 +68,9 @@
 #ifndef KERNSCOPE_TUNE_RUNNER
 #define KERNSCOPE_TUNE_RUNNER ""
 #endif
+#ifndef KERNSCOPE_TUNE_VERIFY_CLI
+#define KERNSCOPE_TUNE_VERIFY_CLI ""
+#endif
 
 namespace kernscope::tune {
 namespace driver_detail {
@@ -80,6 +84,7 @@ inline const std::string kRepoRoot = KERNSCOPE_TUNE_REPO_ROOT;
 inline const std::string kRunHipGate = KERNSCOPE_TUNE_RUN_HIP_GATE;
 inline const std::string kPython = KERNSCOPE_TUNE_PYTHON;
 inline const std::string kRunner = KERNSCOPE_TUNE_RUNNER;
+inline const std::string kVerifyCli = KERNSCOPE_TUNE_VERIFY_CLI;
 
 // ---------------------------------------------------------------------------
 // Tunecache (Triton-style disk cache, brief §1 check_disk_cache).
@@ -105,6 +110,9 @@ struct CachedOutcome {
   std::string gate_grid;    // "gx" or "gx x gy" (run_hip_gate --grid)
   std::string gate_block;   // "bx x by" (run_hip_gate --block)
   std::string gate_symbol;  // kernel symbol the gate resolved
+  // todo 54: error-class verdict ids recorded by the verifier SAFETY gate
+  // (empty for non-gated variants and for ingestion-failure gating).
+  std::vector<std::string> verdicts;
   // The min_occupancy floor this outcome was produced under. The pre-screen
   // (and therefore the outcome) depends on the floor, so a cached entry is
   // only valid for the SAME floor: a "prescreen_rejected" recorded at
@@ -171,6 +179,11 @@ public:
           out.occupancy = m->as_number();
         if (const db::json::Value *l = o->find("limiter"))
           out.limiter = l->as_string();
+        if (const db::json::Value *v = o->find("verdicts")) {
+          if (v->kind() == db::json::Kind::Array)
+            for (const db::json::Value &vd : v->as_array())
+              out.verdicts.push_back(vd.as_string());
+        }
         if (const db::json::Value *g = o->find("gate")) {
           if (const db::json::Value *s = g->find("shape"))
             out.gate_shape = s->as_string();
@@ -240,6 +253,13 @@ public:
         if (!rec.outcome.limiter.empty())
           out_members.emplace_back("limiter",
                                    db::json::Value(rec.outcome.limiter));
+        if (!rec.outcome.verdicts.empty()) {
+          std::vector<db::json::Value> vs;
+          for (const std::string &v : rec.outcome.verdicts)
+            vs.emplace_back(v);
+          out_members.emplace_back("verdicts",
+                                   db::json::Value(std::move(vs)));
+        }
         if (!rec.outcome.gate_shape.empty()) {
           std::vector<db::json::Value::Member> gate_members{
               {"shape", db::json::Value(rec.outcome.gate_shape)},
@@ -293,6 +313,230 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+// todo 54: the verifier SAFETY gate (polykernel correctness-gated autotuner
+// precedent, extended with the static SAFETY gate). Runs kernscope-verify
+// (the todo-35 CLI) on a verifier-facing rendering of each generated
+// variant's source BEFORE compilation; error-class verdicts / ingestion
+// failures DISCARD the variant (recorded with verdict ids). A gated variant
+// never reaches the compiler.
+//
+// WHY THE RENDERING: the todo-35 verifier approves (exit 0) only kernels
+// with an EXACT launch tier, constant-coefficient index expressions and
+// non-struct element types (its OOB check bounds bf16 GEPs as UNBOUNDED and
+// runtime-shaped launches degrade to SYMBOLIC_DIMS — both error classes).
+// The rendering below therefore:
+//   1. SPECIALIZES the kernel: the trailing shape scalar params (rows/cols
+//      — family-generic: the LAST kShapeArity int params of the signature)
+//      are dropped from the signature and re-declared as body constants, so
+//      every index expression has constant coefficients;
+//   2. provides a GATE kernel_traits.h in the artifact dir whose ks_bf16 is
+//      `float` (a 4-byte span over-approximating the real 2-byte element —
+//      SOUND, and identical access structure: indices, guards, barriers,
+//      loop structure are byte-for-byte the generated kernel's);
+//   3. appends a host harness (launch_const.cu pattern): cudaConfigureCall
+//      decl, cudaMalloc per pointer param, one CONSTANT-dim launch with the
+//      variant's OWN geometry (Traits::geometry) — the exact tier that makes
+//      the OOB/race/barrier proofs run on concrete dims.
+// The analyzed kernel is the variant's kernel body; only the launch
+// concretization + element abstraction differ, and both are sound.
+// ---------------------------------------------------------------------------
+
+// The gate's verifier-facing kernel_traits.h (see the block comment above).
+const char kGateKernelTraits[] = R"KERNSCOPE(
+// kernscope-tune todo-54 verifier-gate traits (driver-authored): the
+// element type of the analyzed kernel is abstracted to float (4-byte spans
+// over-approximate the generated kernel's 2-byte bf16 element — sound), so
+// the todo-35 OOB check can bound the (unchanged) index expressions.
+#ifndef KERNSCOPE_KERNEL_TRAITS_H
+#define KERNSCOPE_KERNEL_TRAITS_H
+#include <cuda_runtime.h>
+using ks_bf16 = float;
+inline __device__ float ks_bf16_to_float(float v) { return v; }
+inline __device__ float ks_float_to_bf16(float v) { return v; }
+#endif
+)KERNSCOPE";
+
+// Host harness appended to the specialized kernel source (the todo-35
+// launch_const.cu pattern): cudaConfigureCall decl + cudaMalloc'd params +
+// one constant-dim launch with the variant's own geometry.
+std::string BuildVerifyHarness(const std::string &symbol, int ptr_count,
+                               const LaunchGeometry &geo,
+                               std::size_t alloc_bytes) {
+  std::string s;
+  s += "\n// kernscope-tune todo-54 verifier-gate harness: concrete launch "
+       "(exact tier) + malloc sizes.\n";
+  s += "extern \"C\" cudaError_t cudaConfigureCall(dim3 gridDim, dim3 "
+       "blockDim, size_t sharedMem, cudaStream_t stream);\n";
+  s += "int main() {\n";
+  s += "  cudaError_t rc;\n";
+  for (int i = 0; i < ptr_count; ++i)
+    s += "  float *d" + std::to_string(i) + " = nullptr;\n";
+  for (int i = 0; i < ptr_count; ++i)
+    s += "  rc = cudaMalloc(&d" + std::to_string(i) + ", " +
+         std::to_string(alloc_bytes) + ");\n";
+  s += "  (void)rc;\n";
+  s += "  " + symbol + "<<<dim3(" + std::to_string(geo.grid_x) + ", " +
+       std::to_string(geo.grid_y) + ", 1), dim3(" +
+       std::to_string(geo.block_x) + ", " + std::to_string(geo.block_y) +
+       ", 1), 0, 0>>>(";
+  for (int i = 0; i < ptr_count; ++i)
+    s += (i == 0 ? "d" : ", d") + std::to_string(i);
+  s += ");\n";
+  s += "  cudaDeviceSynchronize();\n";
+  for (int i = 0; i < ptr_count; ++i)
+    s += "  cudaFree(d" + std::to_string(i) + ");\n";
+  s += "  return 0;\n}\n";
+  return s;
+}
+
+// Specializes the generated kernel: the LAST `shape_arity` `int <name>`
+// params are dropped from the signature and re-declared as constants at the
+// body top (the family-generic shape specialization — matmul's M,N,K and
+// flash's nq,nk,d follow the same trailing-int-param convention). Returns
+// false (with `err`) when the signature does not match the convention.
+bool SpecializeKernelSource(const std::string &src, const std::string &symbol,
+                            const std::vector<std::int64_t> &shape,
+                            std::size_t shape_arity, int *ptr_count_out,
+                            std::string *out, std::string *err) {
+  const std::string marker = "extern \"C\" __global__ void " + symbol + "(";
+  const std::size_t sig_at = src.find(marker);
+  if (sig_at == std::string::npos) {
+    *err = "kernel signature '" + marker + "' not found in generated source";
+    return false;
+  }
+  const std::size_t open = sig_at + marker.size() - 1;  // the '('
+  // The signature's closing paren is the FIRST ')' followed by " {" — the
+  // generated source puts the whole signature before the body opening brace
+  // and param types never contain nested parens, so scan for it directly.
+  const std::size_t close = src.find(") {", open);
+  if (close == std::string::npos) {
+    *err = "malformed kernel signature (no ') {' after '" + symbol + "'";
+    return false;
+  }
+  const std::string params = src.substr(open + 1, close - open - 1);
+  std::vector<std::string> toks;
+  std::size_t pos = 0;
+  while (pos <= params.size()) {
+    const std::size_t comma = params.find(',', pos);
+    std::string tok = params.substr(
+        pos, comma == std::string::npos ? std::string::npos : comma - pos);
+    const std::size_t b = tok.find_first_not_of(" \t\r\n");
+    const std::size_t e = tok.find_last_not_of(" \t\r\n");
+    tok = (b == std::string::npos) ? std::string() : tok.substr(b, e - b + 1);
+    if (!tok.empty())
+      toks.push_back(std::move(tok));
+    if (comma == std::string::npos)
+      break;
+    pos = comma + 1;
+  }
+  if (toks.size() < shape_arity) {
+    *err = "kernel has " + std::to_string(toks.size()) +
+           " params, expected >= " + std::to_string(shape_arity);
+    return false;
+  }
+  std::vector<std::string> shape_names;
+  std::vector<std::string> kept;
+  for (std::size_t i = 0; i < toks.size(); ++i) {
+    const bool is_shape_param = shape_arity > 0 && (i + shape_arity >= toks.size());
+    if (is_shape_param) {
+      const std::size_t sp = toks[i].rfind(' ');
+      if (sp == std::string::npos || toks[i].substr(0, sp) != "int") {
+        *err = "shape param '" + toks[i] + "' is not 'int <name>'";
+        return false;
+      }
+      shape_names.push_back(toks[i].substr(sp + 1));
+    } else {
+      kept.push_back(toks[i]);
+    }
+  }
+  std::string signature = "extern \"C\" __global__ void " + symbol + "(";
+  for (std::size_t i = 0; i < kept.size(); ++i)
+    signature += (i == 0 ? "" : ", ") + kept[i];
+  signature += ") {\n";
+  std::string body_consts;
+  for (std::size_t i = 0; i < shape_names.size(); ++i)
+    body_consts += "  const int " + shape_names[i] + " = " +
+                   std::to_string(shape[shape.size() - shape_names.size() + i]) +
+                   ";\n";
+  *out = src.substr(0, sig_at) + signature + body_consts +
+         src.substr(close + 3);  // skip ") {" — the body follows
+  if (ptr_count_out)
+    *ptr_count_out = static_cast<int>(kept.size());
+  return true;
+}
+
+// Runs kernscope-verify --json on one gate artifact. Returns:
+//   0 -> rc 0 (SAFE / warnings): approved
+//   1 -> rc 1 (error-class verdicts): gated; *verdicts carries the
+//        error-class verdict ids in first-seen order
+//   2 -> rc 2 (ingestion failure): gated; *reason carries the diagnostics
+//   -1 -> the verifier binary could not run
+int RunVerifyGate(const std::string &cli, const std::string &workdir,
+                  const std::string &artifact,
+                  std::vector<std::string> *verdicts, std::string *reason) {
+  std::string out;
+  const int rc = run_command_capture(
+      workdir, cli + " " + artifact + " --json --out " + artifact, &out);
+  if (rc == 0)
+    return 0;
+  if (rc == 2) {
+    *reason = "verifier ingestion failed (rc=2): " + log_tail(out, 6);
+    return 2;
+  }
+  if (rc != 1) {
+    *reason = "verifier gate could not run (rc=" + std::to_string(rc) +
+              "): " + log_tail(out, 6);
+    return -1;
+  }
+  // rc == 1: parse the verdict document for error-class verdict ids.
+  const std::size_t brace = out.find('{');
+  std::string err;
+  const auto doc =
+      brace == std::string::npos
+          ? nullptr
+          : db::json::Value::parse(out.substr(brace), err);
+  if (doc) {
+    if (const db::json::Value *kernels = doc->find("kernels")) {
+      for (const db::json::Value &k : kernels->as_array()) {
+        const db::json::Value *vs = k.find("verdicts");
+        if (!vs)
+          continue;
+        for (const db::json::Value &v : vs->as_array()) {
+          const db::json::Value *ec = v.find("error_class");
+          if (ec && ec->as_bool()) {
+            const db::json::Value *vd = v.find("verdict");
+            verdicts->push_back(vd ? vd->as_string() : "ERROR");
+          }
+        }
+      }
+    }
+  }
+  if (verdicts->empty())
+    *reason = "verifier rejected the variant (rc=1; no parseable verdict "
+              "ids in the document)";
+  return 1;
+}
+
+// Parses the entry kernel symbol of a source file (used for the injected
+// risky variant, whose kernel is NOT a family-generated symbol). Returns
+// false when no `extern "C" __global__ void <name>(` is found.
+bool ParseKernelSymbol(const std::string &src, std::string *symbol) {
+  constexpr const char *kMarker = "extern \"C\" __global__ void ";
+  const std::size_t at = src.find(kMarker);
+  if (at == std::string::npos)
+    return false;
+  const std::size_t name_at = at + std::string(kMarker).size();
+  std::size_t end = name_at;
+  while (end < src.size() &&
+         (std::isalnum(static_cast<unsigned char>(src[end])) || src[end] == '_'))
+    ++end;
+  if (end == name_at)
+    return false;
+  *symbol = src.substr(name_at, end - name_at);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // One processed variant (the evidence row + selection input).
 // ---------------------------------------------------------------------------
 
@@ -304,6 +548,10 @@ struct VariantRecord {
   std::string reason;
   bool cached = false;     // replayed from the tunecache
   bool prescreened = false;
+  // todo 54: this variant is the injected risky one (e2e-only; never cached
+  // — its canonical config collides with the grid variant it duplicates).
+  bool injected = false;
+  std::vector<std::string> verdicts;  // verifier-gate error-class ids
   double occupancy = 0.0;
   std::string limiter;
   int blocks_per_sm = 0;
@@ -472,11 +720,44 @@ struct Tuner {
       return out;
     }
 
-    const std::vector<Config> grid = Traits::enumerate(opts);
+    // --- todo 54: verifier gate environmental check -------------------------
+    // The SAFETY gate MUST NOT silently skip: when --verify is requested but
+    // no kernscope-verify binary was resolved, fail the run instead of
+    // compiling anything unverified.
+    if (opts.verify_gate &&
+        (opts.verify_cli.empty() ? kVerifyCli : opts.verify_cli).empty()) {
+      out.message =
+          "--verify requested but no kernscope-verify binary resolved "
+          "(configure-time KERNSCOPE_TUNE_VERIFY_CLI empty and no sibling "
+          "binary); refusing to compile unverified variants";
+      out.status = DriverStatus::kInternalError;
+      out.evidence_json =
+          BuildEvidence(out, opts, abs_workdir, roofline_entry, {},
+                        cache_warning, 0, false)
+              .dump();
+      return out;
+    }
+
+    const std::vector<Config> grid_base = Traits::enumerate(opts);
+    std::vector<Config> grid = grid_base;
+    // todo 54 e2e injection: append ONE extra variant whose config mirrors
+    // the first grid config (pre-screen-valid by construction) but whose
+    // source is the injected risky file — the SAFETY gate must reject it.
+    int injected_index = -1;
+    if (!opts.inject_risky_source.empty()) {
+      if (grid.empty()) {
+        out.message = "inject_risky_source needs a non-empty grid";
+        out.status = DriverStatus::kUsageError;
+        return out;
+      }
+      grid.push_back(grid.front());
+      injected_index = static_cast<int>(grid.size()) - 1;
+    }
     out.variants_total = static_cast<int>(grid.size());
     std::vector<VariantRecord> variants;
     variants.reserve(grid.size());
     std::optional<BenchSession> session;  // created lazily on first bench
+    bool gate_dir_ready = false;          // verify-gate artifact dir staged
 
     // The correctness gate validates the kernel at `gate_shape` (defaults to
     // the tune shape; matmul overrides to the golden-validated 64^3), while
@@ -492,13 +773,18 @@ struct Tuner {
       v.index = static_cast<int>(i);
       v.config = Traits::config_json(cfg);
       v.canonical = v.config.dump();
+      v.injected = injected_index >= 0 && static_cast<int>(i) == injected_index;
 
       // 0. cache hit -> skip everything (resume; brief §1 check_disk_cache).
+      // The injected variant is NEVER replayed: its canonical config
+      // duplicates grid[0]'s (it must reach the verifier gate fresh).
       CachedOutcome hit;
-      if (cache.get(out.cache_key, v.canonical, opts.min_occupancy, &hit)) {
+      if (!v.injected &&
+          cache.get(out.cache_key, v.canonical, opts.min_occupancy, &hit)) {
         v.cached = true;
         v.status = hit.status;
         v.reason = hit.reason;
+        v.verdicts = hit.verdicts;
         v.has_timings = hit.has_timings;
         v.median = hit.median;
         v.p20 = hit.p20;
@@ -576,6 +862,91 @@ struct Tuner {
         if (!repl.empty())
           (void)driver_detail::write_file(src, repl);
       }
+
+      // 2a. todo-54 verifier SAFETY gate: kernscope-verify on a
+      //     verifier-facing rendering of the variant's source, BEFORE the
+      //     compiler sees anything. rc 0 (SAFE/warnings) approves; rc 1
+      //     (error-class verdicts, ids recorded) and rc 2 (ingestion
+      //     failure) DISCARD — a gated variant never increments `compiled`.
+      if (opts.verify_gate) {
+        const bool is_injected =
+            opts.inject_risky_source.empty() ? false
+                                             : (static_cast<int>(i) ==
+                                                injected_index);
+        const std::string gdir = abs_workdir + "/verify";
+        if (!gate_dir_ready) {
+          driver_detail::ensure_dir(gdir + "/kernscope");
+          (void)driver_detail::write_file(gdir + "/kernscope/kernel_traits.h",
+                                          kGateKernelTraits);
+          gate_dir_ready = true;
+        }
+        std::string kernel_src = driver_detail::read_file(src);
+        std::string sym = Traits::symbol(cfg);
+        std::size_t shape_arity = Traits::kShapeArity;
+        if (is_injected) {
+          kernel_src = driver_detail::read_file(opts.inject_risky_source);
+          if (!ParseKernelSymbol(kernel_src, &sym)) {
+            v.status = "verifier_gated";
+            v.reason = "gate artifact: no 'extern \"C\" __global__ void' "
+                       "entry in injected source " +
+                       opts.inject_risky_source;
+            ++out.verifier_gated;
+            variants.push_back(std::move(v));
+            continue;  // never compiles
+          }
+          shape_arity = 0;  // injected kernels are self-contained
+        }
+        std::string specialized;
+        std::string serr;
+        int ptr_count = 0;
+        if (!SpecializeKernelSource(kernel_src, sym, opts.shape, shape_arity,
+                                    &ptr_count, &specialized, &serr)) {
+          v.status = "verifier_gated";
+          v.reason = "gate artifact: " + serr;
+          ++out.verifier_gated;
+          variants.push_back(std::move(v));
+          continue;  // never compiles
+        }
+        const auto gate_geo = Traits::geometry(cfg, prob);
+        std::size_t total_elems = 1;
+        for (const std::int64_t d : opts.shape)
+          total_elems *= static_cast<std::size_t>(d);
+        const std::size_t alloc_bytes =
+            std::max<std::size_t>(1u << 20, total_elems * 4u);
+        const std::string artifact =
+            gdir + "/v" + std::to_string(i) + "_" + sym;
+        const std::string harness =
+            BuildVerifyHarness(sym, ptr_count, gate_geo, alloc_bytes);
+        (void)driver_detail::write_file(artifact,
+                                        specialized + harness);
+        std::vector<std::string> verdicts;
+        std::string greason;
+        const std::string verify_cli =
+            opts.verify_cli.empty() ? kVerifyCli : opts.verify_cli;
+        const int grc = RunVerifyGate(verify_cli, gdir, artifact, &verdicts,
+                                      &greason);
+        if (grc == -1) {
+          out.status = DriverStatus::kInternalError;
+          out.message = "verifier gate requested but kernscope-verify cannot "
+                        "run: " + greason;
+          out.evidence_json =
+              BuildEvidence(out, opts, abs_workdir, roofline_entry, {},
+                            cache_warning, 0, false)
+                  .dump();
+          return out;
+        }
+        if (grc != 0) {
+          v.status = grc == 1 ? "verifier_gated" : "verifier_ingestion_failed";
+          v.reason = greason;
+          v.verdicts = verdicts;
+          ++out.verifier_gated;
+          if (!is_injected)
+            CachePut(cache, out.cache_key, v, opts.min_occupancy);
+          variants.push_back(std::move(v));
+          continue;  // NEVER reaches compilation
+        }
+      }
+
       const std::string obj =
           abs_workdir + "/v" + std::to_string(i) +
           (arch.vendor == Vendor::kAmd ? ".hsaco" : ".o");
@@ -707,9 +1078,31 @@ struct Tuner {
                       std::to_string(out.benchmarked) + ", cached " +
                       std::to_string(out.cached) + ", compiled " +
                       std::to_string(out.compiled) + ")";
+      if (opts.verify_gate)
+        m += ", verifier-gated " + std::to_string(out.verifier_gated);
       if (!opts.cache_path.empty())
         m += "; cache: " + opts.cache_path;
       out.message = std::move(m);
+    } else if (opts.verify_gate && out.verifier_gated == out.variants_total &&
+               out.variants_total > 0) {
+      // QA negative contract: every variant verifier-rejected -> NO compile
+      // was attempted (asserted via summary.compiled == 0) and the message
+      // names the "no approved variants" outcome.
+      out.status = DriverStatus::kNoViableConfig;
+      std::string first_verdict;
+      for (const VariantRecord &v : variants) {
+        if (!v.verdicts.empty()) {
+          first_verdict = v.verdicts.front();
+          break;
+        }
+      }
+      out.message =
+          "no approved variants: all " + std::to_string(out.variants_total) +
+          " variants were rejected by the verifier gate (compile count 0" +
+          (first_verdict.empty()
+               ? std::string()
+               : "; e.g. verdict " + first_verdict) +
+          ")";
     } else if (arch.vendor == Vendor::kNvidia) {
       out.status = DriverStatus::kNoLiveGpu;
       out.message = std::string("arch ") + std::string(arch.name) +
@@ -777,6 +1170,7 @@ struct Tuner {
     c.gate_grid = v.gate_grid;
     c.gate_block = v.gate_block;
     c.gate_symbol = v.gate_symbol;
+    c.verdicts = v.verdicts;
     return c;
   }
 
@@ -1048,6 +1442,12 @@ struct Tuner {
       };
       if (!v.reason.empty())
         m.emplace_back("reason", db::json::Value(v.reason));
+      if (!v.verdicts.empty()) {
+        std::vector<db::json::Value> vs;
+        for (const std::string &vd : v.verdicts)
+          vs.emplace_back(vd);
+        m.emplace_back("verdicts", db::json::Value(std::move(vs)));
+      }
       if (v.prescreened || v.occupancy > 0.0) {
         m.emplace_back("occupancy", db::json::Value(v.occupancy));
         if (!v.limiter.empty())
@@ -1094,6 +1494,7 @@ struct Tuner {
         {"grid_preset", db::json::Value(opts.grid_preset)},
         {"grid_size", db::json::Value(out.variants_total)},
         {"min_occupancy", db::json::Value(opts.min_occupancy)},
+        {"verify_gate", db::json::Value(opts.verify_gate)},
         {"roofline", roofline_entry},
         {"workdir", db::json::Value(workdir)},
         {"summary",
@@ -1106,7 +1507,8 @@ struct Tuner {
               {"bench_failed", db::json::Value(out.bench_failed)},
               {"benchmarked", db::json::Value(out.benchmarked)},
               {"cached", db::json::Value(out.cached)},
-              {"compiled", db::json::Value(out.compiled)}})},
+              {"compiled", db::json::Value(out.compiled)},
+              {"verifier_gated", db::json::Value(out.verifier_gated)}})},
         {"variants", db::json::Value(std::move(var_arr))},
     };
     if (out.has_best) {

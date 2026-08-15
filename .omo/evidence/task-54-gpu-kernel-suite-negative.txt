@@ -1,0 +1,15 @@
+todo-54 QA NEGATIVE: ALL variants verifier-rejected (compile-count == 0)
+================================================================
+command: kernscope-tune --kernel softmax --shape 4096,4096 --arch gfx1101
+         --verify --no-cache --json
+exit code: 1
+JSON status: no_viable_config
+message: no approved variants: all 24 variants were rejected by the verifier gate (compile count 0; e.g. verdict BARRIER_MISMATCH)
+summary: {"bench_failed": 0, "benchmarked": 0, "cached": 0, "compile_failed": 0, "compiled": 0, "golden_gate_failed": 0, "prescreen_rejected": 0, "variants_total": 24, "verifier_gated": 24}
+verifier_gated: 24 / 24 variants
+compile count (asserted == 0): 0
+verdict ids recorded per variant (sample): [["BARRIER_MISMATCH", "MAY_RACE", "MAY_UNINIT_READ"], ["MAY_OOB", "BARRIER_MISMATCH", "MAY_RACE", "PTR_OOB", "MAY_UNINIT_READ"], ["BARRIER_MISMATCH", "MAY_RACE", "MAY_UNINIT_READ"]]
+NO compile was attempted: the verifier gate discarded every variant before
+the compiler ran (the todo-35 kernscope-verify error-class verdicts on the
+softmax smem-reduction pattern: BARRIER_MISMATCH / MAY_RACE /
+MAY_UNINIT_READ).

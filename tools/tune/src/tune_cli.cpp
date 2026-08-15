@@ -72,12 +72,19 @@ void usage(const char *argv0) {
                "              [--db <path>] [--cache <path>]\n"
                "              [--workdir <dir>] [--min-occupancy <f>]\n"
                "              [--no-bench] [--no-cache|--force]\n"
+               "              [--verify] [--inject-risky <file>]\n"
                "              [--emit-repro <dir>] [--version]\n"
                "  family: matmul | bias_gelu | softmax | layernorm |\n"
                "          reduction | flash_attention\n"
                "  --arch auto resolves to gfx1101 on this machine\n"
                "  --no-cache skips the tunecache READ (always re-runs the\n"
                "            pipeline) but still writes the cache\n"
+               "  --verify   run kernscope-verify on each variant's source\n"
+               "            BEFORE compile; error-class verdicts discard the\n"
+               "            variant (recorded; nothing gated ever compiles)\n"
+               "  --inject-risky <file>  append one extra variant whose\n"
+               "            source is the given (verifier-risky) file — the\n"
+               "            e2e's injected config (test-only)\n"
                "  --emit-repro <dir> writes run.sh + README.md that\n"
                "            regenerate + golden-check the winning config\n",
                argv0);
@@ -928,6 +935,10 @@ int main(int argc, char **argv) {
       opts.live_bench = false;
     else if (a == "--no-cache" || a == "--force")
       opts.use_cache = false;
+    else if (a == "--verify")
+      opts.verify_gate = true;
+    else if (a == "--inject-risky")
+      opts.inject_risky_source = need("--inject-risky");
     else if (a == "--json")
       json = true;
     else if (a == "--html")
@@ -1060,6 +1071,26 @@ int main(int argc, char **argv) {
     opts.arch = "gfx1101";
   else
     opts.arch = arch_arg;
+
+  // --- todo 54: resolve the kernscope-verify sibling for --verify ----------
+  // The sibling layout: <bin>/kernscope-tune at build/tools/tune/ and the
+  // verifier at build/bin/kernscope-verify. Falls back to the configure-time
+  // KERNSCOPE_TUNE_VERIFY_CLI path (the driver's own default).
+  if (opts.verify_gate && opts.verify_cli.empty()) {
+    std::error_code ec;
+    std::filesystem::path sibling =
+        std::filesystem::absolute(exe_dir(argv[0]), ec) / ".." / ".." / "bin" /
+        "kernscope-verify";
+    sibling = sibling.lexically_normal();
+    if (!ec && std::filesystem::is_regular_file(sibling))
+      opts.verify_cli = sibling.string();
+  }
+  if (opts.verify_gate && !opts.inject_risky_source.empty() &&
+      !std::filesystem::is_regular_file(opts.inject_risky_source)) {
+    std::fprintf(stderr, "kernscope-tune: --inject-risky file not found: %s\n",
+                 opts.inject_risky_source.c_str());
+    return 2;
+  }
   const int modes = (json ? 1 : 0) + (html ? 1 : 0) + (text ? 1 : 0);
   if (modes > 1) {
     std::fprintf(stderr, "kernscope-tune: --json, --html, --text are exclusive\n");

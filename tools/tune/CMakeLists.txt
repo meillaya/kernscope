@@ -433,3 +433,65 @@ add_test(NAME tune_report
   COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_report.py
           $<TARGET_FILE:kernscope-tune> ${CMAKE_SOURCE_DIR})
 set_tests_properties(tune_report PROPERTIES LABELS "no-gpu")
+
+# --- todo 54: verifier-gated tuning + pass->analyzer delta reports ----------
+# The integration deliverable of the tune track:
+#   (1) VERIFIER SAFETY GATE: kernscope-tune --verify runs the todo-35
+#       kernscope-verify CLI on a verifier-facing rendering of each
+#       generated variant's source BEFORE compile; error-class verdicts
+#       (rc 1) and ingestion failures (rc 2) DISCARD the variant and record
+#       the verdict ids — nothing gated ever compiles (the driver asserts
+#       summary.compiled excludes gated variants; the QA negative exits
+#       "no approved variants" with compile-count 0). The verify binary is
+#       injected at configure time (the driver's kVerifyCli default).
+#   (2) PASS->ANALYZER LOOP: kernscope-pass-report --report-pipeline
+#       <kernel> re-runs the todo-42 pipeline on a showcase kernel, runs
+#       kernscope-analyze on the before/after PTX and emits the DELTA
+#       report (registers estimate, smem bytes, coalescing class,
+#       bank-conflict way, vector width) via libs/report.
+if(TARGET kernscope-verify)
+  set(KERNSCOPE_TUNE_VERIFY_CLI_DEF
+    KERNSCOPE_TUNE_VERIFY_CLI="$<TARGET_FILE:kernscope-verify>")
+else()
+  set(KERNSCOPE_TUNE_VERIFY_CLI_DEF KERNSCOPE_TUNE_VERIFY_CLI="")
+endif()
+target_compile_definitions(kernscope_tune_driver PRIVATE
+  ${KERNSCOPE_TUNE_VERIFY_CLI_DEF})
+
+# kernscope-pass-report: the todo-54 pass->analyzer delta CLI. Invokes the
+# todo-42 pipeline (script below) + kernscope-analyze (INVOKED, never
+# modified) and emits the libs/report delta JSON.
+add_executable(kernscope-pass-report src/pass_report_cli.cpp)
+target_link_libraries(kernscope-pass-report PRIVATE
+  kernscope::report
+  kernscope::db
+)
+target_compile_features(kernscope-pass-report PRIVATE cxx_std_20)
+target_compile_definitions(kernscope-pass-report PRIVATE
+  ${KERNSCOPE_TUNE_TEST_DEFS})
+
+# --- todo 54 ctest gates -----------------------------------------------------
+# integ_verify_tune (gpu-amd, live): kernscope-tune --verify on bias_gelu
+# with the INJECTED risky config (tools/tune/tests/fixtures/risky_oob.hip —
+# a device-global OOB write the verifier flags MAY_OOB deterministically):
+# gated >= 1 with VERDICT IDS, the injected config discarded BEFORE
+# compile, the approved variants run the full live pipeline; QA negative:
+# softmax (every variant carries error-class smem-reduction verdicts) ->
+# exit 1, "no approved variants", compile-count == 0.
+add_test(NAME integ_verify_tune
+  COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integ_verify_tune_check.py
+          ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR})
+set_tests_properties(integ_verify_tune PROPERTIES LABELS "gpu-amd"
+  TIMEOUT 3600)
+
+# integ_pass_analyze (no-gpu): the delta report for the transformed
+# showcase (layernorm: vector_width 1 -> 4, PTX-level vectorized loads
+# 0 -> 12) asserts before/after values for all five fields + >= 1 improved
+# metric; the no-transform showcase (gemm; softmax is analyzer-unparsable —
+# its llc PTX carries callseq blocks for expf calls, outside libs/ptxparse
+# scope) records no_transform true.
+add_test(NAME integ_pass_analyze
+  COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integ_pass_analyze_check.py
+          ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR})
+set_tests_properties(integ_pass_analyze PROPERTIES LABELS "no-gpu"
+  TIMEOUT 1800)
