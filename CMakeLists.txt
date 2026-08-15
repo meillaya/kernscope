@@ -63,6 +63,13 @@ add_subdirectory(libs/capture-core)
 # against the todo-5 layernorm_fused fixture. Must stay after libs/capture-core
 # (consumes kernscope::capture_core + its v0 BundleWriter).
 add_subdirectory(libs/capture-hip)
+# cupti-sub: todo-44 CUPTI callback/injection capture (NVIDIA PRIMARY) + the
+# shared subscription library todo-49 reuses + the dual-mechanism equivalence
+# test (ctest -R capture_equiv -L gpu-amd) consuming libs/capture-hip + the
+# todo-24 portable kernel. Must stay after libs/capture-core (capture_core)
+# and libs/capture-hip (the equivalence test runs the HIP tool). Compiled
+# against the cuda_cupti 12.6 headers ($CUPTI_HOME) - compile+unit only.
+add_subdirectory(libs/cupti-sub)
 # bench: nvbench/Triton-style benchmarking harness + gfx1101 roofline peak
 # microbenches (todo 22), consumed by tools/bench and the tune track.
 add_subdirectory(libs/bench)
