@@ -1,0 +1,33 @@
+; coalesce.test — kernscope-coalesce: per-memory-op coalescing ANALYSIS
+; (todo 42, Wave 7).
+;
+; Analysis-only pass: classifies every addrspace(1) (NVPTX global) load/store
+; into the todo-15 vocabulary (contiguous-128B | contiguous-partial |
+; strided | unknown-pattern) under the 32B-sector model, via SCEV on the
+; pointer relative to the tid intrinsic. NO transforms (PreservedAnalyses::all
+; — llvm-diff must be byte-identical).
+;
+; Fixtures (tests/pass/Inputs/coalesce/):
+;   * fully_coalesced.ll — tid-indexed float load+store, stride 1 element ->
+;     contiguous-128B (efficiency 1.0), 4 sectors. GOLDEN.
+;   * strided.ll         — stride 8 elements -> 8x sector overfetch ->
+;     strided (commit 2).
+;   * unknown.ll         — indirect (loaded) index -> unknown-pattern, never
+;     claimed coalesced (commit 2).
+;
+; The classification-count report hook (todo-42 report): opt
+; -kernscope-coalesce-report prints
+; "kernscope-coalesce: <fn>: N global accesses (F fully, P partial,
+; U uncoalesced, K unknown); widest access W B; vectorized V" to stderr
+; (asserted below).
+;
+; REQUIRES: no-gpu
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-coalesce,verify' -S %S/Inputs/coalesce/fully_coalesced.ll -o %t.out
+; RUN: %llvm_tools_dir/llvm-diff %S/Inputs/coalesce/fully_coalesced.ll %t.out
+
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes=kernscope-coalesce -kernscope-coalesce-report -S %S/Inputs/coalesce/fully_coalesced.ll -o %t.rep 2>&1 | FileCheck %s --check-prefix=REPORT
+
+; The analysis must be a no-op on the IR (byte-identical llvm-diff above).
+; REPORT: kernscope-coalesce: coalesce_kernel: 2 global accesses
+; REPORT: widest access 4 B

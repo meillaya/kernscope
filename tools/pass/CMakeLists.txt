@@ -66,12 +66,20 @@ configure_lit_site_cfg(
   ${CMAKE_SOURCE_DIR}/tests/pass/lit.cfg.py
 )
 
-# --- pass-module subdirectories (todos 37-41) --------------------------------
+# --- pass-module subdirectories (todos 37-42) --------------------------------
 # Stub CMakeLists.txt exist NOW so those todos add their plugin sources in
 # their own directory only (the todo-36 isolation contract: the parent
 # CMakeLists.txt and src/plugin.cpp stay untouched).
+#
+# DEV from the todo-36 plan: todo 36 pre-declared FIVE module stubs
+# (vectorize/pad/rle/promote/tile); todo 42 (coalesce) is the SIXTH module
+# and was NOT pre-declared (the todo-42 task requires a registered
+# kernscope-coalesce pass, which cannot link into the plugin without this
+# line). This is the ONLY change to this file across todos 37-42 and is
+# exactly the same one-line shape as the five pre-declared subdirectories.
 add_subdirectory(passes/vectorize)
 add_subdirectory(passes/pad)
 add_subdirectory(passes/rle)
 add_subdirectory(passes/promote)
 add_subdirectory(passes/tile)
+add_subdirectory(passes/coalesce)
