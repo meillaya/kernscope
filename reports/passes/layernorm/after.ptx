@@ -6,11 +6,11 @@
 .target sm_80
 .address_size 64
 
-	// .globl	_Z16layernorm_kernelv   // -- Begin function _Z16layernorm_kernelv
+	// .globl	layernorm_kernel        // -- Begin function layernorm_kernel
 .visible .global .align 16 .b8 LN_IN[16384];
 .visible .global .align 4 .b8 LN_OUT[16384];
-                                        // @_Z16layernorm_kernelv
-.visible .entry _Z16layernorm_kernelv()
+                                        // @layernorm_kernel
+.visible .entry layernorm_kernel()
 {
 	.reg .pred 	%p<4>;
 	.reg .b32 	%r<152>;

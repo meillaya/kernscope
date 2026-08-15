@@ -4,7 +4,7 @@ target datalayout = "e-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64"
 target triple = "nvptx64-nvidia-cuda"
 
 ; Function Attrs: mustprogress nofree noinline norecurse nosync nounwind memory(argmem: readwrite)
-define dso_local ptx_kernel void @_Z11gemm_kernelPKfS0_Pf(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef readonly captures(none) %1, ptr noalias noundef writeonly captures(none) %2) local_unnamed_addr #0 {
+define dso_local ptx_kernel void @gemm_kernel(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef readonly captures(none) %1, ptr noalias noundef writeonly captures(none) %2) local_unnamed_addr #0 {
   %4 = tail call noundef i32 @llvm.nvvm.read.ptx.sreg.ctaid.y()
   %5 = tail call noundef i32 @llvm.nvvm.read.ptx.sreg.ntid.y()
   %6 = mul nuw nsw i32 %4, %5
@@ -70,7 +70,7 @@ attributes #1 = { mustprogress nocallback nofree nosync nounwind speculatable wi
 !llvm.module.flags = !{!1, !2, !3}
 !llvm.ident = !{!4}
 
-!0 = !{ptr @_Z11gemm_kernelPKfS0_Pf}
+!0 = !{ptr @gemm_kernel}
 !1 = !{i32 1, !"wchar_size", i32 4}
 !2 = !{i32 4, !"nvvm-reflect-ftz", i32 0}
 !3 = !{i32 7, !"frame-pointer", i32 2}

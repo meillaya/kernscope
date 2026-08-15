@@ -1,1 +1,1 @@
-kernscope-coalesce: _Z16layernorm_kernelv: 64 global accesses (0 fully, 0 partial, 64 uncoalesced, 0 unknown); widest access 4 B; vectorized 0
+kernscope-coalesce: layernorm_kernel: 64 global accesses (0 fully, 0 partial, 64 uncoalesced, 0 unknown); widest access 4 B; vectorized 0

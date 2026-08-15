@@ -18,7 +18,7 @@
   "kernel": "layernorm",
   "llvm_diff_exit": 1,
   "llvm_diff_summary": [
-    "in function _Z16layernorm_kernelv:",
+    "in function layernorm_kernel:",
     "  in block %7 / %7:",
     "    >   %8 = phi float [ 0.000000e+00, %0 ], [ %74, %7 ]",
     "    >   %9 = phi i32 [ 0, %0 ], [ %75, %7 ]"

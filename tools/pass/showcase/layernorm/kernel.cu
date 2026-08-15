@@ -36,7 +36,7 @@
 __attribute__((aligned(16))) __device__ float LN_IN[LN_COLS * LN_ROWS];
 __device__ float LN_OUT[LN_COLS * LN_ROWS];
 
-__global__ void layernorm_kernel() {
+extern "C" __global__ void layernorm_kernel() {
   const int row = threadIdx.x;  // one row per thread (rows <= threads)
   const float* __restrict__ in = &LN_IN[row * LN_COLS];
   float* __restrict__ out = &LN_OUT[row * LN_COLS];

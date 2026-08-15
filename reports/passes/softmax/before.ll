@@ -4,7 +4,7 @@ target datalayout = "e-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64"
 target triple = "nvptx64-nvidia-cuda"
 
 ; Function Attrs: convergent mustprogress noinline norecurse nounwind
-define dso_local ptx_kernel void @_Z14softmax_kernelPKfPfi(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef writeonly captures(none) %1, i32 noundef %2) local_unnamed_addr #0 {
+define dso_local ptx_kernel void @softmax_kernel(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef writeonly captures(none) %1, i32 noundef %2) local_unnamed_addr #0 {
   %4 = tail call noundef i32 @llvm.nvvm.read.ptx.sreg.ctaid.x()
   %5 = tail call noundef i32 @llvm.nvvm.read.ptx.sreg.ntid.x()
   %6 = mul i32 %4, %5
@@ -104,7 +104,7 @@ attributes #3 = { convergent nounwind }
 !llvm.module.flags = !{!1, !2, !3}
 !llvm.ident = !{!4}
 
-!0 = !{ptr @_Z14softmax_kernelPKfPfi}
+!0 = !{ptr @softmax_kernel}
 !1 = !{i32 1, !"wchar_size", i32 4}
 !2 = !{i32 4, !"nvvm-reflect-ftz", i32 0}
 !3 = !{i32 7, !"frame-pointer", i32 2}

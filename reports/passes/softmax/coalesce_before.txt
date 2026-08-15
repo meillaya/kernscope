@@ -1,1 +1,1 @@
-kernscope-coalesce: _Z14softmax_kernelPKfPfi: 4 global accesses (0 fully, 0 partial, 0 uncoalesced, 4 unknown); widest access 4 B; vectorized 0
+kernscope-coalesce: softmax_kernel: 4 global accesses (0 fully, 0 partial, 0 uncoalesced, 4 unknown); widest access 4 B; vectorized 0

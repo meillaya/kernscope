@@ -8,7 +8,7 @@ target triple = "nvptx64-nvidia-cuda"
 @llvm.compiler.used = appending global [2 x ptr] [ptr addrspacecast (ptr addrspace(1) @LN_IN to ptr), ptr addrspacecast (ptr addrspace(1) @LN_OUT to ptr)], section "llvm.metadata"
 
 ; Function Attrs: mustprogress nofree noinline norecurse nosync nounwind memory(readwrite, argmem: none, inaccessiblemem: none)
-define dso_local ptx_kernel void @_Z16layernorm_kernelv() local_unnamed_addr #0 {
+define dso_local ptx_kernel void @layernorm_kernel() local_unnamed_addr #0 {
   %1 = tail call noundef i32 @llvm.nvvm.read.ptx.sreg.tid.x()
   %2 = shl nuw nsw i32 %1, 6
   %3 = zext nneg i32 %2 to i64

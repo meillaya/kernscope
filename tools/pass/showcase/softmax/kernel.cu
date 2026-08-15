@@ -25,7 +25,7 @@
 #include <hip/hip_runtime.h>
 #endif
 
-__global__ void softmax_kernel(const float* __restrict__ x,
+extern "C" __global__ void softmax_kernel(const float* __restrict__ x,
                                float* __restrict__ y, int n) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   // Max pass.

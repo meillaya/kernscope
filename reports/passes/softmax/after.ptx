@@ -6,7 +6,7 @@
 .target sm_80
 .address_size 64
 
-	// .globl	_Z14softmax_kernelPKfPfi // -- Begin function _Z14softmax_kernelPKfPfi
+	// .globl	softmax_kernel          // -- Begin function softmax_kernel
 .extern .func  (.param .b32 func_retval0) __nv_fmaxf
 (
 	.param .b32 __nv_fmaxf_param_0,
@@ -18,11 +18,11 @@
 	.param .b32 __nv_expf_param_0
 )
 ;
-                                        // @_Z14softmax_kernelPKfPfi
-.visible .entry _Z14softmax_kernelPKfPfi(
-	.param .u64 .ptr .align 1 _Z14softmax_kernelPKfPfi_param_0,
-	.param .u64 .ptr .align 1 _Z14softmax_kernelPKfPfi_param_1,
-	.param .u32 _Z14softmax_kernelPKfPfi_param_2
+                                        // @softmax_kernel
+.visible .entry softmax_kernel(
+	.param .u64 .ptr .align 1 softmax_kernel_param_0,
+	.param .u64 .ptr .align 1 softmax_kernel_param_1,
+	.param .u32 softmax_kernel_param_2
 )
 {
 	.reg .pred 	%p<7>;
@@ -30,9 +30,9 @@
 	.reg .b64 	%rd<24>;
 
 // %bb.0:
-	ld.param.b32 	%r44, [_Z14softmax_kernelPKfPfi_param_2];
-	ld.param.b64 	%rd15, [_Z14softmax_kernelPKfPfi_param_0];
-	ld.param.b64 	%rd16, [_Z14softmax_kernelPKfPfi_param_1];
+	ld.param.b32 	%r44, [softmax_kernel_param_2];
+	ld.param.b64 	%rd15, [softmax_kernel_param_0];
+	ld.param.b64 	%rd16, [softmax_kernel_param_1];
 	cvta.to.global.u64 	%rd1, %rd16;
 	cvta.to.global.u64 	%rd2, %rd15;
 	mov.u32 	%r16, %ctaid.x;

@@ -6,12 +6,12 @@
 .target sm_80
 .address_size 64
 
-	// .globl	_Z11gemm_kernelPKfS0_Pf // -- Begin function _Z11gemm_kernelPKfS0_Pf
-                                        // @_Z11gemm_kernelPKfS0_Pf
-.visible .entry _Z11gemm_kernelPKfS0_Pf(
-	.param .u64 .ptr .align 1 _Z11gemm_kernelPKfS0_Pf_param_0,
-	.param .u64 .ptr .align 1 _Z11gemm_kernelPKfS0_Pf_param_1,
-	.param .u64 .ptr .align 1 _Z11gemm_kernelPKfS0_Pf_param_2
+	// .globl	gemm_kernel             // -- Begin function gemm_kernel
+                                        // @gemm_kernel
+.visible .entry gemm_kernel(
+	.param .u64 .ptr .align 1 gemm_kernel_param_0,
+	.param .u64 .ptr .align 1 gemm_kernel_param_1,
+	.param .u64 .ptr .align 1 gemm_kernel_param_2
 )
 {
 	.reg .pred 	%p<2>;
@@ -19,11 +19,11 @@
 	.reg .b64 	%rd<20>;
 
 // %bb.0:
-	ld.param.b64 	%rd7, [_Z11gemm_kernelPKfS0_Pf_param_0];
-	ld.param.b64 	%rd8, [_Z11gemm_kernelPKfS0_Pf_param_1];
+	ld.param.b64 	%rd7, [gemm_kernel_param_0];
+	ld.param.b64 	%rd8, [gemm_kernel_param_1];
 	cvta.to.global.u64 	%rd1, %rd8;
 	cvta.to.global.u64 	%rd9, %rd7;
-	ld.param.b64 	%rd10, [_Z11gemm_kernelPKfS0_Pf_param_2];
+	ld.param.b64 	%rd10, [gemm_kernel_param_2];
 	cvta.to.global.u64 	%rd2, %rd10;
 	mov.u32 	%r8, %ctaid.y;
 	mov.u32 	%r9, %ntid.y;

@@ -18,7 +18,7 @@
   "kernel": "gemm",
   "llvm_diff_exit": 1,
   "llvm_diff_summary": [
-    "in function _Z11gemm_kernelPKfS0_Pf:",
+    "in function gemm_kernel:",
     "  in block %3 / %3:",
     "    >   %4 = addrspacecast ptr %1 to ptr addrspace(1)",
     "    >   %5 = addrspacecast ptr %0 to ptr addrspace(1)"

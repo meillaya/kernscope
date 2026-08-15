@@ -40,7 +40,7 @@
 #define N_SHOW 64
 #define K_SHOW 100
 
-__global__ void gemm_kernel(const float* __restrict__ a,
+extern "C" __global__ void gemm_kernel(const float* __restrict__ a,
                             const float* __restrict__ b,
                             float* __restrict__ c) {
   const int i = blockIdx.y * blockDim.y + threadIdx.y;

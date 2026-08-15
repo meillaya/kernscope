@@ -4,7 +4,7 @@ target datalayout = "e-p6:32:32-i64:64-i128:128-v16:16-v32:32-n16:32:64"
 target triple = "nvptx64-nvidia-cuda"
 
 ; Function Attrs: mustprogress nofree noinline norecurse nosync nounwind memory(argmem: readwrite)
-define dso_local ptx_kernel void @_Z11gemm_kernelPKfS0_Pf(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef readonly captures(none) %1, ptr noalias noundef writeonly captures(none) %2) local_unnamed_addr #0 {
+define dso_local ptx_kernel void @gemm_kernel(ptr noalias noundef readonly captures(none) %0, ptr noalias noundef readonly captures(none) %1, ptr noalias noundef writeonly captures(none) %2) local_unnamed_addr #0 {
   %4 = addrspacecast ptr %1 to ptr addrspace(1)
   %5 = addrspacecast ptr %0 to ptr addrspace(1)
   %6 = addrspacecast ptr %2 to ptr addrspace(1)
