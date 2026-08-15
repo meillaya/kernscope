@@ -1,0 +1,61 @@
+{
+  "todo": 52,
+  "track": "gpu-kernel-suite",
+  "title": "profile: kernscope-profile CLI + layernorm_fused e2e golden report",
+  "date": "2026-08-15",
+  "executor": "implementation worker (todo 52 of gpu-kernel-suite plan)",
+  "commits": [
+    "fb75a68 feat(profile): kernscope-profile CLI skeleton wiring trace->enrich->rank->diagnose->report",
+    "e0864b2 feat(profile): kernscope-profile golden e2e + fixtures (check_profile helper, expected ranges, live HIP checks)",
+    "FINAL (this commit): feat(profile): kernscope-profile CLI + layernorm_fused golden e2e (evidence force-added here)"
+  ],
+  "files_created": [
+    "tools/profile/src/cli_pipeline.h (todo-52 pipeline API: TraceOptions/TraceResult/ProfileReport + run_trace/parse_profile_jsonl/build_report/report_to_json/report_to_text/build_kernel_report_model/resolve_target/detect_vendor/showcase_kernel_index)",
+    "tools/profile/src/cli_pipeline.cpp (trace runner: LD_PRELOAD HIP tracer + scratch dir + layernorm input seeding + captured child stdout/stderr; enriched-JSONL parse back into EnrichedKernel; rank+diagnose assembly; JSON/text renderers; libs/report model builder)",
+    "tools/profile/src/main.cpp (kernscope-profile CLI: --vendor auto|hip|cuda, --json|--text|--html, --, exit codes 0/2/3; CUDA runtime = rental-gated honest error)",
+    "tools/profile/tests/profile_cli_test.cpp (todo-52 no-gpu units: JSONL round-trip, no-kernels negative, numeric report JSON, owner Section B text shape, embedded-JSON HTML)",
+    "tests/fixtures/check_profile.py (todo-owned golden helper: numeric/range assertions vs expected_layernorm_profile.json)",
+    "tests/fixtures/expected_layernorm_profile.json (expected RANGES in todo-5 style — never absolute durations)",
+    "tools/profile/tests/profile_cli_amd_check.py (gpu-amd e2e golden: builds layernorm_app, runs the acceptance pipeline verbatim, --text Section B shape, --html embedded-JSON parse)",
+    "tools/profile/tests/profile_cli_negative_check.py (gpu-amd QA negative: kernel-free binary -> \"no kernels traced\" + exit 0)",
+    "docs/profile.md (CLI reference: stages, exit codes, vendor matrix, report shape, test matrix)"
+  ],
+  "files_modified": [
+    "tools/profile/CMakeLists.txt (kernscope-profile CLI target -> build/bin, profile-cli-version no-gpu test, profile-cli-test no-gpu units, profile_cli_amd + profile_cli_no_kernels gpu-amd tests in the rocprofiler-sdk gate)"
+  ],
+  "acceptance_commands": [
+    {
+      "command": "kernscope-profile build/tests/fixtures/layernorm_fused --json | python3 tests/fixtures/check_profile.py",
+      "exit": 0,
+      "result": "22/22 [PASS]: schema_version; report_type kernscope_profile_report; no_kernels_traced==false; kernel_count>=1; wall_time_ns>=1; kernel name contains 'layernorm' (_Z15layernorm_fusedPKtS0_S0_Ptfi.kd); duration_ns>=1 (got 9400); occupancy in (0,1] (got 1); limiter in {registers,shared,threads,blocks} (got 'registers'); registers_per_thread in [1,256] (got 24); shared_bytes>=1024 (got 1024); blocks_per_sm>=1; grid==[1024,1,1]; workgroup==[128,1,1]; >=1 compiler hint (got 1: memory_bound with evidence arithmetic_intensity=1.375, bytes_moved_estimate=1048576, family=layernorm, bound_class=memory, ridge_point=27.6142132); owner_example block present with kernel containing layernorm + time_us>0 + registers>0; hot ranking non-empty"
+    },
+    {
+      "command": "python3 tests/report/check_html.py <cli --html output> <extracted payload>",
+      "exit": 0,
+      "result": "check_html: /tmp/opencode/acc_report.html embedded payload matches /tmp/opencode/acc_payload.json — the --html variant passes the libs/report html-json parse check (payload extracted with python3 html.parser, json.loads succeeds, round-trip byte-exact)"
+    },
+    {
+      "command": "ctest --test-dir build -R profile",
+      "exit": 0,
+      "result": "37/37 profile-track tests green (36 passed + 1 pre-existing expected skip: DriverlessBoxDegradesGracefully): profile_cli:* 5 units, profile_cli_amd (gpu-amd e2e golden), profile_cli_no_kernels (gpu-amd negative), profile-cli-version, plus the todo-49/50/51 suites (diag 7, enrich 9, tracer 8, tracer_amd, enrich_amd)"
+    },
+    {
+      "command": "cmake --build build",
+      "exit": 0,
+      "result": "Werror-clean (-Wall -Wextra -Werror), 0 errors 0 warnings"
+    }
+  ],
+  "qa_negative": {
+    "file": ".omo/evidence/task-52-gpu-kernel-suite-negative.txt",
+    "contract": "profile a binary with NO GPU kernels -> report says \"no kernels traced\" + exit 0 (NOT an error)",
+    "result": "plain host-only C++ binary (no hip/cuda, no kernel launches): kernscope-profile --text exit 0 prints exactly 'no kernels traced'; --json exit 0 carries no_kernels_traced == true, kernel_count == 0 — the negative is a valid report, never an error"
+  },
+  "constraints_honored": [
+    "MUST NOT modify libs/* — libs/report reused via headers (to_html/to_json/validate), libs/db JSON used for parsing, libs/roofline + libs/occupancy consumed through the 49-51 modules' APIs",
+    "MUST NOT modify tools/analyze|verify|tune|pass|capture or the 49-51 profile modules — the CLI CONSUMES kernel_record/enrich/diagnostics public APIs and invokes kernscope-analyze via the diag engine only",
+    "MUST NOT modify libs/capture-hip, scripts/ci-baseline.txt, or sibling projects",
+    "MUST NOT assert absolute durations in goldens — expected_layernorm_profile.json pins RANGES only (duration >= 1, occupancy (0,1], registers [1,256], shared >= 1024); check_profile.py asserts numerically",
+    "no NVIDIA numbers claimed locally — the owner-shape report carries locally-measured values only; the CUDA runtime path exits with the rental-gated message (compile+unit only, scripts/rental-validate.sh owns real runs)",
+    "no auto-run on NVIDIA — no gpu-nvidia-rental tests added; the CUDA path is an honest local error"
+  ]
+}
