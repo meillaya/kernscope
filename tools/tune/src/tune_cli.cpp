@@ -43,6 +43,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "kernscope/report.h"
+#include "kernscope/tune/capture_tune.h"
 #include "kernscope/tune/driver.h"
 
 #include <algorithm>
@@ -828,6 +829,51 @@ void emit_repro(const std::string &evidence_json, const std::string &family,
               dir.c_str());
 }
 
+// --- todo 53: capture->tune text report -------------------------------------
+
+void print_capture_text(const std::string &evidence_json) {
+  std::string err;
+  const auto ev = kernscope::db::json::Value::parse(evidence_json, err);
+  if (!ev) {
+    std::printf("kernscope-tune: no evidence (%s)\n", err.c_str());
+    return;
+  }
+  std::printf("Kernel: %s (%s/%s on %s)\n",
+              ev->find("kernel_name") ? ev->find("kernel_name")->as_string().c_str() : "?",
+              ev->find("vendor") ? ev->find("vendor")->as_string().c_str() : "?",
+              ev->find("arch") ? ev->find("arch")->as_string().c_str() : "?",
+              ev->find("device_name") ? ev->find("device_name")->as_string().c_str() : "?");
+  const auto *best = ev->find("best");
+  if (!best) {
+    std::printf("kernscope-tune: %s\n",
+                ev->find("message") ? ev->find("message")->as_string().c_str()
+                                    : "no valid config");
+    return;
+  }
+  const double median = best->find("timings")
+                            ? best->find("timings")->find("median")->as_number()
+                            : 0.0;
+  std::printf("Best config: %s\n", best->find("config")->dump().c_str());
+  std::printf("Time: %.4f ms (median)\n", median);
+  if (const auto *sp = ev->find("speedup"))
+    std::printf("Speedup vs captured baseline: %sx\n",
+                fmt_num(sp->as_number()).c_str());
+  if (const auto *base = ev->find("baseline")) {
+    if (const auto *bt = base->find("timings"))
+      std::printf("Captured baseline median: %.4f ms\n",
+                  bt->find("median")->as_number());
+  }
+  if (const auto *cands = ev->find("candidates")) {
+    std::printf("Candidates (%zu):\n", cands->as_array().size());
+    for (const auto &c : cands->as_array()) {
+      std::printf("  %s %s %s\n",
+                  c.find("config") ? c.find("config")->dump().c_str() : "{}",
+                  c.find("status") ? c.find("status")->as_string().c_str() : "?",
+                  c.find("reason") ? (": " + c.find("reason")->as_string()).c_str() : "");
+    }
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -838,6 +884,10 @@ int main(int argc, char **argv) {
   bool html = false;
   bool text = false;
   std::string repro_dir;
+
+  // --- todo 53: capture->tune mode (--from-capture) ------------------------
+  kernscope::tune::CaptureTuneOptions ctopts;
+  std::string capture_blocks_arg;
 
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -886,6 +936,30 @@ int main(int argc, char **argv) {
       text = true;
     else if (a == "--emit-repro")
       repro_dir = need("--emit-repro");
+    // --- todo 53 capture->tune flags --------------------------------------
+    else if (a == "--from-capture")
+      ctopts.bundle_path = need("--from-capture");
+    else if (a == "--vendor")
+      ctopts.vendor = need("--vendor");
+    else if (a == "--blob-dir")
+      ctopts.blob_dir = need("--blob-dir");
+    else if (a == "--candidates")
+      capture_blocks_arg = need("--candidates");
+    else if (a == "--inject-config")
+      ctopts.inject_config = need("--inject-config");
+    else if (a == "--ref")
+      ctopts.ref_files.push_back(need("--ref"));
+    else if (a == "--reps") {
+      const int v = std::atoi(need("--reps"));
+      if (v <= 0) {
+        std::fprintf(stderr, "kernscope-tune: --reps must be > 0\n");
+        return 2;
+      }
+      ctopts.reps = v;
+    } else if (a == "--no-flush")
+      ctopts.l2_flush = false;
+    else if (a == "--profile-out")
+      ctopts.profile_out = need("--profile-out");
     else if (a == "--version") {
       std::printf("kernscope-tune 0.2.0\n");
       return 0;
@@ -895,6 +969,67 @@ int main(int argc, char **argv) {
     } else {
       std::fprintf(stderr, "kernscope-tune: unknown option '%s'\n", a.c_str());
       usage(argv[0]);
+      return 2;
+    }
+  }
+
+  // --- todo 53 dispatch: capture->tune mode --------------------------------
+  if (!ctopts.bundle_path.empty()) {
+    if (arch_arg.empty() || arch_arg == "auto")
+      ctopts.arch = "gfx1101";
+    else
+      ctopts.arch = arch_arg;
+    ctopts.kernel = opts.kernel_family; // --kernel names the launch in a bundle
+    if (!opts.db_path.empty())
+      ctopts.db_path = opts.db_path;
+    if (ctopts.db_path.empty()) {
+      // default: reports/tune/capture-<bundle-basename>.jsonl
+      const std::string base =
+          std::filesystem::path(ctopts.bundle_path).filename().string();
+      ctopts.db_path = "reports/tune/capture-" + base + ".jsonl";
+    }
+    if (!capture_blocks_arg.empty()) {
+      std::size_t pos = 0;
+      while (pos <= capture_blocks_arg.size()) {
+        const std::size_t comma = capture_blocks_arg.find(',', pos);
+        const std::string tok = capture_blocks_arg.substr(
+            pos, comma == std::string::npos ? std::string::npos : comma - pos);
+        try {
+          const int v = std::stoi(tok);
+          if (v > 0)
+            ctopts.candidate_blocks.push_back(v);
+        } catch (...) {
+        }
+        if (comma == std::string::npos)
+          break;
+        pos = comma + 1;
+      }
+    }
+    const int modes = (json ? 1 : 0) + (html ? 1 : 0) + (text ? 1 : 0);
+    if (modes > 1) {
+      std::fprintf(stderr, "kernscope-tune: --json, --html, --text are exclusive\n");
+      return 2;
+    }
+    const kernscope::tune::CaptureTuneResult r =
+        kernscope::tune::tune_from_capture(ctopts);
+    if (html) {
+      std::fprintf(stderr,
+                   "kernscope-tune: --html is not supported for --from-capture "
+                   "(use --json or --text)\n");
+      return 2;
+    }
+    if (json) {
+      std::printf("%s\n", r.evidence_json.c_str());
+    } else {
+      print_capture_text(r.evidence_json);
+    }
+    switch (r.status) {
+    case kernscope::tune::CaptureTuneStatus::kOk:
+      return 0;
+    case kernscope::tune::CaptureTuneStatus::kNoViableConfig:
+      return 1;
+    default:
+      std::fprintf(stderr, "kernscope-tune: %s\n", r.message.c_str());
       return 2;
     }
   }

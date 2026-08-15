@@ -312,6 +312,7 @@ endif()
 add_executable(kernscope-tune src/tune_cli.cpp)
 target_link_libraries(kernscope-tune PRIVATE
   kernscope::tune_driver
+  kernscope::capture_tune
   kernscope::report
 )
 target_compile_features(kernscope-tune PRIVATE cxx_std_20)
@@ -322,6 +323,39 @@ target_compile_features(kernscope-tune PRIVATE cxx_std_20)
 # because either definition is equivalent. Allow the duplicate definition
 # instead of rewriting the generators' public API (sibling deliverables).
 target_link_options(kernscope-tune PRIVATE "-Wl,--allow-multiple-definition")
+
+# --- todo 53: capture->tune driver (replay-based launch-config tuning) -------
+# The DISTINCT tuning mode for CAPTURED kernels (bundles carry binary+args+
+# buffers, no source): kernscope-tune --from-capture <bundle> searches launch
+# configs over the todo-48 replay machinery. The driver is composed from the
+# SAME public building blocks as the replay harness (tools/capture/src/replay
+# .cpp): the shared plan builder replay_model.cpp is compiled here UNCHANGED
+# (reuse via API — no tools/capture or libs/* file is modified), plus
+# libs/gpuruntime + libs/bench + libs/db.
+add_library(kernscope_capture_tune STATIC
+  src/capture_tune.cpp
+  ${CMAKE_SOURCE_DIR}/tools/capture/src/replay_model.cpp
+)
+target_include_directories(kernscope_capture_tune PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/tools/capture/src)
+target_compile_features(kernscope_capture_tune PUBLIC cxx_std_20)
+add_library(kernscope::capture_tune ALIAS kernscope_capture_tune)
+target_link_libraries(kernscope_capture_tune PUBLIC
+  kernscope::capture_core
+  kernscope::db
+  kernscope::bench
+  kernscope::gpuruntime
+  kernscope::arch
+)
+
+# --- todo 53: trivial usage gate (no-gpu) ------------------------------------
+# --from-capture requires a bundle; the CLI must fail cleanly (exit 2) with a
+# usage message when it is missing — no GPU touched.
+add_test(NAME capture_tune_usage
+  COMMAND ${_TUNE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/tests/capture_tune_usage_check.py
+          $<TARGET_FILE:kernscope-tune>)
+set_tests_properties(capture_tune_usage PROPERTIES LABELS "no-gpu")
 
 # --- todo 28 acceptance suite ------------------------------------------------
 # tune_driver_test.cpp is compiled twice (the generators' shared pattern):
