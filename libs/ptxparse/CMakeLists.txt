@@ -6,7 +6,7 @@
 # alignment, .entry/.func bodies, instructions with opcode/operands/@p
 # predicates, a per-kernel CFG (basic blocks + branch/fallthrough edges), and
 # a tensor-core taxonomy (mma.sync/wmma/wgmma/tcgen05). Parse-only: never
-# assembles, never executes, never touches NVBit.
+# assembles, never executes, never touches NVIDIA bytecode tooling.
 #
 # The kernscope-ptxdump tool target lives here (source in tools/ptxdump/
 # main.cpp) so the parse library and its consumer ship together; it is placed

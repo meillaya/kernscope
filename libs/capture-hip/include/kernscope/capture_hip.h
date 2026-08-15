@@ -28,7 +28,7 @@
 //      dumped as input-buffer-<n>.bin (v0-scope of the Kerncap address-space
 //      closure; the VA-faithful snapshot policy is todo 46's deliverable).
 //
-// roctracer is NOT used (deprecated).
+// The deprecated tracer is NOT used.
 //
 // ENVIRONMENT VARIABLES (all optional):
 //   KERNSCOPE_HIP_BUNDLE    bundle output path (v0 text via BundleWriter)

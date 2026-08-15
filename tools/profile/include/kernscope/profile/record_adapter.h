@@ -44,8 +44,8 @@
 //   static+dynamic smem, local memory, correlation id).
 // - The PC-sampling ACTIVITY kind is removed (replaced by cupti_pcsampling.h);
 //   nvprof and NVIDIA Visual Profiler are removed entirely in CUDA 13.0.
-// - The Profiling API (cupti_profiler_target.h) and PerfWorks Metric API
-//   (nvperf_host.h) are deprecated -> CUPTI Range Profiling API
+// - The Profiling API (cupti_profiler_target.h) and the PerfWorks Metric
+//   API's NVIDIA host header are deprecated -> CUPTI Range Profiling API
 //   (cupti_range_profiler.h) + Profiler Host API (cupti_profiler_host.h).
 // - Single-subscriber scope (12.x) -> multi-subscriber V2 APIs
 //   (cuptiSubscribe_v2, cuptiActivityEnable_v2, cuptiActivityRegisterCallbacks_v2)

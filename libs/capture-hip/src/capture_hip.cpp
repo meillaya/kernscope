@@ -22,7 +22,7 @@
 //     NEVER modified) and flushes a v0 bundle at exit through the v0
 //     BundleWriter.
 //
-// roctracer is NOT used (deprecated; rocprofiler-sdk is the blessed API).
+// The deprecated tracer is NOT used (rocprofiler-sdk is the blessed API).
 //
 // Recording contract ("MUST NOT modify application behavior beyond
 // observation"): every wrapper forwards the ORIGINAL arguments to the stored

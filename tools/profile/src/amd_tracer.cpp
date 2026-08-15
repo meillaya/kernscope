@@ -40,7 +40,7 @@
 // Loading (same as todo-45): LD_PRELOAD=<this .so> <app> or
 // ROCPROFILER_LIBRARY=<this .so> <app>.
 //
-// MUST NOT use roctracer (deprecated); MUST NOT use nvprof-style counters —
+// MUST NOT use the deprecated tracer; MUST NOT use nvprof-style counters —
 // this tracer is pure buffer-tracing (timestamps + dispatch info).
 //
 //===----------------------------------------------------------------------===//

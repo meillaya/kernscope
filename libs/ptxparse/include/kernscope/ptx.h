@@ -18,7 +18,7 @@
 //                    parse-only corpus - see the FIXTURE GENERATION RULE).
 //
 // The parser is STRICTLY parse-only: it never assembles, never executes, and
-// never depends on NVBit/ptxas. A malformed input throws PtxParseError with
+// never depends on NVIDIA bytecode tooling. A malformed input throws PtxParseError with
 // line:col - there are no silent partial parses.
 //
 //===----------------------------------------------------------------------===//
