@@ -2,7 +2,7 @@
 //
 // kernscope tools/profile (C6 profiler track).
 //
-// Implementation of src/cupti_tracer.h. See that header + the versioned
+// Implementation of src/tracer_cupti.h. See that header + the versioned
 // adapter (include/kernscope/profile/record_adapter.h) for the design and
 // the CUDA-13 migration surface.
 //
@@ -22,7 +22,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "cupti_tracer.h"
+#include "tracer_cupti.h"
 
 #include "kernscope/capture_cupti.h" // the todo-44 shared subscription library
 

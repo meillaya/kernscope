@@ -69,5 +69,20 @@
     "DriverlessBoxDegradesGracefully skips when libcupti.so is dlopen-able (this host has the runtime lib but no NVIDIA driver; the start path is rental-validated per scripts/rental-validate.sh)",
     "AMD grid_size reported both raw (work items, grid_size) and converted to blocks (grid); conversion documented as in todo-45 (blocks = grid/wg per dim)",
     "AMD tracer links librocprofiler-sdk.so by path (ROCPROF_SDK_OUT) - same pattern as libs/capture-hip; requires devenv env at configure"
+  ],
+  "fixes": [
+    {
+      "date": "2026-08-15",
+      "title": "FIX: CI-gate false positive (NVIDIA-header filename guard) - cupti_tracer.h -> tracer_cupti.h",
+      "problem": "scripts/ci.sh NVIDIA-header filename guard regex (^|/)(cuda_occupancy|cupti_[a-z_]*|cuda[a-z_]*|nvtx[a-z_]*)\\.h$ matched tools/profile/src/cupti_tracer.h (our own header) as a vendored NVIDIA header on the merged-tree gate",
+      "fix": "Renamed tools/profile/src/cupti_tracer.h -> tracer_cupti.h (basename no longer starts with 'cupti_'; guard untouched, same pattern as todo-44's cupti_capture.h -> capture_cupti.h, commit 667840d). Updated the #include in src/cupti_tracer.cpp and tests/cupti_tracer_test.cpp + the CMakeLists comment; the .cpp basename kept (guard is .h$ only).",
+      "verification": {
+        "grep": "grep -rn 'cupti_tracer\\.h' tools/ tests/ | grep -v build/ -> no output (exit 1)",
+        "build": "cmake --build build -> exit 0, Werror clean (0 errors, 0 warnings)",
+        "ctest_cupti": "ctest -R 'profile_tracer' -> 11/11 passed, exit 0",
+        "ctest_amd": "ctest -R profile_tracer_amd -L gpu-amd -> 1/1 passed, exit 0",
+        "ci_sh": "bash scripts/ci.sh -> exit 0, 10 pass / 0 skip / 0 fail; 612/612 tests; count guard 612 >= 550; NVIDIA-header filename guard PASS; NVIDIA-content guard PASS"
+      }
+    }
   ]
 }

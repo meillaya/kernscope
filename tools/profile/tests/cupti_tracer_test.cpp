@@ -28,7 +28,7 @@
 
 #include "kernscope/capture_cupti.h" // the todo-44 shared subscription library
 #include "kernscope/profile/record_adapter.h"
-#include "cupti_tracer.h" // the tracer under test (kineto enable-set + dlopen)
+#include "tracer_cupti.h" // the tracer under test (kineto enable-set + dlopen)
 
 #include <gtest/gtest.h>
 

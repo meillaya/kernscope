@@ -1,6 +1,15 @@
-//===- cupti_tracer.h - CUPTI activity tracer (todo 49) -------------------*- C++ -*-===//
+//===- tracer_cupti.h - CUPTI activity tracer (todo 49) ------------------*- C++ -*-===//
 //
 // kernscope tools/profile (C6 profiler track).
+//
+// NOTE ON THE NAME (todo-49 CI-gate fix): this header used to be named
+// `cupti_tracer` + `.h` — the NVIDIA-header filename guard in scripts/ci.sh
+// (regex `(^|/)(cuda_occupancy|cupti_[a-z_]*|cuda[a-z_]*|nvtx[a-z_]*)\.h$`)
+// matched the old basename as if it were a vendored NVIDIA header, a FALSE
+// POSITIVE on the merged-tree gate. Same fix pattern as todo 44's
+// `cupti_capture` -> `capture_cupti` rename (commit 667840d): keep the guard
+// as-is, rename the project header so the basename no longer starts with
+// `cupti_`. The .cpp keeps its name (the guard only matches `.h$`).
 //
 // The NVIDIA tracer: CUPTI activity tracing with the kineto enable-set and
 // the todo-44 shared subscription library (libs/cupti-sub, NEVER modified)

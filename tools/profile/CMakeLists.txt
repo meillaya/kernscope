@@ -53,7 +53,7 @@ else()
   target_include_directories(profile-cupti-test PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_include_directories(profile-cupti-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src) # cupti_tracer.h lives with the impl
+    ${CMAKE_CURRENT_SOURCE_DIR}/src) # tracer_cupti.h lives with the impl
   target_include_directories(profile-cupti-test SYSTEM PRIVATE
     "$ENV{CUPTI_HOME}/include")
   target_link_libraries(profile-cupti-test PRIVATE
