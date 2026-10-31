@@ -10,7 +10,7 @@
 // todo-43 LD_PRELOAD shim and todo-44 CUPTI path use - so a bundle written
 // from any mechanism parses identically.
 //
-// Mechanism (per docs/research/capture-replay-research-brief.md §7 and the
+// Mechanism (per docs/report/kernscope-technical-report.pdf and the
 // Kerncap/intellikit HSA-layer precedent, MIT - pattern only, attribution in
 // THIRD-PARTY.md):
 //   1. INTERCEPT TABLE: rocprofiler_at_intercept_table_registration(

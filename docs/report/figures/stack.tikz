@@ -1,0 +1,69 @@
+% The shared stack: six tools, four library groups, and the external toolchain.
+% The tools link only the groups they need; no tool links another tool.
+\begin{tikzpicture}[
+    font=\small,
+    band/.style={draw=ink!35, rounded corners=4pt, fill=paper, line width=0.6pt},
+    tool/.style={draw, rounded corners=3pt, align=center, text width=1.85cm,
+                 minimum height=1.15cm, inner sep=2pt, font=\scriptsize},
+    group/.style={draw, rounded corners=3pt, align=left, text width=2.55cm,
+                  minimum height=2.3cm, inner sep=5pt, font=\scriptsize},
+    chip/.style={font=\ttfamily\scriptsize, text=ink!85},
+    flow/.style={-{Stealth[length=2mm]}, line width=0.7pt, draw=ink!55},
+  ]
+
+  % Six tools in one band.
+  \node[band, minimum width=13.0cm, minimum height=1.85cm] (tools) at (0,5.1) {};
+  \node[font=\scriptsize\itshape, text=ink!60, anchor=west] at (-6.35,6.32)
+    {six tools, one build};
+  \foreach \x/\c/\f/\name in {
+    -5.3/kred/kredfill/{C1 analyze},
+    -3.18/korange/korangefill/{C2 tune},
+    -1.06/kgold/kgoldfill/{C3 verify},
+     1.06/kgreen/kgreenfill/{C4 capture},
+     3.18/kblue/kbluefill/{C5 pass},
+     5.3/kviolet/kvioletfill/{C6 profile}} {
+    \node[tool, draw=\c, fill=\f] at (\x,5.15) {\name};
+  }
+
+  % Shared library groups.
+  \node[group, draw=kteal, fill=ktealfill] (parsers) at (-4.95,1.75)
+    {\textbf{\color{kteal}parsers}\\[2pt]
+     \texttt{\scriptsize ptxparse}\\
+     \texttt{\scriptsize amdparse}\\[2pt]
+     {\scriptsize PTX and AMDGPU\\text readers}};
+  \node[group, draw=kblue, fill=kbluefill] (model) at (-1.75,1.75)
+    {\textbf{\color{kblue}model}\\[2pt]
+     \texttt{\scriptsize arch}\\
+     \texttt{\scriptsize occupancy}\\
+     \texttt{\scriptsize roofline}\\[2pt]
+     {\scriptsize peaks, limits,\\bound class}};
+  \node[group, draw=korange, fill=korangefill] (evidence) at (1.45,1.75)
+    {\textbf{\color{korange}evidence}\\[2pt]
+     \texttt{\scriptsize bench}\\
+     \texttt{\scriptsize db}\\
+     \texttt{\scriptsize report}\\
+     \texttt{\scriptsize gpuruntime}\\[2pt]
+     {\scriptsize timing, storage,\\schema, runtime}};
+  \node[group, draw=kviolet, fill=kvioletfill] (capture) at (4.75,1.75)
+    {\textbf{\color{kviolet}capture}\\[2pt]
+     \texttt{\scriptsize capture-core}\\
+     \texttt{\scriptsize capture-hip}\\
+     \texttt{\scriptsize cupti-sub}\\[2pt]
+     {\scriptsize bundle model and\\vendor backends}};
+
+  % One bracket carries the tools into the stack.
+  \draw[ink!45, line width=0.6pt] (-6.2,3.95) -- (6.2,3.95);
+  \draw[flow] (0,4.15) -- (0,3.35);
+  \node[font=\scriptsize, text=ink!55, anchor=west] at (0.15,3.75)
+    {each tool links only what it needs};
+
+  % External toolchain.
+  \node[band, minimum width=13.0cm, minimum height=0.7cm, fill=ink!4] (ext) at (0,-0.35)
+    {\scriptsize LLVM / MLIR 21 \quad\(\bullet\)\quad CUDA 12.6 headers
+     \quad\(\bullet\)\quad ROCm 7.2.3 \quad\(\bullet\)\quad pinned by \texttt{devenv.lock}};
+  \draw[flow] (0,0.5) -- (0,0.05);
+
+  % The rule that keeps the stack acyclic.
+  \node[font=\scriptsize\itshape, text=ink!55, anchor=west] at (-6.35,-1.05)
+    {no tool links another tool; the loop is a file contract between executables};
+\end{tikzpicture}

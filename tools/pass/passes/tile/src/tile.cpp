@@ -4,7 +4,7 @@
 // (libs/arch smem budget + register budget estimates) so that
 // kernscope-promote (todo 40) can consume constant-trip-count,
 // unit-stride {s,+,1} windows — the "must write" LLVM-IR-level tiler of
-// docs/research/gpu-memory-pass-research.md §4.7/§4.9. Full design +
+// docs/report/kernscope-technical-report.pdf/§4.9. Full design +
 // soundness rules in include/kernscope/pass/tile.h; the essentials:
 //
 //   for (i = 0; i < N; ++i) body(i);

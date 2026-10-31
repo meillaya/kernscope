@@ -4,8 +4,8 @@
 //
 // Implements libkernscope_cupti_sub.so (todo 44): the NVIDIA-PRIMARY capture
 // mechanism. See include/kernscope/capture_cupti.h for the mechanism
-// narrative, docs/research/capture-replay-research-brief.md §1 for the CUPTI
-// API contracts cited below, and docs/capture-mapping.md for the field
+// narrative, docs/report/kernscope-technical-report.pdf for the CUPTI
+// API contracts cited below, and docs/report/kernscope-technical-report.pdf for the field
 // correspondence the equivalence test enforces.
 //
 // Recording contract ("MUST NOT alter application behavior beyond
@@ -15,7 +15,7 @@
 // ENTER and EXIT of a runtime call). The only CUPTI entry points used here
 // are the subscription/flush ones from the initialization path and the
 // activity buffer callbacks - the same Kineto-shaped enable-then-flush
-// pattern documented in docs/research/profiler-research-brief.md §1.3.
+// pattern documented in docs/report/kernscope-technical-report.pdf
 //
 //===----------------------------------------------------------------------===//
 

@@ -1,7 +1,6 @@
 //===- occupancy.cpp - GPU occupancy engine (NVIDIA + AMD) ----------------===//
 //
-// Implements the min-wins occupancy rule from docs/research/
-// gpu-static-analyzer-research.md §1.1 (L31-45) on top of the libs/arch
+// Implements the min-wins occupancy rule from docs/report/kernscope-technical-report.pdf (L31-45) on top of the libs/arch
 // constants (todo 6). All formulas carry the brief line citations used by
 // the todo-6 test suite; every deviation or modeling choice is documented
 // here and cross-checked by occupancy_test.cpp.

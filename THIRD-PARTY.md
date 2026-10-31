@@ -29,7 +29,13 @@ into kernscope.
 
 `hsa_amd_queue_intercept_create` (per-AQL-packet interception) was considered
 and DOCUMENTED as the alternative kernel-dispatch mechanism (see
-docs/research/capture-replay-research-brief.md §7); libs/capture-hip uses the
+docs/report/kernscope-technical-report.pdf); libs/capture-hip uses the
 rocprofiler-sdk kernel-dispatch callback-tracing service instead, which
 exposes the same grid/workgroup data with less plumbing. roctracer is NOT
 used (deprecated).
+
+## Report Tooling
+
+| Project | License | Role |
+|---|---|---|
+| [tikz-flora](https://github.com/wn-mitch/tikz-flora) | MIT | Watercolour margin flora for LuaLaTeX. Vendored, unmodified, in `docs/report/`; see `docs/report/tikzflora-LICENSE`. |

@@ -23,7 +23,7 @@
 #
 # The bundle is emitted through libs/capture-core's v0 BundleWriter (never
 # touched here). The deprecated tracer is NOT used (rocprofiler-sdk is the
-# blessed API per docs/research/capture-replay-research-brief.md §7).
+# blessed API per docs/report/kernscope-technical-report.pdf).
 #
 # Build contract: links kernscope::capture_core statically (no runtime
 # dependency on capture-core) and librocprofiler-sdk.so (NEEDED: the SDK must

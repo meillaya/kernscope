@@ -15,7 +15,7 @@
 #
 # CUDA-13 toolkit-version detection
 # --------------------------------
-# Per docs/research/profiler-research-brief.md §1.5 (CUDA 12 -> 13 changes):
+# Per docs/report/kernscope-technical-report.pdf (CUDA 12 -> 13 changes):
 # CUDA 13 dropped the CUPTI Event API (cupti_events.h), Metric API
 # (cupti_metrics.h), PC-sampling activity API, SASS metrics, and removed
 # nvprof + NVIDIA Visual Profiler. Activity kinds CUPTI_ACTIVITY_KIND_EVENT /
@@ -44,7 +44,7 @@ Owner-executed command sequence for an NVIDIA rental validation run
   STEP 1 — CUDA toolkit version check (on the rental host)
       ssh <rental-host> nvcc --version
       # CUDA 13 note: Event/Metric/PC-sampling APIs + nvprof removed
-      # (docs/research/profiler-research-brief.md §1.5); expect
+      # (docs/report/kernscope-technical-report.pdf); expect
       # CUpti_ActivityKernel10 + CUPTI_API_VERSION 130001 on 13.x.
 
   STEP 2 — CUPTI version detect (on the rental host)

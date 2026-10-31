@@ -1,7 +1,7 @@
 //===- bench.h - nvbench/Triton-style benchmarking harness ------*- C++ -*-===//
 //
 // kernscope benchmarking harness (wave-4 todo 22), implementing the validated
-// methodology of docs/research/autotuner-research-brief.md §6 (all cited):
+// methodology of docs/report/kernscope-technical-report.pdf (all cited):
 //   * TIME-BASED warmup/rep budgets (Triton do_bench convention: warmup 25 ms,
 //     rep 100 ms — NOT iteration counts). Per-call cost is estimated over a
 //     few L2-flushed calibration runs and n_warmup / n_repeat are derived

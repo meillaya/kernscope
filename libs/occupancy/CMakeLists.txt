@@ -2,12 +2,11 @@
 #
 # libs/occupancy: the theoretical-occupancy engine (wave-2 todo 11). Computes
 # resident blocks/warps + the binding limiter from (arch, regs_per_thread,
-# smem_per_block, block_size) with the min-wins rule (docs/research/
-# gpu-static-analyzer-research.md §1.1 L31-45):
+# smem_per_block, block_size) with the min-wins rule (docs/report/kernscope-technical-report.pdf L31-45):
 #   NVIDIA path: 256-register warp granule on 65536 regs/SM (brief §1.2
 #     L91-102); blocks by regs/smem/threads/blocks-cap, min wins.
 #   AMD path: VGPR waves/SIMD via libs/arch (CDNA granule 8, RDNA3 granule
-#     24 wave32 / 12 wave64 per docs/research/rdna3-constants.md) clamped to
+#     24 wave32 / 12 wave64 per docs/report/kernscope-technical-report.pdf) clamped to
 #     max waves/SIMD, SGPR pool ~800/SIMD granule 16 (CDNA only, 5-arg
 #     overload), LDS 64 KB/CU with 512-byte granule (brief §1.3 L117-127),
 #     then CU-level min.

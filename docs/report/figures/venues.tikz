@@ -1,0 +1,60 @@
+% Three execution venues for one source tree.
+\begin{tikzpicture}[
+    font=\small,
+    venue/.style={draw, rounded corners=4pt, align=left, text width=3.75cm,
+                  minimum height=6.4cm, inner sep=7pt, line width=0.8pt},
+    flow/.style={-{Stealth[length=2mm]}, line width=0.7pt, draw=ink!55},
+  ]
+
+  % One source, three venues.
+  \draw[ink!45, line width=0.6pt] (-6.5,4.45) -- (6.5,4.45);
+  \node[font=\scriptsize\itshape, text=ink!60, anchor=west] at (-6.45,4.68)
+    {one source tree};
+  \foreach \x in {-4.8,0,4.8} {
+    \draw[flow] (\x,4.45) -- (\x,4.05);
+  }
+
+  \node[venue, draw=kgreen, fill=kgreenfill] (amd) at (-4.8,0.75)
+    {{\color{kgreen}\small\bfseries AMD \(\cdot\) local}\\[2pt]
+     {\Large RX 7800 XT}\\[1pt]
+     {\scriptsize\color{ink!65} gfx1101}\\[5pt]
+     \rule{3.45cm}{0.3pt}\\[5pt]
+     {\scriptsize\(\bullet\)~compile + run}\\
+     {\scriptsize\(\bullet\)~capture + replay}\\
+     {\scriptsize\(\bullet\)~profile}\\
+     {\scriptsize\(\bullet\)~tune + benchmark}\\[8pt]
+     {\color{kgreen}\scriptsize numbers: measured}\\[8pt]
+     {\scriptsize\itshape\color{ink!60} the live path on this machine}};
+
+  \node[venue, draw=kblue, fill=kbluefill] (cuda) at (0,0.75)
+    {{\color{kblue}\small\bfseries NVIDIA \(\cdot\) compile}\\[2pt]
+     {\Large sm\_80 / sm\_90}\\[1pt]
+     {\scriptsize\color{ink!65} nvcc + CUDA 12.6 headers}\\[5pt]
+     \rule{3.45cm}{0.3pt}\\[5pt]
+     {\scriptsize\(\bullet\)~compile kernels}\\
+     {\scriptsize\(\bullet\)~parse PTX}\\
+     {\scriptsize\(\bullet\)~static analysis}\\
+     {\scriptsize\(\bullet\)~capture / profile unit tests}\\[8pt]
+     {\color{kblue}\scriptsize numbers: projected}\\[8pt]
+     {\scriptsize\itshape\color{ink!60} no CUDA runtime on this machine}};
+
+  \node[venue, draw=korange, fill=korangefill] (rental) at (4.8,0.75)
+    {{\color{korange}\small\bfseries NVIDIA \(\cdot\) rental}\\[2pt]
+     {\Large A100 / H100}\\[1pt]
+     {\scriptsize\color{ink!65} owner-gated}\\[5pt]
+     \rule{3.45cm}{0.3pt}\\[5pt]
+     {\scriptsize\(\bullet\)~live CUPTI capture}\\
+     {\scriptsize\(\bullet\)~live CUPTI profile}\\
+     {\scriptsize\(\bullet\)~runtime benchmarks}\\
+     {\scriptsize\(\bullet\)~rental-validate.sh}\\[8pt]
+     {\color{korange}\scriptsize numbers: measured, if produced}\\[8pt]
+     {\scriptsize\itshape\color{ink!60} no rental numbers are committed}};
+
+  % Provenance banner.
+  \node[draw=ink!30, rounded corners=2pt, fill=ink!4, minimum width=13.0cm,
+        minimum height=0.75cm, align=center, font=\scriptsize] at (0,-3.35)
+    {\textcolor{kgreen}{\(\bullet\)}~\texttt{measured} \quad
+     \textcolor{kblue}{\(\bullet\)}~\texttt{projected} \quad
+     \texttt{provenance.mode} is asserted by
+     \texttt{tests/report/check\_dashboard.py}};
+\end{tikzpicture}

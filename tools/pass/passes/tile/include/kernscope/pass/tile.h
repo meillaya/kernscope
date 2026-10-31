@@ -3,11 +3,9 @@
 // kernscope-tile tiles perfectly-nested GPU loops by arch-derived tile
 // sizes (libs/arch smem budget + register budget estimates) so that
 // todo-40's global-to-shared promotion (kernscope-promote) can consume
-// constant-trip-count, unit-stride {s,+,1} windows (docs/research/
-// gpu-memory-pass-research.md §4.7 — IREE's GPUTile/GPUTensorTile are the
+// constant-trip-count, unit-stride {s,+,1} windows (docs/report/kernscope-technical-report.pdf — IREE's GPUTile/GPUTensorTile are the
 // production precedent; this is the LLVM-IR-level tiler the §4.9 table
-// marks "must write"). The autotuner (docs/research/autotuner-research-
-// brief.md) later SEARCHES tile sizes; this pass APPLIES one arch-derived
+// marks "must write"). The autotuner (docs/report/kernscope-technical-report.pdf) later SEARCHES tile sizes; this pass APPLIES one arch-derived
 // size once, deterministically.
 //
 // Transform: for an innermost loop with constant trip count N and a

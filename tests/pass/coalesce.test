@@ -33,7 +33,7 @@
 
 ; ============================================================================
 ; The todo-42 acceptance DELTA assertion, on the COMMITTED showcase IR
-; (reports/passes/<kernel>/before.ll — real clang-21 output; the committed
+; (tests/pass/fixtures/<kernel>/before.ll — real clang-21 output; the committed
 ; showcase artifacts are inputs here, so the suite pins the before/after
 ; story end to end):
 ;
@@ -44,11 +44,11 @@
 ;     b-load fully + tid.y-dependent unknowns; softmax's runtime-stride
 ;     accesses unknown; layernorm's thread-per-row accesses uncoalesced.
 ;
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-tile,kernscope-promote,kernscope-vectorize,kernscope-pad,verify' -kernscope-vectorize-report -S %S/../../reports/passes/layernorm/before.ll -o %t.ln 2>&1 | FileCheck %s --check-prefix=DELTA-LN
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-tile,kernscope-promote,kernscope-vectorize,kernscope-pad,verify' -kernscope-vectorize-report -S %S/fixtures/layernorm/before.ll -o %t.ln 2>&1 | FileCheck %s --check-prefix=DELTA-LN
 ; RUN: FileCheck %s --check-prefix=DELTA-VEC --input-file %t.ln
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/gemm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=GEMM
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/softmax/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=SOFTMAX
-; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/../../reports/passes/layernorm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=LN
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/fixtures/gemm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=GEMM
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/fixtures/softmax/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=SOFTMAX
+; RUN: opt -load-pass-plugin=%kernscope-pass-plugin -passes='kernscope-as1,kernscope-coalesce' -kernscope-coalesce-report -S %S/fixtures/layernorm/before.ll -o /dev/null 2>&1 | FileCheck %s --check-prefix=LN
 
 ; The analysis must be a no-op on the IR (byte-identical llvm-diff above).
 ; Fully coalesced (stride-1 float): 32 lanes x 4 B = 128 B = 4 sectors ->

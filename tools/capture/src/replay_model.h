@@ -50,7 +50,7 @@ struct DevBuffer {
   std::string warning;             // reported when synthetic
   // v1 only: the embedded-pointer patch table for this snapshot (todo 46).
   // Replay applies it through apply_remap (libs/capture-core) when the
-  // snapshot is remapped to fresh VAs (docs/capture-mapping.md §4.4).
+  // snapshot is remapped to fresh VAs (docs/report/kernscope-technical-report.pdf).
   std::vector<PatchEntry> patches;
 };
 

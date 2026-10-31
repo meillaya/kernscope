@@ -2,7 +2,7 @@
 #
 # libs/bench: the nvbench/Triton-style benchmarking harness (wave-4 todo 22)
 # implementing the validated methodology of
-# docs/research/autotuner-research-brief.md §6 — time-based warmup/rep budgets
+# docs/report/kernscope-technical-report.pdf — time-based warmup/rep budgets
 # (Triton do_bench: 25 ms / 100 ms), L2 flush between reps sized from the
 # device L2 attribute (nvbench l2flush), HIP/CUDA event timing per rep,
 # adaptive trials (nvbench measure_cold: min_time/min_samples/max_noise/

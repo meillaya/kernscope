@@ -2,7 +2,7 @@
 //
 // Implementation of kernscope::roofline. The AI formulas, machine-peaks table
 // and classification thresholds are pinned against
-// docs/research/autotuner-research-brief.md §7 (Williams/Waterman/Patterson
+// docs/report/kernscope-technical-report.pdf (Williams/Waterman/Patterson
 // CACM 2009, DOI 10.1145/1498765.1498785); see roofline.h for the derivations
 // and citations. The gfx1101 row is filled with MEASURED values + provenance
 // by todo 22 (libs/bench / kernscope-bench, run on this machine's RX 7800 XT
@@ -100,7 +100,7 @@ namespace {
 // vendor-doc citation it comes from; nothing here is guessed. The gfx1101 row
 // carries MEASURED values + provenance from todo 22 (libs/bench / the
 // kernscope-bench CLI run on THIS machine's RX 7800 XT 2026-08-14; details in
-// reports/peaks/gfx1101-bench.jsonl) — projected == false, never fabricated.
+// tests/fixtures/peaks/gfx1101-bench.jsonl) — projected == false, never fabricated.
 constexpr MachinePeak kPeaks[] = {
     {"sm_80", "A100 (SXM 80GB)", "fp16/bf16",
      /*matrix=*/312.0e12, /*fp32=*/19.5e12, /*bw=*/2039.0e9, /*projected=*/false,
@@ -124,7 +124,7 @@ constexpr MachinePeak kPeaks[] = {
      "22): fp32 16.32 TF (register-resident FFMA loop); DRAM 591 GB/s "
      "(read-only 512 MiB rep; D2D copy 476 GB/s); LDS 9.7 TB/s. Clocks "
      "as-measured via rocm-smi (sclk/mclk; never locked, no root). Provenance: "
-     "reports/peaks/gfx1101-bench.jsonl (device name, gcnArchName, clocks, "
+     "tests/fixtures/peaks/gfx1101-bench.jsonl (device name, gcnArchName, clocks, "
      "tool version, measured=true)"},
 };
 

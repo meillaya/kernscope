@@ -1,0 +1,249 @@
+% ===========================================================================
+\appendix
+% ===========================================================================
+
+\section{CLI reference}
+\label{app:cli}
+
+\begin{longtable}{@{}p{3.6cm}p{10.7cm}@{}}
+\toprule
+Tool & Synopsis and notable options \\
+\midrule
+\endhead
+\kst{kernscope-analyze} &
+\kst{<file.ptx|file.s|file.isa> [--arch A] [--block N] [--json|--text|--html]
+[--source F] [--version] [--help]}. Exit 0 clean, 1 warnings, 2 parse/arch/
+schema error, 3 usage. \\
+\addlinespace
+\kst{kernscope-tune} &
+\kst{--kernel F --shape S --arch A [--grid auto|full] [--json|--html|--text]
+[--db P] [--cache P] [--workdir D] [--min-occupancy X] [--no-bench]
+[--no-cache|--force] [--emit-repro D] [--verify] [--inject-risky F]
+[--gate-shape S] [--version] [--help]}. Exit 0 best selected, 1 no viable
+config, 2 usage/environment, 3 unknown family. \\
+\addlinespace
+\kst{kernscope-tune} &
+\kst{--from-capture B [--vendor amd] [--arch gfx1101] [--blob-dir D]
+[--kernel K] [--ref F] [--candidates CSV] [--inject-config C] [--reps N]
+[--no-flush] [--db P] [--profile-out P] [--json|--text]}. Exit 0 best,
+1 no valid config, 2 usage/environment. \\
+\addlinespace
+\kst{kernscope-verify} &
+\kst{<src.cu|src.hip> [--device-only] [--json] [--out BASE] [--list-checks]
+[--budget N] [--opt O1|O2] [--arch sm_80|gfx1101] [--version]}. Exit 0
+approved, 1 error-class verdict, 2 ingestion failure, 3 usage. \\
+\addlinespace
+\kst{kernscope-capture} &
+\kst{record <app> [args] [--vendor auto|amd|nvidia] [--bundle P]
+[--blob-dir D] [--env K=V]} \\
+& \kst{replay <bundle> [--vendor A] [--arch A] [--blob-dir D] [--kernel K]
+[--mode bitwise|tolerance] [--ref F] [--dump-dir D] [--profile-out P]} \\
+& \kst{bench <bundle> [replay flags] [--reps N] [--no-flush] [--no-validate]
+[--db P] [--profile-out P]} \\
+& \kst{emit-repro <bundle> [--out D] [--blob-dir D] [--vendor A] [--arch A]
+[--kernel K] [--force]} \\
+& \kst{db-query <db.jsonl> [--arch A] [--family F] [--shape S]}. Replay exit
+0 pass, 1 validation failure, 2 cannot run; db-query 0 found, 1 none,
+2 unreadable. \\
+\addlinespace
+\kst{kernscope-profile} &
+\kst{<binary|dir> [--vendor auto|hip|cuda] [--json|--text|--html]
+[--] [app args]}. Exit 0 report (including no kernels), 2 target/tracer/
+schema failure, 3 usage. \\
+\addlinespace
+\kst{kernscope-pass-report} &
+\kst{--report-pipeline gemm|layernorm|softmax [--build-dir D] [--workdir D]
+[--json] [--out P] [--help] [--version]}. Exit 0 emitted, 2 pipeline/analyze
+failure, 3 usage. \\
+\addlinespace
+\kst{kernscope-bench} &
+\kst{[--db P] [--reps N] [--no-flush] ...}. The peak and replay harness;
+default database \fpath{reports/peaks/gfx1101-bench.jsonl}. \\
+\addlinespace
+\kst{kernscope-dashboard} &
+\kst{[--out P] [--missing SECTIONS]}. Aggregates the six module sections into
+one self-contained HTML page and its JSON sibling. \\
+\bottomrule
+\end{longtable}
+
+\section{Verifier verdicts and engine ids}
+\label{app:verdicts}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Verdict & Class & Meaning \\
+\midrule
+\kst{SAFE} & approval & The checked property was proven for the analysed path. \\
+\kst{MAY_OOB} & error & A bound was not proven; an access may be out of bounds. \\
+\kst{SYMBOLIC_DIMS} & engine (100) & Launch dimensions are symbolic; runtime check suggested. \\
+\kst{BARRIER_MISMATCH} & error & Barrier counts differ between paths. \\
+\kst{MAY_RACE} & error & Two shared accesses may race in the same phase. \\
+\kst{UNKNOWN_RACE} & error & The race question could not be decided; not a proof. \\
+\kst{PTR_OOB} & error & Pointer arithmetic may leave the object. \\
+\kst{DIVERGENT_BARRIER} & error & A barrier is reachable under divergent control flow. \\
+\kst{MAY_UNINIT_READ} & error & A read may observe an uninitialized value. \\
+\kst{INVALID_ADDRSPACE_CAST} & error & An address-space cast is not legal. \\
+\kst{SCEV_RECONSTRUCTION_FAILED} & engine (101) & SCEV could not reconstruct a range at \kst{-O2}. \\
+\kst{BUDGET_EXCEEDED} & engine (102) & The per-function explored-state cap was hit. \\
+\bottomrule
+\end{tabularx}
+\caption{The verdict vocabulary. SAFE is the only approval-class
+verdict; engine ids are degraded outcomes, not proofs.}
+\label{tab:verdicts}
+\end{table}
+
+\section{Capture bundle fields}
+\label{app:bundle}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Object & Required fields & Notes \\
+\midrule
+manifest & 9 & \kst{format_id}, \kst{schema_version}, \kst{tool_version},
+\kst{vendor}, \kst{arch}, \kst{capture_mechanism}, \kst{timestamp},
+\kst{snapshot_policy}, \kst{size_governance}. \\
+size governance & 4 & \kst{max_snapshot_bytes} (default 1\,GiB),
+\kst{total_blob_bytes}, \kst{aborted}, \kst{abort_reason}. \\
+event & 2+ & \kst{type} and \kst{seq}; the type-specific shape adds launch,
+copy, allocation, stream, module, or parameter fields. \\
+launch & 11+ & \kst{kernel_name}, \kst{via}, \kst{grid[3]}, \kst{block[3]},
+\kst{shared_mem_bytes}, \kst{stream}, \kst{graph_handle}, \kst{args[]}. \\
+argument & 4 & \kst{kind} (pointer/scalar), \kst{size}, \kst{bytes}, \kst{va}. \\
+blob & 7 & \kst{id}, \kst{file}, \kst{role}, \kst{va}, \kst{size},
+\kst{sha256}, \kst{patches[]}. \\
+patch & 2 & \kst{offset} and \kst{target_va}. \\
+\bottomrule
+\end{tabularx}
+\caption{Bundle v1 required fields. All 64-bit values are lowercase
+0x-prefixed hexadecimal strings; small counters and dimensions are
+JSON numbers. Every blob hash is recomputed on read.}
+\label{tab:bundle}
+\end{table}
+
+Event types: \kst{api}, \kst{alloc}, \kst{free}, \kst{unknown-free},
+\kst{launch}, \kst{copy}, \kst{memset}, \kst{stream}, \kst{fatbin},
+\kst{cubin}, \kst{param_info}. A copy records a kind and a \kst{cuda_kind}
+(1 H2D, 2 D2H, 3 D2D). A launch records how it was issued: runtime,
+runtime-ex, graph, driver, or driver-ex.
+
+\section{Report schema and provenance}
+\label{app:report-schema}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Field & Required & Meaning \\
+\midrule
+\kst{kernel} & yes & Object with a required \kst{name}; optional
+\kst{source_file}, \kst{arch}, \kst{block_size}. \\
+\kst{metrics} & yes & Object; every value is a number. \\
+\kst{limiter} & yes & Human-readable binding resource. \\
+\kst{warnings} & yes & Array of findings. \\
+\kst{suggestions} & yes & Array of findings. \\
+finding & yes & \kst{id}, \kst{severity}, \kst{evidence}; \kst{evidence} is a
+string-to-string map and the \kst{text} key is the one-line renderer summary. \\
+\kst{schema_version} & optional & The report engine writes \kst{"1.0"}; the
+schema does not require it. \\
+\kst{provenance} & optional & The schema does not define it. The dashboard and
+report engine use \kst{provenance.mode} in \{measured, projected, no\_data\}
+and \kst{provenance.measured} as a boolean. \\
+\bottomrule
+\end{tabularx}
+\caption{The report schema and the provenance convention that sits outside
+it. The distinction is deliberate: the schema validates shape, and the
+dashboard validator checks provenance.}
+\label{tab:reportschema}
+\end{table}
+
+\section{Consolidation map}
+\label{app:consolidation}
+
+This report consolidates the following material. The source files were removed
+from the tree after the report compiled, except for the editable diagrams.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Folded material & Where it lives in this report \\
+\midrule
+\fpath{docs/architecture.md} & \Cref{sec:arch}, \Cref{sec:hardware},
+\Cref{sec:libs}, and the three architecture figures. \\
+\fpath{docs/analyzer.md}, \fpath{docs/analyzer-rules.md} & \Cref{sec:c1} and
+\Cref{app:cli}. \\
+\fpath{docs/tuning.md} & \Cref{sec:c2}. \\
+\fpath{docs/verify.md}, \fpath{docs/verify-soundness.md} & \Cref{sec:c3} and
+\Cref{app:verdicts}. \\
+\fpath{docs/capture.md}, \fpath{docs/capture-format.md},
+\fpath{docs/capture-mapping.md} & \Cref{sec:c4} and \Cref{app:bundle}. \\
+\fpath{docs/profile.md} & \Cref{sec:c6}. \\
+\fpath{docs/reproducibility.md} & \Cref{sec:repro}. \\
+\fpath{docs/schema/report.schema.json},
+\fpath{docs/schema/capture-bundle.schema.json} & \Cref{sec:provenance},
+\Cref{sec:c4}, \Cref{app:bundle}, \Cref{app:report-schema}. \\
+\fpath{docs/research/*.md} & \Cref{sec:prior} and the bibliography. \\
+\fpath{reports/research-report/*} & This report. \\
+\fpath{reports/demo/*}, \fpath{reports/passes/*},
+\fpath{reports/peaks/*}, \fpath{reports/dashboard.*} & The measured values in
+\Cref{sec:eval} and the tool chapters. The runtime directories are regenerated
+by the scripts. \\
+\fpath{reports/rentals/*} & \Cref{sec:rental}; no rental numbers were present. \\
+\bottomrule
+\end{tabularx}
+\caption{Material folded into this report. The editable Excalidraw diagrams
+remain in \fpath{docs/diagrams/}; the test-critical before.ll inputs and
+the peak JSONL are retained under \fpath{tests/} because tests read them.}
+\label{tab:consolidation}
+\end{table}
+
+Two kinds of file were not folded: the diagrams, which are useful as
+standalone editable figures, and the small test inputs that the lit and
+architecture tests read directly. The latter are test fixtures, not report
+artifacts. Everything else that described the design or reported a measurement
+is represented here.
+
+\section{Glossary}
+\label{app:glossary}
+
+\begin{description}[leftmargin=0pt,style=nextline,itemsep=1pt]
+  \item[AMDGPU] AMD's GPU instruction set. The analyzer reads its assembly
+        form; the capture path records its code objects.
+  \item[bf16] 16-bit bfloat16. The golden harness compares outputs in bf16
+        under a cosine, relative-error, and PCC contract.
+  \item[coalescing] Whether the threads of a warp touch contiguous memory
+        sectors. The analyzer uses 128-byte sectors.
+  \item[CUPTI] NVIDIA's CUDA profiling tools interface. Activity records are
+        the profiler and capture input on the NVIDIA path.
+  \item[DFA / SCEV] LLVM's scalar evolution analysis; the verifier and pass
+        report use its ranges.
+  \item[gfx1101] The architecture code for the local Radeon RX 7800 XT
+        (RDNA 3).
+  \item[hipcc] The AMD HIP compiler driver used for the live path.
+  \item[LDS] AMD local data share, the shared-memory name in the AMDGPU ISA.
+  \item[LLVM IR] The compiler intermediate representation the verifier checks
+        and the pass plugin rewrites.
+  \item[occupancy] Active warps divided by the maximum active warps on an SM.
+        The report's occupancy is theoretical.
+  \item[PTX] NVIDIA's virtual instruction set; the analyzer's NVIDIA input.
+  \item[provenance.mode] The per-module label \kst{measured},
+        \kst{projected}, or \kst{no_data} used by the report engine and
+        dashboard.
+  \item[roofline] The compute and memory ceilings and the ridge point where
+        they meet; the tuner and profiler use it to classify a bound.
+  \item[VA-faithful] A snapshot that preserves the original virtual addresses
+        and the pointer graph, with a patch table for remapping.
+\end{description}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

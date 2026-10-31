@@ -3,7 +3,7 @@
 # libs/roofline: the roofline engine (wave-2 todo 12). Per-family
 # arithmetic-intensity models for the six C2 autotuner kernel families (GEMM,
 # fused bias+GELU, softmax, layernorm, reduction, FlashAttention) from
-# docs/research/autotuner-research-brief.md §7 (Williams/Waterman/Patterson
+# docs/report/kernscope-technical-report.pdf (Williams/Waterman/Patterson
 # CACM 2009, DOI 10.1145/1498765.1498785) + a machine-peaks table (A100, RTX
 # 4090, MI250X, MI300X from brief §7 L127-130; gfx1101 "pending-measurement"
 # placeholders that todo 22 fills with measured values + provenance — querying

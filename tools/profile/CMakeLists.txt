@@ -42,7 +42,7 @@ add_library(kernscope::profile_enrich ALIAS kernscope_profile_enrich)
 
 # --- ranking + compiler-aware diagnostics engine (todo 51) ----------------------
 # Hot-kernel ranking + the SOL-style "why is this slow?" rules engine
-# (docs/research/profiler-research-brief.md §6): occupancy resource hints,
+# (docs/report/kernscope-technical-report.pdf): occupancy resource hints,
 # libs/roofline (todo 12) memory-traffic classification for known families,
 # the insufficient-evidence degradation, and the kernscope-analyze (todo 20)
 # subprocess merge on extracted PTX (the profiler<->analyzer cross-tool

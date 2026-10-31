@@ -2,7 +2,7 @@
 //
 // kernscope shared-core library tree.
 //
-// The CUPTI injection contract (docs/research/capture-replay-research-brief.md
+// The CUPTI injection contract (docs/report/kernscope-technical-report.pdf
 // §1): when CUDA_INJECTION64_PATH=<this .so> is set, the CUDA driver loads
 // the library during CUDA init and calls its exported InitializeInjection().
 // This is the NVIDIA-PRIMARY transport (the todo-43 LD_PRELOAD shim is NOT the

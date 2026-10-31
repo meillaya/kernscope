@@ -7,7 +7,7 @@
 //                        emits `addrspacecast ptr addrspace(3) to ptr
 //                        addrspace(1)` — a DIRECT shared->global cast with
 //                        no generic mediation. Per the verified NVPTX table
-//                        (docs/research/gpu-memory-pass-research.md §2.1)
+//                        (docs/report/kernscope-technical-report.pdf)
 //                        only generic(0) <-> {global(1), shared(3),
 //                        constant(4), local(5)} are legal CUDA casts; a
 //                        direct shared<->global pair has no PTX instruction

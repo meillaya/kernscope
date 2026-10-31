@@ -6,7 +6,7 @@
 // *.kcap/ or v0 text) and EXECUTES it live on the local device through the
 // libs/gpuruntime abstraction:
 //
-//   1. RESTORE (docs/capture-mapping.md §4.4): the snapshot is restored at
+//   1. RESTORE (docs/report/kernscope-technical-report.pdf): the snapshot is restored at
 //      its ORIGINAL VAs where the platform allows, else remapped to fresh
 //      allocations with the embedded-pointer patch table applied. Platform
 //      policy: HIP/HSA assigns VAs (no user-facing placement API at the
@@ -14,7 +14,7 @@
 //      cuMemMap) can place allocations at chosen addresses in principle and
 //      is the documented extension point for the rental-gated NVIDIA path
 //      (the gpuruntime abstraction does not expose VMM, so this engine
-//      remaps and documents the policy — see docs/capture.md §replay).
+//      remaps and documents the policy — see docs/report/kernscope-technical-report.pdf).
 //      Pointer ARG slots go through the same remap table.
 //   2. LAUNCH with the captured grid/block/shared and the remapped args.
 //   3. VALIDATE the captured outputs: BITWISE by default (byte compare +
@@ -25,7 +25,7 @@
 //      (steady_clock us); `bench` runs the launch as a libs/bench
 //      measurement (N reps, L2 flush, median) and writes a libs/db record
 //      with measured provenance. The launch-record contract feeds todo 49's
-//      profiler — documented in docs/capture.md §profiling-hooks.
+//      profiler — documented in docs/report/kernscope-technical-report.pdf
 //
 // MUST NOT auto-upload bundles anywhere: this engine is purely local.
 //
@@ -72,7 +72,7 @@ struct OutputComparison {
 };
 
 /// One timestamped launch record — the todo-49 profiling hook contract
-/// (docs/capture.md §profiling-hooks): {kernel, seq, launched_at_us,
+/// (docs/report/kernscope-technical-report.pdf): {kernel, seq, launched_at_us,
 /// completed_at_us, duration_us} on the steady clock.
 struct LaunchTimingRecord {
   std::string kernel_name;

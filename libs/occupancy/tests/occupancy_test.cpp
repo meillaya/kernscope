@@ -468,7 +468,7 @@ TEST(occupancy, AmdThreadCap) {
 // Negative golden: forcing the RDNA3 VGPR granule to 16 (the "don't hardcode
 // 16" trap, brief §10.4 L551-553) must change the predicted occupancy away
 // from the pinned granule-24 model. The failure message cites
-// docs/research/rdna3-constants.md (the todo-6 negative-QA pattern).
+// docs/report/kernscope-technical-report.pdf (the todo-6 negative-QA pattern).
 // ---------------------------------------------------------------------------
 
 TEST(occupancy, Rdna3Granule16TamperDiverges) {
@@ -485,15 +485,15 @@ TEST(occupancy, Rdna3Granule16TamperDiverges) {
   EXPECT_EQ(pinned_occ.blocks_per_sm, 24)
       << "gfx1101 97 VGPRs x 32 threads -> 24 blocks/CU with the PINNED "
          "granule 24 (floor(1536/align24(97)) = 12 waves/SIMD x 2 SIMDs): "
-         "docs/research/rdna3-constants.md (RDNA3 ISA §3.3.2.1; LLVM "
+         "docs/report/kernscope-technical-report.pdf (RDNA3 ISA §3.3.2.1; LLVM "
          "AMDGPUBaseInfo.cpp L1371-1380; evidence (e) step series)";
   EXPECT_NE(pinned_occ.blocks_per_sm, tampered_occ.blocks_per_sm)
       << "tampering gfx1101 VGPR granule to 16 must change occupancy: "
-         "docs/research/rdna3-constants.md pins 24 (wave32)/12 (wave64) from "
+         "docs/report/kernscope-technical-report.pdf pins 24 (wave32)/12 (wave64) from "
          "RDNA3 ISA §3.3.2.1 (brief §10.4 L551-553: \"don't hardcode 16\")";
   EXPECT_NE(tampered_occ.blocks_per_sm, 24)
       << "26 blocks would imply the refuted granule-16 model "
-         "(docs/research/rdna3-constants.md evidence (e): align-12/24 step "
+         "(docs/report/kernscope-technical-report.pdf evidence (e): align-12/24 step "
          "series, not align-16)";
 }
 

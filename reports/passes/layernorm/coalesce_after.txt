@@ -1,1 +1,0 @@
-kernscope-coalesce: layernorm_kernel: 28 global accesses (0 fully, 12 partial, 16 uncoalesced, 0 unknown); widest access 16 B; vectorized 12

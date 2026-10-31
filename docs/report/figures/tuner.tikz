@@ -1,0 +1,58 @@
+% Tuner pipeline: template path and capture path.
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw=ink!35, rounded corners=3pt, align=center, text width=2.3cm,
+                minimum height=1.3cm, inner sep=3pt, font=\scriptsize, fill=paper},
+    flow/.style={-{Stealth[length=2mm]}, line width=0.8pt, draw=ink!60},
+    dflow/.style={-{Stealth[length=2mm]}, line width=0.7pt, dashed, draw=ink!55},
+    lbl/.style={font=\scriptsize\itshape, text=ink!60},
+  ]
+
+  % Template path.
+  \node[box, fill=kgreenfill, draw=kgreen] (family) at (0,2.1)
+    {\textbf{family + shape}\\matmul, bias\_gelu,\\softmax, layernorm,\\reduction, attention};
+  \node[box, fill=paper] (grid) at (3.1,2.1)
+    {\textbf{config grid}\\tiles, warps,\\stages, vector width};
+  \node[box, fill=kgoldfill, draw=kgold] (screen) at (6.2,2.1)
+    {\textbf{pre-screen}\\register, smem,\\occupancy budgets};
+  \node[box, fill=kbluefill, draw=kblue] (compile) at (9.3,2.1)
+    {\textbf{compile}\\hipcc gfx1101\\or nvcc sm\_80/90};
+
+  \draw[flow] (family) -- (grid);
+  \draw[flow] (grid) -- (screen);
+  \draw[flow] (screen) -- (compile);
+
+  % The rest wraps to a second row.
+  \node[box, fill=kgreenfill, draw=kgreen] (golden) at (0,-1.1)
+    {\textbf{golden gate}\\bfloat16 cosine,\\max-rel, PCC};
+  \node[box, fill=korangefill, draw=korange] (bench) at (3.1,-1.1)
+    {\textbf{benchmark}\\warmup, L2 flush,\\median + p20/p80};
+  \node[box, fill=kvioletfill, draw=kviolet] (select) at (6.2,-1.1)
+    {\textbf{select}\\median, then p20,\\then p80};
+  \node[box, fill=paper] (cache) at (9.3,-1.1)
+    {\textbf{cache + db}\\arch:family:shape\\JSONL records};
+
+  \draw[flow] (compile.south) -- ++(0,-1.0) -| (golden.north);
+  \draw[flow] (golden) -- (bench);
+  \draw[flow] (bench) -- (select);
+  \draw[flow] (select) -- (cache);
+
+  % Capture path.
+  \node[box, fill=kgoldfill, draw=kgold] (bundle) at (0,-4.3)
+    {\textbf{capture bundle}\\binary + buffers\\+ launch};
+  \node[box, fill=paper] (launch) at (3.1,-4.3)
+    {\textbf{launch configs}\\captured grid,\\block search};
+  \node[box, fill=kgreenfill, draw=kgreen] (replay) at (6.2,-4.3)
+    {\textbf{bitwise replay}\\output hash\\must match};
+  \node[box, fill=korangefill, draw=korange] (cbench) at (9.3,-4.3)
+    {\textbf{benchmark}\\same harness,\\same quantiles};
+
+  \draw[flow] (bundle) -- (launch);
+  \draw[flow] (launch) -- (replay);
+  \draw[flow] (replay) -- (cbench);
+  \node[lbl, above] at (3.1,-3.65) {\texttt{--from-capture}};
+
+  % Shared selection.
+  \draw[dflow] (cbench.south) -- ++(0,-0.75) -| (select.south);
+
+\end{tikzpicture}

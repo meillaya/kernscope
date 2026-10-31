@@ -10,7 +10,7 @@
 #   * libs/roofline gfx1101 row: projected == false, fp32_peak_flops >
 #     10e12 FLOP/s, bandwidth_bytes_per_s > 300e9 B/s, provenance mentions
 #     "measured";
-#   * reports/peaks/gfx1101-bench.jsonl records: a DRAM-resident read record
+#   * tests/fixtures/peaks/gfx1101-bench.jsonl records: a DRAM-resident read record
 #     (>= 128 MiB, beyond the 64 MiB Infinity Cache) with derived bandwidth
 #     > 300 GB/s, a peak_flops record, and every record carries the required
 #     provenance fields non-empty (device name, gcnArchName, date, clocks,
@@ -85,8 +85,8 @@ check("MEASURED" in rrow or "measured" in rrow.lower(),
       "roofline.cpp gfx1101 provenance marks the values as measured")
 
 # --- 3. committed JSONL provenance records -----------------------------------
-jsonl = ROOT / "reports/peaks/gfx1101-bench.jsonl"
-check(jsonl.exists(), f"reports/peaks/gfx1101-bench.jsonl exists ({jsonl})")
+jsonl = ROOT / "tests/fixtures/peaks/gfx1101-bench.jsonl"
+check(jsonl.exists(), f"tests/fixtures/peaks/gfx1101-bench.jsonl exists ({jsonl})")
 records = []
 if jsonl.exists():
     for line in jsonl.read_text().splitlines():

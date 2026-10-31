@@ -4,7 +4,7 @@
 // SAME concept is consumed at PTX level by the static analyzer
 // (tools/analyze/src/analyze_coalescing.cpp, Wave-3 todo 15): per-lane
 // affine address `base + coeff*lane + const` under the 32B-sector /
-// 128B-line model of docs/research/gpu-static-analyzer-research.md §3.1.
+// 128B-line model of docs/report/kernscope-technical-report.pdf
 // There is NO shared libs/ implementation (verified 2026-08-15: libs/ has
 // no coalescing classifier — the analyzer's bank/coalescing math lives in
 // tools/analyze/src/analyze_banks.cpp / analyze_coalescing.cpp, same

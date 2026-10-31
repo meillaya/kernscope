@@ -4,8 +4,7 @@
 # formulas for NVIDIA sm_75..sm_120 and AMD gfx90a/gfx942/gfx1101) consumed by
 # tools/analyze and the rest of the suite, plus the version header every tool
 # stamps. Wave-1 todo 6 implements the DB (include/kernscope/arch.h) and pins
-# every constant with gtest cases against docs/research/
-# gpu-static-analyzer-research.md (and docs/research/rdna3-constants.md for
+# every constant with gtest cases against docs/report/kernscope-technical-report.pdf (and docs/report/kernscope-technical-report.pdf for
 # the ISA-resolved RDNA3 VGPR file).
 add_library(kernscope_arch INTERFACE)
 target_include_directories(kernscope_arch INTERFACE
@@ -25,7 +24,7 @@ gtest_discover_tests(arch-test PROPERTIES LABELS "no-gpu")
 
 # --- todo-22: gfx1101 measured-peaks validator -------------------------------
 # python3 tests/arch/check_peaks.py asserts the COMMITTED gfx1101 peak entries
-# (libs/arch + libs/roofline + reports/peaks/gfx1101-bench.jsonl provenance)
+# (libs/arch + libs/roofline + tests/fixtures/peaks/gfx1101-bench.jsonl provenance)
 # pass the todo-22 sanity floors (bw > 300 GB/s, fp32 > 10 TFLOPS) with
 # non-empty provenance fields. Pure file validation -> no-gpu.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)

@@ -38,8 +38,7 @@
 //        a. a libs/db JSONL record per measured config, keyed
 //           (gpu_arch, kernel_family, shape_hash) — query_best by median;
 //        b. a Triton-style tunecache JSON (arch + shape + family key,
-//           `configs_timings` semantics — docs/research/
-//           autotuner-research-brief.md §1): every processed config's
+//           `configs_timings` semantics — docs/report/kernscope-technical-report.pdf): every processed config's
 //           outcome is cached (timings for measured, status+reason for
 //           rejected/failed, mirroring Triton's inf-cost for infeasible
 //           configs), so a re-run with the same cache compiles NOTHING and

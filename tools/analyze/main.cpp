@@ -20,7 +20,7 @@
 // Reports render through libs/report (text = the owner's Section A format,
 // json = schema-validated, html = self-contained with embedded JSON).
 //
-// Exit codes (documented in docs/analyzer.md):
+// Exit codes (documented in docs/report/kernscope-technical-report.pdf):
 //   0  clean report (no warnings)
 //   1  report produced; warnings present
 //   2  error: parse failure, unknown arch, unreadable file, render schema
@@ -129,7 +129,7 @@ void print_usage(std::FILE *out) {
       "launch-config discovery: when the input's directory contains\n"
       "manifest.json (the committed fixture convention), its arch / block_size\n"
       "/ ptxas_v_report fields seed the analysis; explicit flags override.\n"
-      "See docs/analyzer.md for the full reference.\n",
+      "See docs/report/kernscope-technical-report.pdf for the full reference.\n",
       kKnownArches);
 }
 

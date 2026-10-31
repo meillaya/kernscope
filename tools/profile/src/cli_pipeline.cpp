@@ -478,7 +478,7 @@ namespace {
 // The showcase kernel for the owner-style renderings (owner_example JSON
 // field + the --html page): the first hot kernel whose name contains
 // "layernorm" — the golden fixture's profiler example
-// (docs/research/owner-examples.md Section B) — falling back to the hottest
+// (docs/report/kernscope-technical-report.pdf Section B) — falling back to the hottest
 // kernel. Internal runtime kernels (e.g. the rocclr memcpy helper) never
 // take the showcase.
 std::size_t ShowcaseIndex(const ProfileReport &report) {
@@ -593,7 +593,7 @@ std::string report_to_json(const ProfileReport &report) {
   }
   out << "  ],\n";
 
-  // The owner's Section B example shape (docs/research/owner-examples.md)
+  // The owner's Section B example shape (docs/report/kernscope-technical-report.pdf)
   // with LOCALLY-MEASURED values for the fixture's showcase kernel: the
   // first hot kernel whose name contains "layernorm" (the golden e2e target;
   // internal runtime kernels like the rocclr memcpy never take the
@@ -682,7 +682,7 @@ std::string report_to_text(const ProfileReport &report) {
   out << report.kernels.size() << " kernel record(s), wall time "
       << report.wall_time_ns << " ns\n\n";
 
-  // Owner Section B shape per hot kernel (docs/research/owner-examples.md),
+  // Owner Section B shape per hot kernel (docs/report/kernscope-technical-report.pdf),
   // with locally-measured values only.
   for (std::size_t i = 0; i < report.ranking.size(); ++i) {
     const HotKernelEntry &e = report.ranking[i];

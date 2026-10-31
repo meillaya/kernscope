@@ -1,7 +1,7 @@
 //===- fixture_main.cpp - sample report generator for the HTML gate -*- C++ -*-===//
 //
 // Emits build/test_reports/{sample.html, sample.json} from the owner's
-// fused_attention example model (docs/research/owner-examples.md Section A).
+// fused_attention example model (docs/report/kernscope-technical-report.pdf Section A).
 // The sample.json is the "expected input JSON"; check_html.py
 // (tests/report/check_html.py) parses sample.html with python3 html.parser,
 // extracts the embedded JSON payload and compares it against sample.json.

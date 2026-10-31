@@ -10,10 +10,10 @@
 // mechanism parses identically. The todo-44 dual-mechanism equivalence test
 // (ctest -R capture_equiv -L gpu-amd) consumes BOTH this library and
 // libkernscope_capture_hip.so against the todo-24 portable kernel; the field
-// correspondence it enforces is documented in docs/capture-mapping.md (this
+// correspondence it enforces is documented in docs/report/kernscope-technical-report.pdf (this
 // todo's deliverable).
 //
-// Mechanism (per docs/research/capture-replay-research-brief.md §1/§2 build
+// Mechanism (per docs/report/kernscope-technical-report.pdf/§2 build
 // recommendation 1 - CUPTI injection is the PRIMARY NVIDIA mechanism because
 // it hooks from inside the driver, closing the driver-vs-runtime split and
 // static-cudart holes of LD_PRELOAD):
@@ -26,7 +26,7 @@
 //      "single-tool scope" below) - CUPTI 12.6 rejects a second concurrent
 //      subscriber (CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED); v2
 //      multi-subscriber APIs arrive in CUDA 13.3 and are a documented
-//      migration surface (docs/capture-mapping.md).
+//      migration surface (docs/report/kernscope-technical-report.pdf).
 //   2. CALLBACK CAPTURE: RUNTIME+DRIVER domain callbacks at CUPTI_API_ENTER
 //      / CUPTI_API_EXIT. CUpti_CallbackData.functionParams points at the
 //      actual API argument struct (generated_cuda_runtime_api_meta.h /

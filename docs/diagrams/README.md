@@ -1,7 +1,7 @@
 # Architecture diagrams
 
-The `.excalidraw` files are the sources for the PNGs used in the README and
-`docs/architecture.md`. They use Excalifont, the hand-drawn font bundled with
+The `.excalidraw` files are the sources for the PNGs used in the README.
+The technical report uses TikZ figures instead. They use Excalifont, the hand-drawn font bundled with
 the Excalidraw CLI. Regenerating them needs Node 22 or newer.
 
 ## Regenerate

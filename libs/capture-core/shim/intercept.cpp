@@ -8,7 +8,7 @@
 // signature is checked against the real header declarations at build time.
 //
 // KNOWN LIMITATIONS OF THE LD_PRELOAD MECHANISM - recorded here per
-// docs/research/capture-replay-research-brief.md §2 (pitfalls 1-5; the
+// docs/report/kernscope-technical-report.pdf (pitfalls 1-5; the
 // PyTorch/TensorFlow precedent). These are exactly why todo 44's CUPTI
 // callback/injection path is the NVIDIA-PRIMARY mechanism and this shim is
 // NOT:

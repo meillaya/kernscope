@@ -1,6 +1,6 @@
 //===- bench.cpp - nvbench/Triton-style benchmarking harness ------*- C++ -*-===//
 //
-// Implementation of kernscope::bench (docs/research/autotuner-research-brief.md
+// Implementation of kernscope::bench (docs/report/kernscope-technical-report.pdf
 // §6 methodology, cited in bench.h). The L2-attribute query reaches the live
 // HIP device directly (hipDeviceGetAttribute / hipDeviceAttributeL2CacheSize),
 // guarded by the same portable #ifdef convention libs/gpuruntime uses; on

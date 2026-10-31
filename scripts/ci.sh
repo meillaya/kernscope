@@ -151,14 +151,13 @@ else
 fi
 
 # Content guard: no tracked file carries a vendor NVIDIA copyright marker
-# outside the documented exceptions (docs/research/, THIRD-PARTY.md,
-# docs/capture-mapping.md). ':!.omo' excludes the plan/tracking machinery
-# (its todo-4 definition quotes this guard's regex) and ':!scripts/ci.sh'
-# excludes this guard script itself, whose source necessarily contains the
-# pattern literal (this command). Both are self-reference false positives,
-# NOT vendored header content; keep both exclusions while the pattern is
-# quoted in this file.
-hits=$(git grep -I -l "Copyright.*NVIDIA" -- ':!docs/research' ':!THIRD-PARTY.md' ':!docs/capture-mapping.md' ':!.omo' ':!scripts/ci.sh' || true)
+# outside the documented exceptions (docs/report/, THIRD-PARTY.md).
+# ':!.omo' excludes the plan/tracking machinery (its todo-4 definition quotes
+# this guard's regex) and ':!scripts/ci.sh' excludes this guard script itself,
+# whose source necessarily contains the pattern literal (this command). Both
+# are self-reference false positives, NOT vendored header content; keep both
+# exclusions while the pattern is quoted in this file.
+hits=$(git grep -I -l "Copyright.*NVIDIA" -- ':!docs/report' ':!THIRD-PARTY.md' ':!.omo' ':!scripts/ci.sh' || true)
 if [ -z "$hits" ]; then
     pass "NVIDIA-content guard (no vendor NVIDIA copyright markers outside documented exceptions)"
 else

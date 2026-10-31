@@ -41,8 +41,7 @@
 //              FPM.addPass(MyPass());
 //            });
 //
-//      (Full EP list + ABI-stability caveats: docs/research/
-//      gpu-memory-pass-research.md §1.3 — plugins must be rebuilt per LLVM
+//      (Full EP list + ABI-stability caveats: docs/report/kernscope-technical-report.pdf — plugins must be rebuilt per LLVM
 //      release, same compiler + RTTI/exception settings as the LLVM they
 //      load into.)
 //   3. That's it. The plugin entry (src/plugin.cpp, llvmGetPassPluginInfo)

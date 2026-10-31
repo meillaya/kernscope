@@ -6,7 +6,7 @@
 // (src/plugin.cpp) finds the module purely through the global registry.
 //
 // The registration lambda wires the pass THREE ways, demonstrating the
-// full contract (docs/research/gpu-memory-pass-research.md §1.3):
+// full contract (docs/report/kernscope-technical-report.pdf):
 //
 //   1. registerPipelineParsingCallback  — textual name "kernscope-hello"
 //      for `opt -passes=kernscope-hello` (the Bye example pattern).

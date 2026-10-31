@@ -11,7 +11,7 @@
 //     are reported PTR_OOB (may-analysis: no in-bounds claim).
 //   * Class 8 (INVALID_ADDRSPACE_CAST): the addrspacecast legality table is
 //     the VERIFIED NVPTX/AMDGPU address-space table of
-//     docs/research/gpu-memory-pass-research.md §2 — NVPTX: only
+//     docs/report/kernscope-technical-report.pdf — NVPTX: only
 //     generic(0) <-> {global(1), shared(3), const(4), local(5)} are legal
 //     CUDA-level casts (all non-generic <-> non-generic pairs are invalid
 //     at the hardware level); AMDGPU: only generic(0) <-> {global(1),
@@ -57,14 +57,14 @@ inline constexpr const char* kVerdictInvalidAddrspaceCast =
 inline constexpr const char* kVerdictMayUninitRead = "MAY_UNINIT_READ";
 
 /// The verified address-space tables the class-8 diagnostic cites
-/// (docs/research/gpu-memory-pass-research.md §2.1/§2.2; NVPTXUsage.rst +
+/// (docs/report/kernscope-technical-report.pdf/§2.2; NVPTXUsage.rst +
 /// AMDGPUUsage.rst canonical tables).
 inline constexpr const char* kTableNvptx =
-    "NVPTX address-space table (docs/research/gpu-memory-pass-research.md "
+    "NVPTX address-space table (docs/report/kernscope-technical-report.pdf "
     "§2.1; NVPTXUsage.rst): 0=generic 1=global 2=internal 3=shared "
     "4=constant 5=local 6=tensor 7=shared-cluster 101=entry-param";
 inline constexpr const char* kTableAmdgpu =
-    "AMDGPU address-space table (docs/research/gpu-memory-pass-research.md "
+    "AMDGPU address-space table (docs/report/kernscope-technical-report.pdf "
     "§2.2; AMDGPUUsage.rst): 0=generic(flat) 1=global 2=region 3=local(LDS) "
     "4=constant 5=private 6=const32 7=buffer-fat 8=buffer-resource";
 

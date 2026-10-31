@@ -13,9 +13,9 @@
 //      remap table maps every ORIGINAL buffer VA -> NEW VA; v1 embedded-
 //      pointer patch tables are applied through libs/capture-core's
 //      apply_remap BEFORE the upload; pointer ARG slots are rewritten
-//      through the same table (docs/capture-mapping.md §4.4). Original-VA
+//      through the same table (docs/report/kernscope-technical-report.pdf). Original-VA
 //      restore is not available on HIP (HSA assigns VAs) and is documented
-//      as the CUDA-VMM extension point in docs/capture.md.
+//      as the CUDA-VMM extension point in docs/report/kernscope-technical-report.pdf.
 //   4. LAUNCH + synchronize; every launch emits a timestamped
 //      LaunchTimingRecord (the todo-49 profiling hook contract).
 //   5. VALIDATE every output buffer: bitwise (sha256 + byte compare) by

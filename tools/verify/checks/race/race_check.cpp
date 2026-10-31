@@ -61,7 +61,7 @@
 //                  unknowable, not merely overlapping).
 //
 // SOUNDNESS SCOPE (may-analysis — this check does NOT claim DRF freedom):
-// documented in docs/verify-soundness.md.  Known false-positive classes:
+// documented in docs/report/kernscope-technical-report.pdf.  Known false-positive classes:
 // identical thread-indexed expressions (s[t] = a; s[t] = b — per-thread
 // sequential stores reported MAY_RACE), same-expression write-read
 // (s[t] = v; v2 = s[t]), loop-carried phases (a barrier inside a loop does

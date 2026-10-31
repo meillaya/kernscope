@@ -7,7 +7,7 @@
 # from any mechanism parses identically. The dual-mechanism equivalence test
 # (ctest -R capture_equiv -L gpu-amd) consumes BOTH this library and
 # libkernscope_capture_hip.so against the todo-24 portable kernel; the field
-# correspondence is docs/capture-mapping.md.
+# correspondence is docs/report/kernscope-technical-report.pdf.
 #
 # Build contract: compiled against the cuda_cupti 12.6 headers ($CUPTI_HOME,
 # resolved by the dev shell) - compile+unit ONLY locally (no NVIDIA runtime
@@ -94,7 +94,7 @@ set_tests_properties(capture_cupti_negative PROPERTIES LABELS "no-gpu"
 # mechanism (CUPTI callback/injection driven by the synthetic harness -
 # "shim-on-mock") must equal FIELD-FOR-FIELD the bundle produced by the
 # todo-45 HIP mechanism (LIVE on gfx1101 under libkernscope_capture_hip.so)
-# per docs/capture-mapping.md. Both bundles are produced in ONE test process
+# per docs/report/kernscope-technical-report.pdf. Both bundles are produced in ONE test process
 # (CUDA side in-process via equiv_cuda_side, HIP side as a subprocess).
 find_program(KERNSCOPE_CUPTI_NVCC nvcc)
 if(KERNSCOPE_CUPTI_NVCC AND TARGET kernscope_capture_hip)

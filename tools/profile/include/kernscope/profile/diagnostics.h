@@ -6,12 +6,12 @@
 // RANKING — total/median time per kernel across the trace, top-N hot list
 // with % of wall time; (2) a DIAGNOSTICS RULES ENGINE emitting libs/report
 // Findings ("why is this slow?", Nsight Compute SOL/rules style per
-// docs/research/profiler-research-brief.md §6):
+// docs/report/kernscope-technical-report.pdf):
 //
 //   * occupancy-limited -> limiter "occupancy" + a hint naming the binding
 //     resource (register bloat from unrolled accumulators -> "consider split
 //     reduction or lower unroll factor" per the owner's layernorm_fused
-//     example, docs/research/owner-examples.md Section B); low occupancy +
+//     example, docs/report/kernscope-technical-report.pdf Section B); low occupancy +
 //     high regs -> maxrregcount/launch_bounds suggestion;
 //   * memory-traffic estimate via libs/roofline (todo 12) arithmetic
 //     intensity for KNOWN families -> memory-bound hint (the bytes-moved

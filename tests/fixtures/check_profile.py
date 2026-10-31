@@ -27,7 +27,7 @@ file, like validate_manifest.py) and asserts:
     NEVER fires without evidence — todo-51 contract);
   * the owner-style showcase (owner_example): kernel contains "layernorm",
     time_us > 0, registers/shared present — Section B shape
-    (docs/research/owner-examples.md) with locally-measured values.
+    (docs/report/kernscope-technical-report.pdf) with locally-measured values.
 
 Exit codes: 0 = all numeric/range assertions passed, 1 = a check failed,
 2 = IO/parse failure.

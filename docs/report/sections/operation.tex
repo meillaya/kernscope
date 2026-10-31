@@ -1,0 +1,416 @@
+% ===========================================================================
+\clearpage
+\floraon
+\florathispage{layout=surround, seed=41, density=0.32, visitors=0.08}
+\part{Evidence and operation}
+\thispagestyle{empty}
+\clearpage
+\floraoff
+% ===========================================================================
+
+\section{Testing, CI, and reproducibility}
+\label{sec:repro}
+
+\subsection{The four test layers}
+\label{sec:test-layers}
+
+The gate is layered so a regression stops at the cheapest test that can see
+it:
+\begin{enumerate}
+  \item \textbf{gtest / ctest.} C++ unit and integration tests carry one
+        hardware label: \kst{no-gpu}, \kst{gpu-amd}, or
+        \kst{gpu-nvidia-rental}. The first two are the local gate; the third is
+        owner-executed on a rental.
+  \item \textbf{lit / FileCheck.} The \kst{check-kernscope} target runs the
+        parser, pass, verifier-manifest, and CLI tests against committed IR and
+        ISA corpora.
+  \item \textbf{NumPy bf16 golden harness.} \kst{pytest tests/golden} compares
+        generated kernels against reference outputs under the bf16 tolerance
+        contract. It is the independent implementation of the C++ golden gate.
+  \item \textbf{Generated-code compile checks.} \kst{scripts/compile_checks.sh}
+        compiles the template variants with \kst{nvcc} for sm\_80/sm\_90
+        (compile-only) and \kst{hipcc} for gfx1101, then runs the live HIP
+        variant through the golden gate.
+\end{enumerate}
+
+\subsection{The CI gate}
+\label{sec:ci}
+
+\kst{scripts/ci.sh} runs the stages in order and exits non-zero on the first
+failure. A stage whose artifact is absent prints \kst{[SKIP]} and stays green,
+which is a bootstrap convenience, not a claim that the stage ran.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Stage & Check \\
+\midrule
+a & \kst{scripts/configure.sh} and \kst{cmake --build build}. \\
+b & \kst{ctest -L "no-gpu|gpu-amd"} with hardware labels. \\
+b2 & Non-decreasing count guard against \kst{scripts/ci-baseline.txt} (550). \\
+c & \kst{cmake --build build --target check-kernscope} (lit/FileCheck). \\
+d & \kst{pytest tests/golden -q} (NumPy bf16 goldens). \\
+e & \kst{scripts/compile_checks.sh} (nvcc sm\_80/90, hipcc gfx1101, live HIP golden). \\
+f & Committed fixtures total at most 64\,MB (\kst{du -sm tests/fixtures}). \\
+g & NVIDIA-header guards: no vendored CUDA/CUPTI/NVTX header filenames or vendor copyright markers outside the documented exceptions. \\
+\bottomrule
+\end{tabularx}
+\caption{The CI stages. The count guard is non-decreasing, not exact: adding
+tests is always green, and removing a registration below the floor fails.}
+\label{tab:ci}
+\end{table}
+
+The \kst{CI_SKIP_CONFIGURE=1} escape hatch skips configure and build. It exists
+for a bootstrap situation where the nix-store LLVM resolution is being
+repaired; it is owner-set and it makes the skip visible. The gate does not run
+the dashboard validator, and it does not run a secret scanner. Those are
+operational gaps, not hidden passes.
+
+\subsection{The master reproducibility script}
+\label{sec:reproduce-all}
+
+\kst{scripts/reproduce-all.sh} chains four stages: the lock check,
+\kst{ci.sh}, \kst{demo.sh}, and the dashboard. The lock check requires
+\kst{devenv.lock} to exist and be tracked; it never regenerates the lock
+silently. The dashboard writes \fpath{reports/dashboard.html} and
+\fpath{reports/dashboard.json} with \kst{SOURCE_DATE_EPOCH} defaulted to the
+HEAD commit time, so two runs on the same commit can be byte-identical.
+
+A clean checkout is:
+\begin{lstlisting}
+devenv shell
+git clone https://github.com/meillaya/kernscope.git
+cd kernscope
+bash scripts/ci.sh
+bash scripts/reproduce-all.sh
+\end{lstlisting}
+The first configure and build are the slowest (roughly ten minutes on the
+reference machine); later runs reuse \fpath{build/}. The committed fixtures,
+golden inputs, lit corpora, and schema files are the complete gate input. The
+earlier documentation used a local absolute clone path; this report states the
+public URL instead.
+
+\subsection{Owner-gated NVIDIA runs}
+\label{sec:rental-runbook}
+
+Only \kst{scripts/rental-validate.sh} runs NVIDIA code. It is never called by
+\kst{ci.sh}. In \kst{--dry-run} it prints the sequence: SSH to the rental host,
+check \kst{nvcc}, detect the CUPTI version from \kst{cupti_version.h}, run
+\kst{ctest -L gpu-nvidia-rental}, and place evidence under
+\fpath{reports/rentals/}. In exec mode it refuses when \kst{CI=true}, requires
+a configured build tree, probes \kst{$CUDA_HOME}, \fpath{/usr/local/cuda}, and
+\fpath{/opt/cuda} for CUPTI, and writes a timestamped summary with the verdict,
+exit code, CUDA major, and CUPTI version.
+
+The gate is procedural. The script checks the environment, not the operator's
+identity, and it assumes SSH keys are already configured. The repository
+ignores \fpath{reports/rentals/*} except the placeholder, so an owner who wants
+to commit a rental summary must force-add it. No rental numbers are claimed in
+this report.
+
+\subsection{Secrets and sensitive data}
+\label{sec:secrets}
+
+The repository ignores \fpath{private_key.pem}, \fpath{public_key.pem},
+\fpath{.env}, and \fpath{.env.*} (with an exception for \fpath{.env.example}).
+The rental script does not manage keys. There is no secret scan in \kst{ci.sh};
+the rule is enforced by the ignore list and by review, not by an automated
+gate. Capture bundles are local-only and gitignored; snapshot sizes are capped
+at 1\,GiB by default, and the fixture budget is 64\,MB.
+
+% ===========================================================================
+\section{Evaluation}
+\label{sec:eval}
+
+\subsection{The demo run}
+\label{sec:eval-demo}
+
+\kst{scripts/demo.sh} ran the loop on the local gfx1101 in 153\,s against a
+900\,s budget. The aggregated report is the primary cross-tool evidence.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Stage & Status & Evidence \\
+\midrule
+1 profile & ok & 3 kernels, 19.6\,$\mu$s wall, hot layernorm 9.2\,$\mu$s, 24 registers, occupancy 1, \kst{memory_bound} hint (AI 1.375, ridge 27.614). \\
+2 capture & ok & Bundle \fpath{bundle.v0}, 3 blobs, grid $1024\times1\times1$, block $128\times1\times1$, bitwise replay PASS, reference SHA-256 \kst{a0027e...49eec}. \\
+3 analyze & ok & Captured AMDGPU ISA, 216 ALU ops, \kst{possibly_divergent_branch} warning, three informational findings. \\
+4 capture-tune & ok & 4 candidates validated, baseline block 128 at 0.01208\,ms, best block 256 at 0.01206\,ms, speedup $1.0017\times$. \\
+5 verify + pass & ok & 13 bias\_gelu variants, 12 compiled, 1 gated; best 0.17184\,ms vs 0.20332\,ms, $1.1832\times$; pass vector width 1$\rightarrow$4, loads 0$\rightarrow$12, uncoalesced 64$\rightarrow$16. \\
+\bottomrule
+\end{tabularx}
+\caption{The five demo stages. The report's cross-tool block links the stage-3
+analyzer finding ids to the stage-1 profiler hint.}
+\label{tab:demo}
+\end{table}
+
+The cross-tool link is the part that matters. The profiler's
+\kst{memory_bound} hint carries \kst{analyzer_cross_refs} with the finding ids
+\kst{possibly_divergent_branch}, \kst{no_tensor_core_usage},
+\kst{occupancy_not_applicable}, and \kst{suggestions_not_applicable}, and the
+stage-3 evidence path. The analyzer ran on the captured kernel's
+disassembled ISA, not on a hand-picked example. The verifier removed one
+variant before compilation. The pass delta used the analyzer's own metrics.
+This is the concrete meaning of ``the loop closes'' in this report.
+
+\subsection{Analyzer and verifier evidence}
+\label{sec:eval-static}
+
+The analyzer golden fixture is described in \Cref{sec:c1-evidence}. The
+verifier corpus has 34 entries across 19 source files, with 18 \kst{SAFE}
+verdicts and 16 non-\kst{SAFE} verdicts spread across the bounds, race,
+barrier, pointer, uninitialized-read, and address-space classes. Both results
+are \kst{projected}: they come from static analysis, not from a GPU run. The
+verifier's anti-self-report gate diffs the CLI's JSON against the manifest read
+from disk, so a corrupted expectation fails the lit suite.
+
+\subsection{Tuner and capture evidence}
+\label{sec:eval-live}
+
+The capture-tune and verify-tune results in \Cref{tab:demo} are measured on
+gfx1101. The capture path is bitwise: every explored config must reproduce the
+captured output hash before it is timed. The template path is
+correctness-gated: a variant that fails cosine, relative error, or PCC is
+discarded, not timed. The measured speedups are small for capture-tune
+(1.0017$\times$) and modest for the bias\_gelu template search
+(1.1832$\times$); the report quotes them as measured, not as a general
+speedup claim.
+
+The dashboard records a separate matmul search with 15 measured variants and a
+best median of 415.324\,$\mu$s. The raw JSONL for that run is not committed,
+so this is a dashboard-sourced value, not a value reconstructed from a raw
+record. The distinction matters because the dashboard's tune section lists
+source paths that are absent from the tree.
+
+\subsection{Pass and profile evidence}
+\label{sec:eval-projected}
+
+The layernorm pass delta is projected: vector width 1$\rightarrow$4,
+vectorized global loads 0$\rightarrow$12, uncoalesced accesses
+64$\rightarrow$16, registers unchanged at 175. The before/after PTX compiles
+cleanly, and gemm and softmax are correctly no-transform. The report does not
+claim a wall-clock pass speedup; it claims the static delta that the pipeline
+measures.
+
+The profiler evidence is measured: 3 kernels, 19.6\,$\mu$s wall, a
+9.2\,$\mu$s hot kernel, 24 registers, occupancy 1, and a memory-bound hint
+with arithmetic intensity 1.375 and ridge point 27.614. The hint is a
+compiler-aware diagnosis from activity records and the roofline, not from
+hardware counters.
+
+\subsection{Threats to validity}
+\label{sec:threats}
+
+\begin{itemize}
+  \item \textbf{One measured platform.} Every live number is gfx1101 on one
+        RX 7800 XT. The same kernel on CDNA or NVIDIA may behave differently.
+  \item \textbf{Unlocked clocks.} The peak run recorded clocks with
+        \kst{rocm-smi} but did not lock them, and the machine was shared with
+        development activity. The peaks are a description of this machine at
+        that time.
+  \item \textbf{Projected deltas.} The pass numbers are static IR/PTX
+        artifacts. They are not wall-clock speedups.
+  \item \textbf{Verifier scope.} The verifier is a may-analysis, not a formal
+        prover. Its false-positive and false-negative classes are stated in
+        \Cref{sec:c3-soundness}.
+  \item \textbf{Dashboard gaps.} The tune section's source files are absent;
+        the matmul number is quoted from the dashboard, and the validator is
+        not part of \kst{ci.sh}. The report says so rather than presenting the
+        dashboard as a complete raw archive.
+  \item \textbf{Documentation consolidation.} The raw Markdown notes and the
+        committed JSON/HTML evidence were folded into this report and removed
+        from the tree. The values remain; the raw files do not. Regeneration is
+        possible with the committed scripts on a gfx1101 machine.
+\end{itemize}
+
+% ===========================================================================
+\section{Context and prior art}
+\label{sec:prior}
+
+kernscope is an engineering synthesis, not a new verification calculus. Its
+design choices follow a body of work that the project's research briefs
+survey; this section states the main lineages and what kernscope borrows or
+declines.
+
+\subsection{Performance models and static analysis}
+\label{sec:prior-analysis}
+
+The roofline model \citep{roofline2009} supplies the compute and memory
+ceilings and the ridge point used by the tuner and profiler. Occupancy follows
+the CUDA programming guide's resource model \citep{cudaProgrammingGuide}, with
+the low-occupancy/high-ILP trade-off documented by Volkov
+\citep{volkov2010}. Nsight Compute's Speed of Light vocabulary
+\citep{nsightComputeSOL} is the diagnostic register the profiler adopts.
+
+The analyzer's static estimates sit against a line of microbenchmark-driven
+architecture studies (Volta, Turing, Hopper, and CDNA3) and against simulators
+such as GPGPU-Sim and Accel-Sim \citep{gpgpusim2009,accelsim2020} and binary
+instrumentation such as NVBit \citep{nvbit2019}. Those tools measure or
+simulate; kernscope reads the ISA text and the architecture database, which is
+cheaper and less precise. The analyzer's contribution is the reuse of the same
+architecture constants and metrics by the tuner, pass report, and profiler.
+
+\subsection{Autotuning and tensor compilation}
+\label{sec:prior-tune}
+
+The autotuner follows the algorithm/schedule separation of Halide
+\citep{halide2013}, the search-based scheduling of TVM and Ansor
+\citep{tvm2018,ansor2020}, and the tile-level autotuning model of Triton
+\citep{triton2019}. CUTLASS \citep{cutlass} and the vendor libraries set the
+performance bar; Kernel Tuner \citep{kerneltuner2024} is the closest standalone
+autotuner prior art. FlashAttention \citep{flashattention2022} motivates the
+memory-bound attention family and the IO-aware tiling direction. kernscope
+does not generate a general tensor program; it generates family-specific
+templates, gates them on correctness, and records the search in a cache that
+can be replayed.
+
+\subsection{GPU verification}
+\label{sec:prior-verify}
+
+GPUVerify \citep{gpuverify2012,gpuverify2015} is the methodological anchor:
+the two-thread reduction turns race and divergence checks into sequential
+program verification. PUG, SESA, GKLEE, and ESBMC-GPU
+\citep{pug2010,sesa2014,gklee2012,esbmcgpu2017} explore symbolic execution and
+bounded model checking. Faial \citep{faial2024} contributes behavioral types
+over index expressions and the finding that most data-race-free kernels need a
+thread-configuration assumption. HiRace and HGRD
+\citep{hirace2024,hgrd2026} bring dynamic and MLIR-level analyses. LLOV
+\citep{llov2020} demonstrates static race freedom on LLVM IR. The Linux eBPF
+verifier \citep{ebpfVerifier} supplies the interaction model: typed ranges,
+bounded state exploration, and a concrete rejection reason. MemorySanitizer
+\citep{msan2015} and the SPIR-V validator \citep{spirvSpec} inform the
+uninitialized-read and well-formedness checks.
+
+kernscope-verify is deliberately smaller: eight may-analyses over LLVM IR at
+\kst{-O1}, with the launch configuration ingested from the host half and a
+three-tier exact/upper-bound/symbolic contract. It does not claim the
+soundness of GPUVerify or Faial, and its false-positive and false-negative
+classes are published rather than hidden.
+
+\subsection{Capture and replay}
+\label{sec:prior-capture}
+
+Kerncap \citep{kerncap2026} is the closest complete system: HSA-level
+extraction and VA-faithful replay for HIP and Triton. Mneme \citep{mneme2023}
+records and replays kernels for tuning; the LLNL Record-Remix-Replay line
+\citep{r3-2026} and Tally \citep{tally2024} explore the same design space.
+CUPTI \citep{cupti} and rocprofiler-sdk \citep{rocprofilerSDK} provide the
+vendor tracing surfaces. kernscope's contribution is the shared bundle model
+across CUPTI, LD\_PRELOAD, and rocprofiler-sdk, the explicit patch table for
+embedded pointers, and the use of the same bundle by the analyzer,
+capture-tune, and the standalone reproducer.
+
+\subsection{LLVM passes and profiling}
+\label{sec:prior-pass}
+
+The pass plugin uses LLVM's New Pass Manager and the out-of-tree
+\kst{PassPluginLibraryInfo} ABI \citep{llvm2004,mlirCGO2021}. The
+transformations are deliberately narrow: promotion, tiling, vectorization,
+padding, redundant-load elimination, and a coalescing analysis. The GPU
+backends already run address-space inference, load/store vectorization, and
+redundant-load elimination; the project's value is the analyzer-measured
+before/after delta, not a claim that these transformations are new. IREE
+\citep{iree} is the closest production analog for a compiler-integrated
+memory-optimization pipeline.
+
+The profiler follows the activity-only tier of CUPTI and rocprofiler-sdk plus
+the roofline and occupancy vocabulary of Nsight Compute
+\citep{nsightComputeSOL}. It reports what it can evidence and degrades to
+\kst{insufficient_evidence} when the family, PTX, or occupancy is unknown.
+
+% ===========================================================================
+\section{Limitations and future work}
+\label{sec:limits}
+
+\subsection{Limitations}
+\label{sec:limitations-list}
+
+\begin{itemize}
+  \item \textbf{No NVIDIA runtime evidence.} CUPTI capture, CUPTI profiling,
+        and NVIDIA runtime benchmarks are compile- and unit-tested only. The
+        rental path exists but produced no committed numbers.
+  \item \textbf{One measured GPU.} The measured results are gfx1101 only. The
+        analyzer supports other architectures, but their occupancy and
+        roofline numbers are not validated here.
+  \item \textbf{Pass deltas are projected.} The vector-width and coalescing
+        improvements are static IR/PTX measurements. A wall-clock speedup for
+        the transformed layernorm is not claimed.
+  \item \textbf{The verifier is a may-analysis.} Data-dependent indices and
+        runtime allocations degrade to non-\kst{SAFE} verdicts; atomics,
+        warp-synchronous code, and inter-block races are out of scope.
+  \item \textbf{Capture format drift.} The v1 schema is the reading contract,
+        but the demo bundle is v0 and the current record path still uses the
+        v0 environment-variable flow. The v1 writer path is not exercised by
+        the demo.
+  \item \textbf{Dashboard incompleteness.} The committed dashboard's tune
+        section cites per-run JSONL files that are absent, and the dashboard
+        validator is not invoked by \kst{ci.sh}. The matmul number is quoted
+        from the dashboard only.
+  \item \textbf{Report schema does not enforce provenance.} The schema
+        requires the kernel, metrics, limiter, warnings, and suggestions; the
+        provenance object is a report-engine and dashboard convention.
+  \item \textbf{Tooling gaps.} The auxiliary PTX dump source has no CMake
+        target and is not built. The capture CLI's usage exit codes do not
+        consistently match the documentation. The report names these rather
+        than presenting a uniform interface that does not exist.
+  \item \textbf{The archive is textual.} The consolidation removed the raw
+        JSON/HTML evidence. The numbers in this report are preserved, but a
+        reader who needs the raw records must regenerate them on a gfx1101
+        machine with the committed scripts.
+\end{itemize}
+
+\subsection{Future work}
+\label{sec:future}
+
+\begin{enumerate}
+  \item \textbf{Run the NVIDIA rental.} Execute \kst{rental-validate.sh} on an
+        A100/H100 host, commit the summary with the same provenance schema, and
+        add an NVIDIA column to the dashboard.
+  \item \textbf{Exercise CUDA 13.} Build the record adapter against
+        \kst{CUPTI_API_VERSION} 130001 and turn the Kernel9/Kernel10
+        \kst{static_assert}s into a tested migration.
+  \item \textbf{Close the v0/v1 capture gap.} Make \kst{record} write the v1
+        bundle by default, exercise the schema in the demo, and remove the
+        environment-variable path.
+  \item \textbf{Strengthen the verifier.} Add HGRD-style barrier intervals,
+        Faial-style index types, and a PTX well-formedness layer; keep the
+        false-positive and false-negative tables current.
+  \item \textbf{Wire evidence into CI.} Run the dashboard validator in
+        \kst{ci.sh}, fix its failure path, and add a secret scan.
+  \item \textbf{Roofline-driven pass selection.} Choose vectorization or tiling
+        from the profiler's bound class and the pass report's predicted delta,
+        then validate the choice with a measured benchmark.
+  \item \textbf{Validate generated kernels.} Use the verifier and golden gate
+        as a correctness harness for LLM-generated CUDA, with a kernel-benchmark
+        sweep rather than a single family.
+\end{enumerate}
+
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+kernscope's claim is modest and testable: a GPU-kernel toolchain can share one
+library stack, one report schema, and one provenance discipline, and its tools
+can validate each other instead of self-reporting. The loop runs on one local
+GPU in 153\,s. The analyzer reads the captured ISA, the verifier removes a
+risky variant before compilation, the capture replay is bitwise, and the pass
+delta is measured with the same metrics the analyzer uses. The numbers are
+small where the work is small (a 1.0017$\times$ capture-tune speedup) and
+larger where the search has room (a 1.1832$\times$ bias\_gelu speedup); the
+report keeps them in their provenance categories.
+
+The same discipline that makes the evidence useful makes the limits visible.
+There are no NVIDIA runtime numbers, the pass deltas are projected, the
+verifier is not a prover, one GPU supplied every live measurement, and the
+dashboard is not a complete raw archive. Those are not caveats appended to the
+claim; they are the conditions under which the claim is true. The repository's
+scripts can regenerate the evidence on a gfx1101 machine, and this report is
+the archival account of what was present when the documentation was
+consolidated.
+
+% ===========================================================================

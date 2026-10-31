@@ -16,7 +16,7 @@
 //   4. DIAGNOSE— todo-51 rules engine -> libs/report Findings with evidence;
 //   5. REPORT  — libs/report reuse: --json = the profile report model,
 //                --text = the owner's Section B shape
-//                (docs/research/owner-examples.md: Kernel/Time/Registers/
+//                (docs/report/kernscope-technical-report.pdf: Kernel/Time/Registers/
 //                Shared/Limiter/Hint) with LOCALLY-MEASURED values, --html =
 //                kernscope::to_html() of the hottest kernel (embedded JSON
 //                payload, self-contained).
@@ -25,7 +25,7 @@
 // fixture build dir — the CLI finds layernorm_app inside — or a capture
 // repro-dir). `--` separates app arguments from CLI arguments.
 //
-// Exit codes (documented in docs/profile.md):
+// Exit codes (documented in docs/report/kernscope-technical-report.pdf):
 //   0  report produced (INCLUDING the "no kernels traced" negative: a target
 //      that runs fine but traces zero kernels is a valid report, not an
 //      error)
@@ -117,7 +117,7 @@ void print_usage(std::FILE *out) {
       "environment:\n"
       "  KERNSCOPE_PROFILE_HIP_TOOL  override the HIP tracer tool path\n"
       "\n"
-      "See docs/profile.md for the full reference.\n");
+      "See docs/report/kernscope-technical-report.pdf for the full reference.\n");
 }
 
 std::optional<ExitCode> parse_args(Options &opt, int argc, char **argv) {

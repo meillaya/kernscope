@@ -6,7 +6,7 @@ The Metis circularity breaker: for the todo-24 portable kernel
 callback/injection driven by the synthetic harness - "CUDA-shim-on-mock") must
 equal FIELD-FOR-FIELD the bundle produced by the todo-45 HIP mechanism
 (rocprofiler-sdk intercept table, LIVE on gfx1101) under
-docs/capture-mapping.md (this todo's deliverable):
+docs/report/kernscope-technical-report.pdf (this todo's deliverable):
 
   M1-M8  launch record: kernel name, grid/block/shared/stream, arg count,
          arg sizes, scalar arg bytes BYTE-IDENTICAL, pointer args equal after
@@ -60,7 +60,7 @@ def check(cond: bool, what: str):
         failures.append(what)
 
 
-#===--- bundle parsing + normalization (docs/capture-mapping.md §4) -----------===#
+#===--- bundle parsing + normalization (docs/report/kernscope-technical-report.pdf) -----------===#
 
 
 def parse_bundle(path: Path) -> list[str]:
@@ -203,7 +203,7 @@ def main() -> int:
             print(hip_run.stderr)
             return 1
 
-        #--- field-for-field comparison per docs/capture-mapping.md ----------
+        #--- field-for-field comparison per docs/report/kernscope-technical-report.pdf ----------
         cuda = parse_bundle(cuda_bundle)
         hip = parse_bundle(hip_bundle)
         cuda_ord = alloc_ordinals(cuda)
@@ -336,7 +336,7 @@ def main() -> int:
         print(f"\n=== {len(failures)} FAILURE(S) ===")
         return 1
     print("\n[PASS] capture_equiv: CUDA(CUPTI-synthetic) == HIP(live) "
-          "field-for-field per docs/capture-mapping.md")
+          "field-for-field per docs/report/kernscope-technical-report.pdf")
     return 0
 
 

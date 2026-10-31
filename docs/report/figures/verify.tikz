@@ -1,0 +1,57 @@
+% Verifier pipeline: source to verdicts to approved IR.
+\begin{tikzpicture}[
+    font=\small,
+    box/.style={draw=ink!35, rounded corners=3pt, align=center, text width=2.45cm,
+                minimum height=1.35cm, inner sep=3pt, font=\scriptsize, fill=paper},
+    checks/.style={draw=kblue, rounded corners=3pt, align=center, inner sep=4pt,
+                   font=\scriptsize, fill=kbluefill},
+    flow/.style={-{Stealth[length=2mm]}, line width=0.8pt, draw=ink!60},
+    dflow/.style={-{Stealth[length=2mm]}, line width=0.7pt, dashed, draw=ink!55},
+    lbl/.style={font=\scriptsize\itshape, text=ink!60},
+  ]
+
+  % Ingestion and launch-config tiers.
+  \node[box, fill=kgreenfill, draw=kgreen] (src) at (0,1.8)
+    {\textbf{CUDA / HIP}\\source};
+  \node[box, fill=paper] (clang) at (3.25,1.8)
+    {\textbf{clang}\\host + device\\into one module};
+  \node[box, fill=paper] (ir) at (6.5,1.8)
+    {\textbf{LLVM IR}\\at \texttt{-O1}\\SCEV + LVI ranges};
+  \node[box, fill=kgoldfill, draw=kgold] (tiers) at (9.75,1.8)
+    {\textbf{launch tiers}\\Exact / UpperBound\\/ Symbolic};
+
+  \draw[flow] (src) -- (clang);
+  \draw[flow] (clang) -- (ir);
+  \draw[flow] (ir) -- (tiers);
+
+  % Check registry and verdicts.
+  \node[checks] (checks) at (4.5,-1.9)
+    {\textbf{check registry (8 classes)}\\[3pt]
+     \begin{tabular}{@{}ll@{}}
+       1 global OOB & 2 shared bounds\\
+       3 barrier & 4 race\\
+       5 pointer & 6 divergent barrier\\
+       7 uninitialised & 8 address space
+     \end{tabular}\\[3pt]
+     {\scriptsize per-function budget 65536}};
+  \node[box, fill=kvioletfill, draw=kviolet] (verdicts) at (8.4,-1.9)
+    {\textbf{verdict document}\\per class: \texttt{SAFE}\\
+     or \texttt{MAY\_*,\,UNKNOWN\_*}\\
+     + source locations};
+  \node[box, fill=kgreenfill, draw=kgreen] (approved) at (11.6,-1.9)
+    {\textbf{approved IR}\\only if every\\verdict is \texttt{SAFE}};
+  \node[box, fill=kredfill, draw=kred] (reject) at (8.4,-4.1)
+    {\textbf{reject}\\exit 1; no\\\texttt{.verified.ll}};
+
+  \draw[flow] (ir.south) -- (checks.north);
+  \draw[flow] (tiers.south) -- (checks.north east);
+  \draw[flow] (checks.east) -- (verdicts.west);
+  \draw[flow] (verdicts.east) -- (approved.west);
+  \draw[flow, kred] (verdicts.south) -- (reject.north);
+
+  % The eBPF design analogy.
+  \node[font=\scriptsize\itshape, text=ink!55, anchor=west, text width=12.6cm] at (0,-5.25)
+    {The UX follows the Linux eBPF verifier: reject with a line-level reason,
+     track types and ranges, bound the explored states, and degrade to a
+     non-proof verdict instead of hanging or claiming safety.};
+\end{tikzpicture}

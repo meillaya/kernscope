@@ -14,7 +14,7 @@
 //      cbids. A bundle written from a session therefore always cites a table
 //      entry the reader can validate against.
 //   2. the ptr->size ALLOCATION MAP (GPGPU-Sim `g_mallocPtr_Size` pattern,
-//      docs/research/capture-replay-research-brief.md §5 heuristic 1): learned
+//      docs/report/kernscope-technical-report.pdf heuristic 1): learned
 //      from intercepted cudaMalloc/cudaFree (and cuMemAlloc-free equivalents
 //      later), queried by memcpy/memset/launch records to attribute sizes.
 //      THIS is how the bundle's buffer blobs get their byte counts without
@@ -26,11 +26,11 @@
 //      through (deterministic text). The FORMAL format (v1: JSON schema,
 //      VA-faithful snapshots, provenance hashes) is kernscope/bundle.h
 //      (todo 46) - v1 is an UPGRADE LAYER: this v0 writer keeps its exact
-//      output for the existing mechanisms (docs/capture-format.md §7) and
+//      output for the existing mechanisms (docs/report/kernscope-technical-report.pdf) and
 //      BundleReader loads both formats.
 //
 // KNOWN LIMITATIONS of the LD_PRELOAD mechanism (recorded here per
-// docs/research/capture-replay-research-brief.md §2 pitfalls 1-5; they are
+// docs/report/kernscope-technical-report.pdf pitfalls 1-5; they are
 // exactly why todo 44's CUPTI callback/injection path is the NVIDIA-PRIMARY
 // mechanism and this shim is NOT):
 //   * driver-vs-runtime split (pitfall 1): the shim intercepts BOTH libcudart
@@ -76,7 +76,7 @@ namespace kernscope {
 
 //===--- SHA-256 (FIPS 180-4) ------------------------------------------------===//
 // todo 46 requires a sha256 provenance hash per captured blob
-// (docs/capture-format.md plan: "MUST NOT store buffers without provenance
+// (docs/report/kernscope-technical-report.pdf plan: "MUST NOT store buffers without provenance
 // hashes (sha256 per blob)"); the todo-43 fatbin/cubin capture acceptance
 // already demands a "cubin bytes HASH", so the digest is part of the core.
 /// Hex-encoded lowercase SHA-256 of `data` (64 chars).

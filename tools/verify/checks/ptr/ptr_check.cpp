@@ -243,7 +243,7 @@ std::string finding_json(const PtrFinding& f) {
 // ---------------------------------------------------------------------------
 // Class 8: invalid address-space casts (INVALID_ADDRSPACE_CAST, Error).
 //
-// LEGALITY per the VERIFIED tables (docs/research/gpu-memory-pass-research.md
+// LEGALITY per the VERIFIED tables (docs/report/kernscope-technical-report.pdf
 // §2.1/§2.2, mirrored in ptr_common.h): CUDA-level pointer casts may only
 // move between generic(0) and one of the specific spaces — NVPTX
 // {1 global, 3 shared, 4 constant, 5 local} (plus 101 entry-param in

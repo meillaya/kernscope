@@ -17,7 +17,7 @@
 //    libraries at parse time.
 //  * Target classification (VALU/SALU/LDS/global/buffer/flat/scratch/
 //    branch/barrier/wait/MFMA/WMMA) is derived from the mnemonic prefix
-//    per docs/research/gpu-static-analyzer-research.md §5 (MFMA CDNA2/3,
+//    per docs/report/kernscope-technical-report.pdf (MFMA CDNA2/3,
 //    WMMA RDNA3) and §6 (scratch = spill class).
 //  * Labels -> CFG: basic blocks are delimited by labels and by
 //    terminators (s_branch / s_cbranch_* / s_endpgm); successors are
@@ -44,7 +44,7 @@
 namespace kernscope {
 
 //------------------------------------------------------------------------------
-// Instruction taxonomy (mirrors docs/research/gpu-static-analyzer-research.md
+// Instruction taxonomy (mirrors docs/report/kernscope-technical-report.pdf
 // §5 / §6 and the analyzer's ten analyses; see amd_parser.cpp classify()).
 //------------------------------------------------------------------------------
 enum class InstrClass : std::uint8_t {

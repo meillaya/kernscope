@@ -5,7 +5,7 @@
 // report.limiter, report.metrics) to ACTIONABLE optimization suggestions,
 // one suggestion per triggering finding — never generic advice.
 //
-// Rule table (documented in docs/analyzer-rules.md, one row per rule):
+// Rule table (documented in docs/report/kernscope-technical-report.pdf, one row per rule):
 //
 //   | trigger (finding + condition)                 | suggestion id       |
 //   |-----------------------------------------------|---------------------|
@@ -21,7 +21,7 @@
 //                                   without one — a suggestion with no trigger
 //                                   would be generic advice, which is banned)
 //   * machine-readable evidence fields per rule (see the header docs below
-//     and docs/analyzer-rules.md for the exact derivation formulas).
+//     and docs/report/kernscope-technical-report.pdf for the exact derivation formulas).
 //
 // Ownership contract: the suggestion engine is the SOLE owner of the
 // report.suggestions section. It runs LAST (after all six analysis modules)

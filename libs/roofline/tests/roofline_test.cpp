@@ -1,7 +1,7 @@
 //===- roofline_test.cpp - Roofline engine unit tests ----------------------===//
 //
 // Every expected value is hand-computed here and pinned against
-// docs/research/autotuner-research-brief.md §7 (the Williams/Waterman/
+// docs/report/kernscope-technical-report.pdf (the Williams/Waterman/
 // Patterson CACM 2009 roofline model, DOI 10.1145/1498765.1498785) and
 // cross-checked against the polykernel oracle
 // (/home/mei/projects/polykernel/lib/Analysis/tests/roofline_test.cpp —

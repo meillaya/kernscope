@@ -3,7 +3,7 @@
 // Wave-2 todo 11: the theoretical-occupancy engine shared by tools/analyze
 // (todo 14), tools/tune (todo 28) and tools/profile (todo 50). Consumes the
 // ISA-resolved architecture constants of libs/arch (todo 6) and implements
-// the min-wins rule of docs/research/gpu-static-analyzer-research.md §1.1
+// the min-wins rule of docs/report/kernscope-technical-report.pdf
 // (L31-45) with the per-vendor allocation granules:
 //
 //   NVIDIA  §1.2 L91-102: regs per warp = round-up(regs_per_thread x 32) to
@@ -12,7 +12,7 @@
 //           and blocks/SM limits as in §1.1; min wins.
 //   AMD     §1.3: VGPR waves/SIMD via libs/arch waves_per_simd_from_vgprs
 //           (CDNA granule 8, RDNA3 granule 24 wave32 / 12 wave64 per
-//           docs/research/rdna3-constants.md) clamped to max waves/SIMD;
+//           docs/report/kernscope-technical-report.pdf) clamped to max waves/SIMD;
 //           SGPR pool ~800/SIMD with granule 16 (brief §1.3 L117-121);
 //           LDS 64 KB/CU with 512-byte allocation granule (§1.3 L123-125);
 //           then CU-level min over VGPR/SGPR/LDS + thread + workgroup slots.

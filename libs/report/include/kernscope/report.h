@@ -3,11 +3,11 @@
 // kernscope report engine (wave-1 todo 7). One structured model,
 // three renderers:
 //
-//   * text  - the owner's example format, docs/research/owner-examples.md
+//   * text  - the owner's example format, docs/report/kernscope-technical-report.pdf
 //             Section A (Kernel: / Occupancy: / Main limiter: /
 //             Warnings: / Suggested: with indented "- " bullets);
 //   * json  - the model as JSON, validated against the committed schema
-//             docs/schema/report.schema.json (draft 2020-12);
+//             docs/report/kernscope-technical-report.pdf (draft 2020-12);
 //   * html  - a self-contained single file (inline CSS/JS, embedded JSON
 //             payload in <script id="report-data" type="application/json">,
 //             zero network requests; polykernel/tt-flow convention).
@@ -60,7 +60,7 @@ struct KernelReport {
 };
 
 /// Thrown by every renderer when the model violates
-/// docs/schema/report.schema.json (e.g. a finding missing its required
+/// docs/report/kernscope-technical-report.pdf (e.g. a finding missing its required
 /// `severity`). Renderers never silently emit an invalid report.
 class SchemaViolation : public std::runtime_error {
 public:
@@ -75,10 +75,10 @@ public:
 [[nodiscard]] bool validate(const KernelReport &report, std::string *error);
 
 /// Text renderer — the owner's Section A format exactly
-/// (docs/research/owner-examples.md). Throws SchemaViolation on invalid input.
+/// (docs/report/kernscope-technical-report.pdf). Throws SchemaViolation on invalid input.
 std::string to_text(const KernelReport &report);
 
-/// JSON renderer — validates against docs/schema/report.schema.json
+/// JSON renderer — validates against docs/report/kernscope-technical-report.pdf
 /// (draft 2020-12). Throws SchemaViolation on invalid input.
 std::string to_json(const KernelReport &report);
 

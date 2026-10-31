@@ -8,7 +8,7 @@ stages that explicitly require the local AMD GPU (hipcc run, rocminfo).
 
 | Path | What it is |
 |---|---|
-| `fused_attention.cu` | fused-attention-style CUDA kernel engineered to exhibit every owner example class (docs/research/owner-examples.md §A) |
+| `fused_attention.cu` | fused-attention-style CUDA kernel engineered to exhibit every owner example class (docs/report/kernscope-technical-report.pdf) |
 | `fused_attention.ptx` | committed PTX: `nvcc -arch=sm_86 -lineinfo --maxrregcount=112 -ptx` (ptxas runs GPU-less) |
 | `expected_fused_attention.json` | numeric expected analyzer report (occupancy 0.375, limiter, warnings, suggestions) |
 | `manifest.json` | pins arch/block/occupancy/limiter/registers/warnings/suggestions (`schema_version: 1`) |
@@ -42,7 +42,7 @@ compile-only golden — never executed locally (no NVIDIA GPU).
 
 ### Occupancy math (review-verified, sm_86 / 64-thread blocks)
 
-Per docs/research/gpu-static-analyzer-research.md §1.2: sm_86 has 65,536
+Per docs/report/kernscope-technical-report.pdf: sm_86 has 65,536
 registers/SM, 48 max warps/SM, 16 max blocks/SM; register allocation uses a
 256-register-per-warp granule: `per_warp = ceil(regs × 32 / 256) × 256`.
 

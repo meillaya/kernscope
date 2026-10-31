@@ -2,13 +2,13 @@
 //
 // Wave-1 todo 6: the arch-model DB consumed by tools/analyze (and later the
 // whole kernscope suite). Every constant is derived from
-// docs/research/gpu-static-analyzer-research.md §1 (occupancy model):
+// docs/report/kernscope-technical-report.pdf (occupancy model):
 //   §1.1  general occupancy formula (min-wins rule), lines 31-64
 //   §1.2  NVIDIA per-architecture constants, lines 66-102
 //         (CPG v13.3 compute-capability tables 30/31/32)
 //   §1.3  AMD constants, lines 104-144 (CDNA2/CDNA3 + RDNA3)
 // RDNA3 VGPR-file values are ISA-resolved in
-// docs/research/rdna3-constants.md (1536 VGPRs/SIMD, granule 24 wave32 /
+// docs/report/kernscope-technical-report.pdf (1536 VGPRs/SIMD, granule 24 wave32 /
 // 12 wave64 — NOT 16).
 //
 //===----------------------------------------------------------------------===//
@@ -200,7 +200,7 @@ constexpr ArchInfo kGfx1101{
     .tensor_dtype_count = 0,
     // --- todo 22: MEASURED on this machine (RX 7800 XT) ---
     // kernscope-bench (libs/bench) 2026-08-14; provenance in
-    // reports/peaks/gfx1101-bench.jsonl (device name, gcnArchName, rocm-smi
+    // tests/fixtures/peaks/gfx1101-bench.jsonl (device name, gcnArchName, rocm-smi
     // sclk/mclk as-measured, tool version, measured=true). Clocks were NEVER
     // locked (no root). Values verified live by the gpu-amd bench suite.
     .peak_fp32_tflops = 16.32,   // FFMA loop, register-resident
@@ -256,7 +256,7 @@ inline int allocated_regs_per_thread(const ArchInfo &a,
 // ROCm's Triton occ.sh threshold table (<=64->8, 65-72->7, 73-80->6, 81-96->5,
 // 97-128->4, 129-168->3, 169-256->2, >256->1) [brief §1.3 L113-116].
 // RDNA3: waves = floor(1536 / ceil24(vgpr)) clamped by the wave cap
-// [brief §1.3 L139-141; granule per docs/research/rdna3-constants.md].
+// [brief §1.3 L139-141; granule per docs/report/kernscope-technical-report.pdf].
 inline int waves_per_simd_from_vgprs(const ArchInfo &a, int vgprs) noexcept {
   if (vgprs <= 0) return a.max_warps_per_sm;
   const int g = a.reg_granule > 0 ? a.reg_granule : 1;

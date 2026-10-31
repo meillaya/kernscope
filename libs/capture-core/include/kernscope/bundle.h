@@ -2,7 +2,7 @@
 //
 // kernscope shared-core library tree.
 //
-// The FORMAL capture bundle format (docs/capture-format.md, todo 46): a
+// The FORMAL capture bundle format (docs/report/kernscope-technical-report.pdf, todo 46): a
 // directory-based `*.kcap/` bundle with a JSON manifest, a formalized event
 // log with an arg marshalling table, and VA-faithful buffer blobs carrying
 // mandatory sha256 provenance and embedded-pointer patch tables (the Kerncap
@@ -10,7 +10,7 @@
 // writer/reader API; the v0 BundleWriter (capture.h) is UNCHANGED - v1 is an
 // upgrade layer the existing mechanisms (shim/cupti-sub/capture-hip) are not
 // migrated to here (their record semantics are frozen; BundleReader loads
-// their v0 output - see docs/capture-format.md §7 for the compatibility
+// their v0 output - see docs/report/kernscope-technical-report.pdf for the compatibility
 // decision).
 //
 // JSON is produced/parsed with the repo's dependency-free model
@@ -38,7 +38,7 @@ namespace kernscope {
 
 //===--- v1 format constants --------------------------------------------------===//
 // The bundle directory suffix is gitignored repo-wide (`*.kcap/`,
-// .gitignore §5.2 of docs/capture-format.md).
+// .gitignore §5.2 of docs/report/kernscope-technical-report.pdf).
 
 inline constexpr std::string_view kBundleFormatId = "kernscope-capture";
 inline constexpr int kBundleSchemaVersion = 1;
@@ -82,7 +82,7 @@ struct BufferSnapshot {
 //===--- write options / size governance ---------------------------------------===//
 
 struct BundleWriteOptions {
-  /// Size governance (docs/capture-format.md §5.1): total blob bytes budget;
+  /// Size governance (docs/report/kernscope-technical-report.pdf): total blob bytes budget;
   /// exceeded -> WriteStatus::kAbortedSizeCap + partial manifest. Default
   /// pinned at 1 GiB.
   std::size_t max_snapshot_bytes = kDefaultMaxSnapshotBytes;
@@ -109,7 +109,7 @@ enum class WriteStatus : std::uint8_t {
 
 /// Deterministic embedded-pointer scan: every byte offset of `blob` is
 /// checked for an 8-byte little-endian value exactly equal to any VA in
-/// `vas`; each hit becomes a PatchEntry (docs/capture-format.md §4.3).
+/// `vas`; each hit becomes a PatchEntry (docs/report/kernscope-technical-report.pdf).
 std::vector<PatchEntry> scan_embedded_pointers(
     std::span<const std::uint8_t> blob, std::span<const std::uint64_t> vas);
 
@@ -129,7 +129,7 @@ void apply_remap(std::span<std::uint8_t> blob,
 WriteStatus write_bundle_v1(const CaptureSession &session, const std::string &dir,
                             const BundleWriteOptions &opts, std::string *error);
 
-/// A captured launch's arg-marshalling enrichment (docs/capture-format.md
+/// A captured launch's arg-marshalling enrichment (docs/report/kernscope-technical-report.pdf
 /// §3.1): the reader keeps the byte-exact KernelArgSlot in LaunchRecord and
 /// exposes the slot KIND (scalar|pointer) + original VA separately, so
 /// field-exact roundtrips compare against the session model unchanged.
@@ -148,7 +148,7 @@ struct ParamInfoRecord {
 
 //===--- reader ----------------------------------------------------------------===//
 // Loads v1 directory bundles AND v0 line-oriented text bundles (the
-// todos-43/44/45 output shape; docs/capture-format.md §7). Errors carry byte
+// todos-43/44/45 output shape; docs/report/kernscope-technical-report.pdf). Errors carry byte
 // offsets for JSON ("byte N: ...") and line/column for v0 text - the
 // truncated-bundle QA (no UB, no crash). Two corruption defenses (F3):
 // the v0 parser rejects an unterminated final line (a 1-byte trailing cut

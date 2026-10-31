@@ -17,7 +17,7 @@
 //
 // ALGORITHM (the FlashAttention online softmax, Dao et al., "FlashAttention:
 // Fast and Memory-Efficient Exact Attention with IO-Awareness", NeurIPS 2022;
-// brief docs/research/autotuner-research-brief.md §7 L135): for each Br-row
+// brief docs/report/kernscope-technical-report.pdf L135): for each Br-row
 // query tile the block owns, the K/V sequence is walked in Bc-row tiles with
 // running max m and running sum l:
 //

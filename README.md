@@ -22,8 +22,8 @@ bash scripts/demo.sh      # profile -> capture -> analyze -> tune -> verify
 ```
 
 `demo.sh` writes one cross-tool report to `reports/demo/report.json`; the
-committed run took 153 s against a 900 s budget. To reproduce the committed
-evidence from a clean checkout, run `bash scripts/reproduce-all.sh` inside the same
+consolidated run took 153 s against a 900 s budget. To regenerate the evidence
+from a clean checkout, run `bash scripts/reproduce-all.sh` inside the same
 shell; it chains the lock check, `ci.sh`, `demo.sh`, and the dashboard.
 
 NVIDIA runtime validation never runs automatically:
@@ -71,7 +71,7 @@ Live numbers come from the local RX 7800 XT (gfx1101). `nvcc` compiles kernels
 for sm_80 and sm_90 against CUDA 12.6 headers; the resulting PTX can be
 analyzed locally, but no NVIDIA runtime runs on this machine. Live CUPTI
 capture and profiling run only on a rented A100/H100 host through
-`scripts/rental-validate.sh`, and `reports/rentals/` holds no numbers yet.
+`scripts/rental-validate.sh`, and no rental numbers are committed.
 
 ## Tests and evidence
 
@@ -83,12 +83,16 @@ lit/FileCheck and the NumPy bfloat16 goldens, compiles generated kernels with
 vendored NVIDIA headers.
 
 Reports carry `schema_version` 1.0 and a per-section `provenance.mode`.
-`tests/report/check_dashboard.py` asserts the provenance values, and the
-committed `reports/dashboard.html` aggregates the per-tool evidence.
+`tests/report/check_dashboard.py` asserts the provenance values. The dashboard
+writes `reports/dashboard.html` and aggregates the per-tool evidence at run
+time.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md): the loop, the shared stack, the hardware venues, and the CUDA 13 migration surface.
-- [Reproducibility](docs/reproducibility.md): toolchain pins, clean-checkout CI, and the owner-executed NVIDIA runbook.
-- Per tool: [analyzer](docs/analyzer.md), [tuner](docs/tuning.md), [verifier](docs/verify.md), [capture](docs/capture.md), [passes](tools/pass/README.md), [profiler](docs/profile.md).
-- [Research report](reports/research-report/report.pdf): the design, the measurements, and the references.
+- [Technical report](docs/report/kernscope-technical-report.pdf): architecture, the six tools, schemas, capture and verification contracts, testing, the hardware strategy, and the measured evidence.
+- [Report sources](docs/report/): LaTeX, TikZ figures, bibliography, and the vendored flora package.
+- [Architecture diagrams](docs/diagrams/): editable Excalidraw sources and PNG exports.
+
+The report is the archival account of the committed evidence. The scripts
+regenerate the runtime reports under `reports/` on a gfx1101 machine; the
+report records the values from the consolidated run.

@@ -1,8 +1,8 @@
 # libs/report: the report engine (wave-1 todo 7).
 #
 # One structured model (KernelReport/Finding) + three renderers:
-#   * text - owner's example format (docs/research/owner-examples.md Section A)
-#   * json - validated against docs/schema/report.schema.json (draft 2020-12)
+#   * text - owner's example format (docs/report/kernscope-technical-report.pdf Section A)
+#   * json - validated against docs/report/kernscope-technical-report.pdf (draft 2020-12)
 #   * html - self-contained single file (inline CSS/JS, embedded JSON payload,
 #            zero network requests; polykernel/tt-flow convention)
 #
@@ -55,7 +55,7 @@ target_link_libraries(kernscope-report-test PRIVATE
 target_compile_definitions(kernscope-report-test PRIVATE
   PYTHON3="${Python3_EXECUTABLE}"
   REPORT_VALIDATOR="${CMAKE_SOURCE_DIR}/tests/report/validate_json.py"
-  REPORT_SCHEMA="${CMAKE_SOURCE_DIR}/docs/schema/report.schema.json"
+  REPORT_SCHEMA="${CMAKE_SOURCE_DIR}/docs/report/kernscope-technical-report.pdf"
   REPORT_TMPDIR="${CMAKE_BINARY_DIR}/report-test-tmp"
 )
 include(GoogleTest)

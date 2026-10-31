@@ -1,7 +1,7 @@
 //===- arch_test.cpp - architecture-model DB unit tests -------------------===//
 //
-// Every assertion is pinned against docs/research/gpu-static-analyzer-research.md
-// (cited as "brief §X LNN") or docs/research/rdna3-constants.md (the
+// Every assertion is pinned against docs/report/kernscope-technical-report.pdf
+// (cited as "brief §X LNN") or docs/report/kernscope-technical-report.pdf (the
 // ISA-resolved RDNA3 VGPR file). Hand-computed occupancy cases are
 // cross-checked against the polykernel oracle
 // (/home/mei/projects/polykernel/lib/Analysis/tests/occupancy_test.cpp —
@@ -132,14 +132,14 @@ TEST(arch, CdnaOccShThresholdTable) {
 }
 
 // ---------------------------------------------------------------------------
-// AMD RDNA3 (brief §1.3 L133-144 + docs/research/rdna3-constants.md)
+// AMD RDNA3 (brief §1.3 L133-144 + docs/report/kernscope-technical-report.pdf)
 // ---------------------------------------------------------------------------
 
 TEST(arch, Rdna3Constants) {
   // brief §1.3 L136: native wave32; L142-143: 64 KB LDS per work-group;
   // L140-141: LLVM max 16 waves/EU; L134-135: CU = 2 SIMD32s.
   // VGPR file 1536/SIMD + granule 24 wave32 / 12 wave64:
-  // docs/research/rdna3-constants.md (RDNA3 ISA §3.3.2.1; LLVM
+  // docs/report/kernscope-technical-report.pdf (RDNA3 ISA §3.3.2.1; LLVM
   // AMDGPUBaseInfo.cpp L1295-1344 @llvmorg-21.1.8; driver
   // regsPerMultiprocessor=196608; empirical probe on RX 7800 XT).
   const auto &a = get_arch("gfx1101");
@@ -153,23 +153,23 @@ TEST(arch, Rdna3Constants) {
   // THE pinned resolution: 1536 VGPRs/SIMD, granule 24 (wave32) / 12 (wave64).
   EXPECT_EQ(a.regs_per_sm, 1536)
       << "gfx1101 VGPR file per SIMD is 1536 (wave32 view), NOT 768: "
-         "docs/research/rdna3-constants.md (RDNA3 ISA §3.3.2.1; LLVM "
+         "docs/report/kernscope-technical-report.pdf (RDNA3 ISA §3.3.2.1; LLVM "
          "AMDGPUBaseInfo.cpp L1336-1344; driver regsPerMultiprocessor = "
          "1536x2x64)";
   EXPECT_EQ(a.reg_granule, 24)
       << "gfx1101 VGPR granule must be 24 (wave32) / 12 (wave64), never 16: "
-         "docs/research/rdna3-constants.md (RDNA3 ISA §3.3.2.1; granule-16 "
+         "docs/report/kernscope-technical-report.pdf (RDNA3 ISA §3.3.2.1; granule-16 "
          "refuted empirically on RX 7800 XT: occupancy steps observed at "
          "align-12 positions 108/120/132/168/204/228)";
   EXPECT_EQ(a.vgpr_granule_wave64, 12)
-      << "gfx1101 wave64 granule is 12: docs/research/rdna3-constants.md";
+      << "gfx1101 wave64 granule is 12: docs/report/kernscope-technical-report.pdf";
   EXPECT_EQ(a.sgpr_granule, 16) << " (brief §1.3 L117-121)";
 }
 
 TEST(arch, Gfx1101MeasuredPeaksFilledByTodo22) {
   // todo 22 (libs/bench / kernscope-bench) measured the gfx1101 roofline
   // peaks on THIS machine (RX 7800 XT, 2026-08-14) and filled the placeholders
-  // with provenance (reports/peaks/gfx1101-bench.jsonl). The floors match the
+  // with provenance (tests/fixtures/peaks/gfx1101-bench.jsonl). The floors match the
   // todo-22 acceptance (bw > 300 GB/s, fp32 > 10 TFLOPS) and the source tag
   // carries the measured-<date>-<arch> provenance form.
   const auto &a = get_arch("gfx1101");
@@ -183,7 +183,7 @@ TEST(arch, Gfx1101MeasuredPeaksFilledByTodo22) {
 
 // Negative golden: tampering the RDNA3 granule to 16 must NOT reproduce the
 // pinned model — the prediction diverges, and the pinned-value assertions
-// above fail with a message citing docs/research/rdna3-constants.md.
+// above fail with a message citing docs/report/kernscope-technical-report.pdf.
 TEST(arch, Rdna3Granule16TamperDiverges) {
   const auto &pinned = get_arch("gfx1101");
   kernscope::ArchInfo tampered = pinned;
@@ -196,15 +196,15 @@ TEST(arch, Rdna3Granule16TamperDiverges) {
   const auto tampered_occ = predict_occupancy(tampered, 32, 97, 0);
   EXPECT_NE(pinned_occ.blocks_per_cu, tampered_occ.blocks_per_cu)
       << "tampering gfx1101 VGPR granule to 16 must change occupancy: "
-         "docs/research/rdna3-constants.md pins 24 (wave32)/12 (wave64) from "
+         "docs/report/kernscope-technical-report.pdf pins 24 (wave32)/12 (wave64) from "
          "RDNA3 ISA §3.3.2.1 (brief §10.4 L551-553: \"don't hardcode 16\")";
   EXPECT_NE(pinned_occ.blocks_per_cu, 26) << "pinned model: 24 blocks at 97 "
       "VGPRs (granule 24); 26 would imply the refuted granule-16 model "
-      "(docs/research/rdna3-constants.md evidence (e))";
+      "(docs/report/kernscope-technical-report.pdf evidence (e))";
   EXPECT_EQ(pinned_occ.blocks_per_cu, 24)
       << "gfx1101 97 VGPRs x 32 threads -> 24 blocks/CU with pinned granule "
          "24 (floor(1536/align24(97)) x 2 SIMDs); see "
-         "docs/research/rdna3-constants.md";
+         "docs/report/kernscope-technical-report.pdf";
 }
 
 // ---------------------------------------------------------------------------

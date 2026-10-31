@@ -1,7 +1,7 @@
 //===- analyze_suggest.cpp - optimization suggestion rules engine ---------===//
 //
 // Wave-3 todo 19. See suggest.h for the design rationale and
-// docs/analyzer-rules.md for the rule table.
+// docs/report/kernscope-technical-report.pdf for the rule table.
 //
 // Each rule:
 //   * has an explicit TRIGGER (a finding id + conditions on its evidence or
@@ -29,7 +29,7 @@ namespace kernscope::analyze {
 namespace {
 
 // ---------------------------------------------------------------------------
-// Documented heuristic constants (see docs/analyzer-rules.md for the full
+// Documented heuristic constants (see docs/report/kernscope-technical-report.pdf for the full
 // derivation narrative).
 // ---------------------------------------------------------------------------
 
@@ -104,7 +104,7 @@ long long metric_int(const KernelReport &report, const std::string &key,
 // Suggestion: pad the shared stride / tile to a conflict-free layout, tiling
 // the K dimension by 32 (the owner's "tile K dimension by 32").
 //
-// Evidence derivation (docs/analyzer-rules.md §tile_k_32):
+// Evidence derivation (docs/report/kernscope-technical-report.pdf):
 //   current_tile_k     = stride_words - (stride_words % 32). The bank-conflict
 //                        stride is (K_tile + pad) words; the padding is the
 //                        stride's residue mod 32 (68 words -> 4 pad -> the
@@ -158,7 +158,7 @@ void rule_tile_k_32(const KernelReport &report, std::vector<Finding> &out) {
 // register limiter winning means the kernel's register footprint (usually a
 // register-resident accumulator array) caps occupancy.
 //
-// Evidence derivation (docs/analyzer-rules.md §split_accumulator):
+// Evidence derivation (docs/report/kernscope-technical-report.pdf):
 //   registers_per_thread        = metrics["registers_per_thread"].
 //   accumulator_elements        = registers_per_thread - 38 (fixed
 //                                 non-accumulator working set, see the
@@ -313,7 +313,7 @@ int count_predicated_branches_in_loops(const PtxModule &module,
 // loop-invariant (derived only from threadIdx); moving it out of the loop
 // collapses the per-iteration branch sites into one.
 //
-// Evidence derivation (docs/analyzer-rules.md §hoist_predicate):
+// Evidence derivation (docs/report/kernscope-technical-report.pdf):
 //   predicate_depends_on   = "lane" when the warning's predicate_derived_from
 //                            is threadIdx.x (the warp-divergent component of
 //                            tid); "tid" otherwise.
@@ -354,7 +354,7 @@ void rule_hoist_predicate(const PtxModule &module, const KernelReport &report,
 // Trigger: warning "coalescing" with evidence efficiency < 1.0, AND no
 // "bank_conflict" warning in the same report.
 //
-// Priority policy (docs/analyzer-rules.md §vectorize_coalescing): when a
+// Priority policy (docs/report/kernscope-technical-report.pdf): when a
 // kernel ALSO has shared-memory bank conflicts, the smem-layout fix
 // (tile_k_32) already addresses the same staging data path, and adding a
 // generic vectorize suggestion would be redundant noise — so the rule stays

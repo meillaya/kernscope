@@ -14,7 +14,7 @@
 // CUDA 12.x delivers CUpti_ActivityKernel9 for both CUPTI_ACTIVITY_KIND_KERNEL
 // (3) and CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL (10); CUDA 13.x delivers
 // CUpti_ActivityKernel10 (the 12.x struct moved to cupti_activity_deprecated.h,
-// docs/research/profiler-research-brief.md §1.2/§1.5). The two kinds use the
+// docs/report/kernscope-technical-report.pdf/§1.5). The two kinds use the
 // SAME record struct; they differ only in collection behavior - KERNEL
 // SERIALIZES all kernel executions on the GPU (a behavior change), while
 // CONCURRENT_KERNEL does not. This tracer ENABLES CONCURRENT_KERNEL ONLY

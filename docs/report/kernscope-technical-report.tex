@@ -1,0 +1,747 @@
+% ============================================================================
+% kernscope: technical report
+% LuaLaTeX, TikZ, and tikz-flora margins.
+%
+%   latexmk -lualatex kernscope-technical-report.tex
+%
+% The flora package is vendored next to this file (MIT); see
+% tikzflora-LICENSE. The report consolidates the repository documentation
+% and committed evidence into one archival document.
+% ============================================================================
+\documentclass[11pt,twoside,a4paper]{article}
+
+\usepackage[a4paper,twoside,inner=2.2cm,outer=4.0cm,top=3.0cm,bottom=3.0cm,
+            headheight=14pt,headsep=14pt]{geometry}
+
+\usepackage{fontspec}
+\setmainfont{lmroman10-regular.otf}[
+  BoldFont=lmroman10-bold.otf,
+  ItalicFont=lmroman10-italic.otf,
+  BoldItalicFont=lmroman10-bolditalic.otf,
+  Ligatures=TeX]
+\setsansfont{lmsans10-regular.otf}[BoldFont=lmsans10-bold.otf]
+\setmonofont{lmmono10-regular.otf}
+\usepackage{unicode-math}
+\setmathfont{latinmodern-math.otf}
+
+\usepackage{xcolor}
+\definecolor{paper}{HTML}{F8F5EC}
+\definecolor{ink}{HTML}{25221D}
+\definecolor{kred}{HTML}{A5433F}
+\definecolor{kredfill}{HTML}{F3DEDB}
+\definecolor{korange}{HTML}{B5652F}
+\definecolor{korangefill}{HTML}{F7E2CD}
+\definecolor{kgold}{HTML}{8E6F24}
+\definecolor{kgoldfill}{HTML}{F4EAC8}
+\definecolor{kgreen}{HTML}{4F7357}
+\definecolor{kgreenfill}{HTML}{DDEBDD}
+\definecolor{kblue}{HTML}{3E668F}
+\definecolor{kbluefill}{HTML}{DCE7F1}
+\definecolor{kviolet}{HTML}{6A5A88}
+\definecolor{kvioletfill}{HTML}{E7E1EF}
+\definecolor{kteal}{HTML}{3F7A78}
+\definecolor{ktealfill}{HTML}{D9ECEA}
+\definecolor{linkblue}{HTML}{365E86}
+\definecolor{citegreen}{HTML}{426B4F}
+\pagecolor{paper}
+\color{ink}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont={small,sc},labelsep=period]{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,calc,fit,backgrounds}
+\usepackage{tikzflora}
+\usepackage[round]{natbib}
+\usepackage[colorlinks=true,linkcolor=linkblue,citecolor=citegreen,
+            urlcolor=linkblue,bookmarks=true,bookmarksnumbered=true]{hyperref}
+\usepackage{bookmark}
+\usepackage[capitalise,noabbrev]{cleveref}
+\hypersetup{pdftitle={kernscope: A Technical Report},pdfauthor={kernscope project},pdfsubject={GPU kernel tooling, verification, capture, and profiling},pdfkeywords={GPU, CUDA, HIP, LLVM, verification, profiling}}
+
+% Report typography.
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{0.32em}
+\setlength{\emergencystretch}{2.5em}
+\renewcommand{\arraystretch}{1.14}
+\setlist[itemize]{topsep=2pt,itemsep=1.5pt,parsep=0pt,leftmargin=1.35em}
+\setlist[enumerate]{topsep=2pt,itemsep=1.5pt,parsep=0pt,leftmargin=1.6em}
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+\captionsetup{width=0.96\linewidth}
+\captionsetup[table]{skip=4pt}
+\captionsetup[figure]{skip=5pt}
+
+\titleformat{\section}
+  {\Large\sffamily\bfseries\color{ink}}{\thesection}{0.7em}{}
+\titleformat{\subsection}
+  {\large\sffamily\bfseries\color{ink}}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}
+  {\normalsize\sffamily\bfseries\color{ink}}{\thesubsubsection}{0.5em}{}
+\titlespacing*{\section}{0pt}{2.2ex plus .4ex minus .2ex}{0.9ex}
+\titlespacing*{\subsection}{0pt}{1.6ex plus .3ex}{0.6ex}
+\titleformat{\part}[display]
+  {\centering\Huge\sffamily\bfseries\color{ink}}{Part \thepart}{1.0em}{}
+\titlespacing*{\part}{0pt}{0pt}{0pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\small\scshape kernscope technical report}
+\fancyfoot[LE,RO]{\small\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+\newcommand{\kst}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\fpath}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\term}[1]{\emph{#1}}
+\newcommand{\figref}[1]{Figure~\ref{#1}}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{ink!4},
+  frame=none,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  upquote=true,
+  xleftmargin=0.4em,
+  xrightmargin=0.4em,
+  aboveskip=0.55em,
+  belowskip=0.35em,
+  literate={_}{{\_}}1
+}
+
+% Flora is used on the title page, contents page, and part openers only.
+% Body pages stay clean; this also keeps the PDF small.
+\floraoff
+\florasetup{layout=split, seed=17, density=0.16, visitors=0}
+
+\begin{document}
+
+% ---------------------------------------------------------------------------
+% Title page
+% ---------------------------------------------------------------------------
+\newgeometry{left=3.1cm,right=3.1cm,top=4.2cm,bottom=3.6cm}
+\begin{titlepage}
+\floraon
+\thispagestyle{empty}
+\florathispage{layout=title, seed=23, density=0.46, visitors=0.15}
+\begin{floratitle}
+\centering
+{\Huge\sffamily\bfseries kernscope\par}
+\vspace{0.45em}
+{\LARGE A Technical Report\par}
+\vspace{0.65em}
+{\large Static analysis, autotuning, verification, capture/replay,\\
+LLVM passes, and profiling for CUDA and HIP kernels\par}
+\end{floratitle}
+
+\vspace{2.4cm}
+\begin{center}
+\begin{minipage}{0.72\textwidth}
+\centering\small\itshape
+Six tools. One shared stack. One closed loop that leaves evidence another
+engineer can reproduce.
+\end{minipage}
+\end{center}
+
+\vfill
+\begin{center}
+\small
+Technical report for the kernscope repository\\
+31 October 2026\\[0.8em]
+{\footnotesize Measured evidence: AMD Radeon RX 7800 XT (gfx1101).\\
+No NVIDIA runtime numbers are claimed.}
+\end{center}
+\vspace{0.7cm}
+\begin{center}
+{\footnotesize\itshape Margins grown with \texttt{tikz-flora} (MIT),
+\url{https://flora.alpacasoft.dev}.\par}
+\end{center}
+\end{titlepage}
+\floraoff
+\restoregeometry
+
+% ---------------------------------------------------------------------------
+% Abstract and preface
+% ---------------------------------------------------------------------------
+\pagenumbering{roman}
+\setcounter{page}{2}
+
+\begin{abstract}
+\noindent
+kernscope is a C++20 toolchain for GPU kernels. Six tools profile a running
+binary, capture a hot launch, analyze the captured instruction set, generate
+or rewrite kernel variants, verify them before compilation, and benchmark the
+result. They share one library stack, one report schema, and one provenance
+discipline. The tools form a closed loop: the analyzer reads the captured
+kernel's ISA, the verifier gates the tuner's variants, and the profiler's
+hints cite the analyzer findings that explain them.
+
+This report is the archival account of the project. It consolidates the
+architecture notes, the six per-tool references, the capture format and field
+mapping, the verifier soundness scope, the schema definitions, the
+reproducibility guide, the research briefs, and the committed evidence into
+one document. It describes the design and the implementation, then states what
+was measured on the local AMD Radeon RX 7800 XT (gfx1101), what remains
+projected from compile-only artifacts, and what was not tested. The measured
+results include a 153\,s end-to-end demo against a 900\,s budget, a bitwise
+capture replay, a 4-wide vectorization delta on layernorm, and machine peaks
+of 16.32\,TFLOPS fp32, 591\,GB/s DRAM read, and 9.7\,TB/s LDS. No NVIDIA
+runtime numbers appear anywhere in the repository or in this report.
+\end{abstract}
+
+\section*{Preface: scope and evidence}
+\addcontentsline{toc}{section}{Preface: scope and evidence}
+
+This report replaces the pre-consolidation Markdown references and the
+earlier research report. It is written to be read on its own: every design
+claim, CLI contract, schema field, measured number, and known limitation is
+stated here or in an appendix. The editable Excalidraw diagrams remain in
+\fpath{docs/diagrams/} because they are also useful as standalone figures.
+
+Three rules govern the evidence in this document. First, a number is either
+\term{measured} on the local gfx1101 or \term{projected} from static analysis
+or compile-only artifacts, and the report says which. Second, an NVIDIA
+runtime path is owner-gated and is not claimed until the owner produces
+evidence; the repository commits none at the time of writing. Third, a
+statement that cannot be checked against the tree, a committed artifact, or a
+cited source is flagged as a limitation instead of being smoothed over.
+
+The report is organized in three parts. Part~I describes the system, the
+hardware model, and the shared libraries. Part~II documents the six tools and
+the benchmark/dashboard layer. Part~III covers testing, reproducibility,
+evaluation, prior art, limitations, and future work. The appendices hold the
+reference material that would otherwise be scattered across per-tool notes:
+CLI synopses, check and rule tables, search spaces, bundle fields, report
+fields, a consolidation map, and a glossary.
+
+\clearpage
+% Contents page with a surround of flora.
+\floraon
+\thispagestyle{empty}
+\florathispage{layout=surround, seed=29, density=0.22, visitors=0.1}
+\tableofcontents
+\clearpage
+\floraoff
+
+\listoffigures
+\addcontentsline{toc}{section}{List of figures}
+\listoftables
+\addcontentsline{toc}{section}{List of tables}
+\clearpage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ===========================================================================
+\clearpage
+\floraon
+\florathispage{layout=surround, seed=31, density=0.32, visitors=0.08}
+\part{System and architecture}
+\thispagestyle{empty}
+\clearpage
+\floraoff
+% ===========================================================================
+
+\section{Introduction}
+\label{sec:intro}
+
+\subsection{The problem}
+\label{sec:problem}
+
+GPU kernel work is split across tools that do not share identifiers. A vendor
+profiler says a kernel is hot; a disassembler shows the ISA; a template
+generator produces variants; a verifier checks a source file; a benchmark
+harness times a binary. Each tool re-derives the same architecture constants
+(register file, shared-memory budget, occupancy limits), each writes a
+different report, and none can show that its conclusion rests on the same
+launch the previous tool observed. The result is a pile of local screenshots
+and hand-copied numbers, not a reproducible evidence chain.
+
+kernscope replaces the pile with one loop over real artifacts. The profiler
+ranks kernels from a running binary. Capture records the hot launch into a
+bundle that replays bitwise. The analyzer reads the captured kernel's
+disassembled ISA. The tuner generates variants, the verifier gates them before
+compilation, and the benchmark harness times only variants that passed the
+correctness gate. Each stage writes a report with a schema version and a
+provenance mode, so a later reader can tell a live measurement from a static
+projection.
+
+\subsection{What kernscope is}
+\label{sec:what}
+
+kernscope is a C++20 toolchain with six user-facing tools:
+
+\begin{description}[leftmargin=0pt,style=nextline,itemsep=1pt]
+  \item[C1 \kst{kernscope-analyze}] Static analysis of PTX or AMDGPU assembly:
+        ten analyses plus a suggestion engine.
+  \item[C2 \kst{kernscope-tune}] Correctness-gated search over template kernel
+        families, with roofline and occupancy evidence.
+  \item[C3 \kst{kernscope-verify}] Eight-class static verifier over LLVM IR,
+        with an approved-IR handoff.
+  \item[C4 \kst{kernscope-capture}] Kernel capture and bitwise replay, plus
+        standalone reproducer generation.
+  \item[C5 \kst{kernscope-pass}] Out-of-tree LLVM 21 pass plugin and the
+        \kst{kernscope-pass-report} delta CLI.
+  \item[C6 \kst{kernscope-profile}] Kernel-launch tracing, hot-kernel ranking,
+        and compiler-aware ``why slow'' diagnostics.
+\end{description}
+
+The six tools live in one build and link the shared libraries they need. \kst{kernscope-bench} is
+the peak and replay benchmark harness; \kst{kernscope-dashboard} is a Python
+aggregator. The report treats those two as supporting layers, not as a seventh
+and eighth tool.
+
+\subsection{Contributions}
+\label{sec:contrib}
+
+\begin{enumerate}
+  \item A closed loop across six independently executable tools, wired by
+        \kst{scripts/demo.sh} and recorded in one cross-tool report.
+  \item A shared library stack with an architecture database, PTX and AMDGPU
+        parsers, occupancy and roofline engines, a timing harness, a report
+        engine, and capture backends.
+  \item A dual-path hardware strategy: every NVIDIA-runtime capability has a
+        compile-only or mock implementation that runs on the AMD machine, while
+        the HIP equivalent runs live on gfx1101.
+  \item A provenance discipline: per-module \kst{provenance.mode}, a report
+        schema, owner-gated rentals, and no vendored NVIDIA headers.
+  \item A four-layer test convention (ctest, lit, bf16 goldens, generated-code
+        compile checks) with a non-decreasing count guard.
+  \item A measured evidence base from one machine, with the limits of that
+        base stated next to the numbers.
+\end{enumerate}
+
+\subsection{Design principles}
+\label{sec:principles}
+
+\paragraph{One implementation per fact.}
+Architecture constants live in \fpath{libs/arch}; occupancy and roofline
+formulas live once in \fpath{libs/occupancy} and \fpath{libs/roofline}; the
+report schema and provenance writer live in \fpath{libs/report}; the timing
+method lives in \fpath{libs/bench}. A tool links what it needs and does not
+re-implement it.
+
+\paragraph{Evidence over self-report.}
+The analyzer runs on the captured ISA, not on a hand-picked example. The
+verifier gates tuner variants before compilation. The profiler hint carries the
+analyzer finding identifiers that explain it. The pass delta is measured with
+the analyzer's own metrics. A tool that only reports on itself is not used as
+evidence for another.
+
+\paragraph{Two implementations, one contract.}
+Every NVIDIA-runtime capability is paired with a HIP implementation on the
+local GPU, or with a mock/compile-only path. The two implementations share the
+same bundle, record, and report contracts, so the local machine exercises the
+code even when it cannot run the vendor runtime.
+
+\paragraph{Provenance is part of the data.}
+Reports carry \kst{schema_version} and a per-module provenance object. A
+projected number is never placed in a measured slot. The rental path is
+owner-gated and not auto-triggered. The cost of this discipline is some
+missing evidence; the benefit is that every present number has a defined
+meaning.
+
+\subsection{Reading guide}
+\label{sec:reading}
+
+\Cref{sec:arch} gives the system picture and the three architecture figures.
+\Cref{sec:hardware} describes where code runs and how the CUDA-13 surface is
+isolated. \Cref{sec:libs} documents the shared libraries. \Cref{sec:c1}
+through \Cref{sec:dashboard} document the tools, their CLIs, and their
+evidence. \Cref{sec:repro} covers tests and reproducibility,
+\Cref{sec:eval} evaluates the measured results, \Cref{sec:prior} positions the
+work, and \Cref{sec:limits,sec:future} state what remains open. The appendices
+are the reference layer.
+
+% ===========================================================================
+\section{System architecture}
+\label{sec:arch}
+
+\subsection{Six tools at a glance}
+\label{sec:tools-glance}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+ID & Tool & Role \\
+\midrule
+C1 & \kst{kernscope-analyze} & Ten static analyses of PTX or AMDGPU ISA, plus suggestions. \\
+C2 & \kst{kernscope-tune} & Template search over six families, correctness-gated and roofline-aware. \\
+C3 & \kst{kernscope-verify} & Eight IR-level checks; approved IR only when every verdict is \kst{SAFE}. \\
+C4 & \kst{kernscope-capture} & Record, replay, validate, benchmark, and emit a standalone reproducer. \\
+C5 & \kst{kernscope-pass-report} & Out-of-tree LLVM 21 passes and analyzer-measured before/after deltas. \\
+C6 & \kst{kernscope-profile} & Trace, enrich, rank, and diagnose kernels from a running binary. \\
+\bottomrule
+\end{tabularx}
+\caption{The six tools. kernscope-bench and kernscope-dashboard are supporting layers.}
+\label{tab:tools}
+\end{table}
+
+\subsection{The closed loop}
+\label{sec:loop}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/loop.tikz}}
+\caption{The kernscope loop. The forward path is
+profile $\rightarrow$ capture $\rightarrow$ analyze $\rightarrow$
+transform/generate $\rightarrow$ verify $\rightarrow$ benchmark; the dashed
+edge is the delta report that starts the next pass.}
+\label{fig:loop}
+\end{figure}
+
+The loop is a convention over files and executables, not one monolithic
+binary. \kst{scripts/demo.sh} runs five observable stages on the local
+gfx1101: profile, capture, analyze, capture-tune, and verifier-gated tune plus
+a pass delta. It writes \fpath{reports/demo/report.json} and a self-contained
+HTML page, and it aborts early with a well-formed all-skipped report when
+\fpath{/dev/kfd} is absent or \kst{KERNSCOPE_NO_GPU=1}. The committed run
+completed in 153\,s against a 900\,s budget.
+
+Six cross-tool edges make the loop more than a pipeline:
+\begin{itemize}
+  \item \textbf{profile $\rightarrow$ capture.} The profiler ranks hot kernels;
+        capture records the hot one.
+  \item \textbf{capture $\rightarrow$ analyze.} The analyzer runs on the
+        captured kernel's disassembled ISA, not on a hand-picked example.
+  \item \textbf{capture $\rightarrow$ tune.} \kst{kernscope-tune
+        --from-capture} searches launch configurations over the bundle and
+        validates each candidate bitwise.
+  \item \textbf{tune $\rightarrow$ verify.} \kst{kernscope-tune --verify}
+        gates variants before they are compiled.
+  \item \textbf{pass $\rightarrow$ analyze.} \kst{kernscope-pass-report
+        --report-pipeline} measures before/after deltas with the analyzer's
+        own metrics.
+  \item \textbf{profile $\leftrightarrow$ analyze.} The aggregated demo report
+        links the profiler hint to the analyzer finding identifiers.
+\end{itemize}
+
+\subsection{The shared stack}
+\label{sec:stack}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/stack.tikz}}
+\caption{The shared stack. Six tools sit over four library groups and the
+LLVM/CUDA/ROCm toolchain. Each tool links only what it needs; no tool links
+another tool.}
+\label{fig:stack}
+\end{figure}
+
+The stack has twelve libraries in four functional groups. \term{Parsers}:
+\kst{ptxparse}, \kst{amdparse}. \term{Model}: \kst{arch}, \kst{occupancy},
+\kst{roofline}. \term{Evidence}: \kst{bench}, \kst{db}, \kst{report},
+\kst{gpuruntime}. \term{Capture}: \kst{capture-core}, \kst{capture-hip},
+\kst{cupti-sub}. The exact link graph, as built by CMake rather than as
+sketched in the older notes, is in \Cref{tab:links}.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Target & Direct dependencies \\
+\midrule
+\kst{kernscope-analyze} & \kst{kernscope::analyze}, \kst{kernscope::db}; the analyze library links \kst{ptxparse}, \kst{amdparse}, \kst{arch}, \kst{occupancy}, \kst{report}. \\
+\kst{kernscope-tune} & \kst{tune_driver}, \kst{capture_tune}, \kst{report}; the driver links the three generators, \kst{arch}, \kst{occupancy}, \kst{roofline}, \kst{bench}, \kst{db}, \kst{gpuruntime}. \\
+\kst{kernscope-verify} & LLVM only. \\
+\kst{kernscope-capture} & \kst{capture_core}, \kst{db}, \kst{bench}, \kst{gpuruntime}, \kst{arch}; the HIP and CUPTI capture libraries are loaded as \kst{LD_PRELOAD} shared objects, not linked into the CLI. \\
+\kst{kernscope-pass-report} & LLVM; the pass plugin is a separate \kst{MODULE}. \\
+\kst{kernscope-profile} & \kst{profile_diag}, \kst{profile_enrich}, \kst{roofline}, \kst{report}, \kst{db}; \kst{profile_enrich} links \kst{occupancy}; the CUPTI and rocprofiler tracers are separate libraries. \\
+\kst{kernscope-bench} & \kst{bench}, \kst{db}, \kst{gpuruntime}, \kst{arch}. \\
+\bottomrule
+\end{tabularx}
+\caption{Direct CMake dependencies of the tool targets. ``LLVM only'' means the
+tool does not link a \fpath{libs/} target.}
+\label{tab:links}
+\end{table}
+
+\subsection{Evidence flow}
+\label{sec:evidence-flow}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/evidence.tikz}}
+\caption{Evidence flow. Tools emit report models through \fpath{libs/report};
+the runtime artifacts are aggregated by the dashboard and frozen in this
+report. The provenance gate is a convention plus a separate validator, not a
+schema-enforced property.}
+\label{fig:evidence}
+\end{figure}
+
+A tool report is a JSON document with a schema version and a provenance
+object. The demo aggregator combines the five stages into one model and keeps
+cross-tool links: the profiler hint carries the analyzer finding identifiers
+and the stage-3 evidence path. The dashboard has six sections
+(\kst{analyzer}, \kst{tune}, \kst{verify}, \kst{capture}, \kst{profile},
+\kst{pass}), each with \kst{provenance.mode} and a \kst{measured} boolean.
+\Cref{sec:provenance} states exactly what the schemas require and where the
+provenance convention lives outside them.
+
+\subsection{Build and repository shape}
+\label{sec:build}
+
+The project is a C++20 CMake superbuild. \fpath{CMakeLists.txt} requires
+LLVM 21.1 and treats MLIR as optional; it applies \kst{-Wall -Wextra -Werror}
+globally. \fpath{scripts/configure.sh} resolves \kst{LLVM_DIR} and
+\kst{MLIR_DIR} from the nix store when the build is not already inside
+\kst{devenv shell}. \fpath{devenv.nix} supplies LLVM/MLIR 21, the CUDA 12.6
+redistributables, ROCm 7.2.3, gtest, lit, CMake, Ninja, and a Python with
+NumPy and pytest. The build registers the libraries first, then the tools,
+then the lit suite, so no tool can depend downward on another tool.
+
+The repository keeps the source and the tests; the runtime evidence directory
+is generated. This report is the committed archive of the evidence that was
+present at consolidation time. Appendix~\ref{app:consolidation} records what
+was folded here and what remains as a separate diagram asset.
+
+% ===========================================================================
+\section{Hardware and execution model}
+\label{sec:hardware}
+
+\subsection{The local live path}
+\label{sec:local}
+
+The development machine has one AMD Radeon RX 7800 XT (gfx1101, RDNA 3) and
+no NVIDIA GPU. HIP code compiles with \kst{hipcc} and runs live; \fpath{/dev/kfd}
+is the runtime gate. \kst{libs/arch} holds the measured machine peaks, the
+per-architecture limits, and the occupancy constants. The peaks used by the
+roofline engine are shown in \Cref{tab:peaks}; they were measured with
+\kst{kernscope-bench} on 2026-08-14 with clocks recorded but not locked.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Family & Microbenchmark & Median & Derived peak \\
+\midrule
+\kst{peak_flops} & register-resident FFMA loop & 13.51\,ms & 16.32\,TFLOPS fp32 \\
+\kst{peak_bw_read} & 512\,MiB DRAM read & 0.907\,ms & 591\,GB/s \\
+\kst{peak_bw_d2d} & 1\,GiB device-to-device & 2.26--2.30\,ms & 467--475\,GB/s \\
+\kst{peak_lds} & LDS read + write & 10.14--10.32\,ms & 9.7\,TB/s \\
+\bottomrule
+\end{tabular}
+\caption{Measured gfx1101 peaks. All rows are \kst{provenance.mode=measured};
+the ridge point used by the tuner and profiler is $16.32\times10^{12}/591\times10^{9}
+= 27.61$ FLOP/byte.}
+\label{tab:peaks}
+\end{table}
+
+\subsection{CUDA is compile-only here}
+\label{sec:cuda-compile}
+
+The CUDA path compiles kernels for sm\_80 and sm\_90 with \kst{nvcc} against
+the CUDA 12.6 redistributables from the nix store. The resulting PTX and cubins
+are analyzed and compiled, but no CUDA runtime executes on the machine.
+\kst{libs/gpuruntime} provides a mock backend for the capture shim, and
+\kst{libs/cupti-sub} compiles and unit-tests the CUPTI subscription against
+synthetic activity records. The repository commits no NVIDIA headers: the nix
+store resolves \kst{#include <cuda_occupancy.h>}-style names at build time,
+and \kst{scripts/ci.sh} guards both filenames and content.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/venues.tikz}}
+\caption{Three execution venues. The AMD column is live and measured, the
+NVIDIA compile column is projected, and the rental column is owner-gated and
+currently has no committed numbers.}
+\label{fig:venues}
+\end{figure}
+
+\subsection{The rental gate}
+\label{sec:rental}
+
+Live NVIDIA capture and profiling run only on a rented A100/H100-class host
+through \fpath{scripts/rental-validate.sh}. The script is never called by
+\kst{ci.sh} and refuses to run when \kst{CI=true}. It prints the command
+sequence in \kst{--dry-run} mode, then, in exec mode, checks the build tree,
+probes CUDA and CUPTI, runs the \kst{gpu-nvidia-rental} tests, and writes a
+timestamped summary under \fpath{reports/rentals/}. Gating is procedural, not
+authenticated: the script checks the environment, not the identity of the
+operator. The repository held no rental numbers at consolidation time.
+
+\subsection{Capture mechanisms}
+\label{sec:capture-mechanisms}
+
+The three capture mechanisms share the \fpath{libs/capture-core} session
+model and \kst{BundleWriter}. This is what makes a bundle written by any
+mechanism parse identically.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l l X@{}}
+\toprule
+Mechanism & Vendor & Local status & Transport and scope \\
+\midrule
+CUPTI callback/injection & NVIDIA & compile + unit only; rental-gated live & \kst{CUDA_INJECTION64_PATH} or direct \kst{libcupti.so}; Memory4 allocation records; \kst{cuFuncGetParamInfo}; module-load callback. \\
+LD\_PRELOAD shim & NVIDIA & compile + unit; mock runtime locally & PLT interposition of \kst{cuda*}/\kst{cu*}; \kst{cudaMalloc}/\kst{cudaFree}; fatbin/\kst{cuModuleLoadData}. \\
+rocprofiler-sdk intercept & AMD & live on gfx1101 & \kst{LD_PRELOAD} plus intercept tables; HIP allocations; AMDGPU metadata; hsaco code objects; bitwise replay validated. \\
+\bottomrule
+\end{tabularx}
+\caption{Capture mechanisms and their local status. The NVIDIA paths never run
+live on this machine.}
+\label{tab:capture-mechanisms}
+\end{table}
+
+\subsection{The CUDA 13 migration surface}
+\label{sec:cuda13}
+
+The suite pins CUDA 12.6 and \kst{CUPTI_API_VERSION} 24. The CUDA 13 surface
+is documented so that a header bump is a compile error at one place, not a
+silent parse shift. The single place that reads raw CUPTI activity records is
+\fpath{tools/profile/include/kernscope/profile/record_adapter.h}.
+
+\begin{itemize}
+  \item \textbf{Kernel records.} CUDA 12.x delivers
+        \kst{CUpti_ActivityKernel9}; 13.x delivers \kst{CUpti_ActivityKernel10}.
+        The 12.x struct moves to \kst{cupti_activity_deprecated.h}. Kernel10 is
+        Kernel9 plus a tail \kst{uint8_t isDeviceLaunched} (and three padding
+        bytes). The parser is a template over the delivered struct, selected by
+        \kst{CUPTI_API_VERSION}; offsets are pinned by \kst{static_assert}s and
+        \kst{isDeviceLaunched} is read by SFINAE, so a 12.x build compiles
+        against Kernel9 and treats the absent field as zero.
+  \item \textbf{Removed APIs.} The CUPTI Event API and Metric API are removed
+        in CUDA 13 and return
+        \kst{CUPTI_ERROR_LEGACY_PROFILER_NOT_SUPPORTED} (38). The PC-sampling
+        ACTIVITY kind is replaced by \kst{cupti_pcsampling.h}. nvprof and the
+        NVIDIA Visual Profiler are gone. The build forbids the Event and Metric
+        APIs; all profiling data comes from the Activity API.
+  \item \textbf{Replacements.} The Profiling API and PerfWorks Metric API are
+        replaced by the CUPTI Range Profiling API and the Profiler Host API.
+        Multi-subscriber V2 APIs arrive in CUDA 13.3+; the 12.x
+        single-subscriber path in \kst{libs/cupti-sub} degrades to the fallback
+        when a second subscriber is active.
+  \item \textbf{Record-kind discipline.} Only
+        \kst{CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL} (10) is enabled. The
+        serializing \kst{KERNEL} kind (3) changes collection behavior and is
+        never used.
+  \item \textbf{Version codes.} \kst{CUPTI_API_VERSION} 24 corresponds to CUDA
+        12.6; CUDA 13.0 reports 130001.
+\end{itemize}
+
+\subsection{What the hardware split implies}
+\label{sec:hardware-implies}
+
+The local machine can measure HIP behavior, PTX text analysis, static IR
+verification, and compile-only CUDA artifacts. It cannot measure NVIDIA
+runtime behavior. Every performance number in this report is therefore one of:
+a live gfx1101 measurement, a static projection from IR or PTX, or a
+correctness result from a compile gate. \Cref{sec:eval} keeps those categories
+separate.
+
+% ===========================================================================
+\section{The shared libraries}
+\label{sec:libs}
+
+\subsection{Architecture database and record store}
+\label{sec:arch-lib}
+
+\kst{libs/arch} is an interface library of per-architecture constants: SM
+counts, register file sizes, shared-memory budgets, warp widths, and the
+measured gfx1101 peaks. It is the only place that answers ``how big is the
+register file on this part.'' \kst{libs/db} is the JSONL record store. Records
+are keyed by \kst{gpu_arch}, \kst{kernel_family}, and a shape hash, and the
+store supports \kst{query_best} over the recorded timings. The tune cache and
+the benchmark/replay records both use it.
+
+\subsection{PTX and AMDGPU parsers}
+\label{sec:parsers}
+
+\kst{libs/ptxparse} is a hand-written PTX lexer and parser: modules, entry
+functions, register declarations, instructions, and operand forms. It is used
+by the analyzer, the pass delta, and the auxiliary PTX dump source.
+\kst{libs/amdparse} uses LLVM 21's MC layer to parse AMDGPU assembly and
+recover instruction, register, and operand facts. Both parsers preserve enough
+source text for the analyzer to emit evidence paths and finding identifiers.
+
+\subsection{Occupancy and roofline}
+\label{sec:occ-roof}
+
+\kst{libs/occupancy} implements the min-wins occupancy model. For a block size
+and a kernel's register and shared-memory demand it computes resident blocks
+per SM from the thread, warp, shared-memory, register, and hard block limits,
+then reports the binding limiter. The NVIDIA register limit uses the
+architecture's allocation granularity:
+\[
+  \text{blocks}_{\text{regs}} =
+  \left\lfloor \frac{65536}{\text{granule}(\text{regs per thread}) \times
+  \text{threads per block}} \right\rfloor .
+\]
+The AMD path models waves per SIMD and SIMD count, with the RDNA 3 VGPR file
+resolution described in the project notes. Occupancy is explicitly theoretical:
+it does not predict achieved occupancy under memory stalls.
+
+\kst{libs/roofline} computes arithmetic intensity, the ridge point, the
+compute and memory ceilings, the bound class, and a position in $(0,1]$:
+\[
+  \text{position} = \min\!\left(1, \frac{\text{AI}}{\text{ridge}}\right),
+  \qquad
+  \text{ridge} = \frac{\text{peak FLOP/s}}{\text{peak bytes/s}} .
+\]
+The engine refuses to produce a position when the architecture has no measured
+peaks; \kst{roofline.ok} is false rather than a datasheet guess.
+
+\subsection{Benchmark harness and runtime shim}
+\label{sec:bench-lib}
+
+\kst{libs/bench} implements time-based warmup and repetition budgets, an L2
+flush between trials, adaptive trial counts, and median plus p20/p80
+quantiles. It is the timing method for the tuner, capture replay benchmark,
+and peak microbenchmarks. \kst{libs/gpuruntime} is a thin CUDA/HIP runtime
+wrapper. It exposes the allocation, copy, launch, and synchronization surface
+the capture and replay code needs, with compile-only CUDA and mock backends so
+the shim can be exercised without an NVIDIA device.
+
+\subsection{Report engine and provenance}
+\label{sec:report-lib}
+
+\kst{libs/report} writes the self-contained JSON and HTML report form used by
+the tools. It sets \kst{schema_version} to \kst{"1.0"} and provides the
+per-module provenance object with a \kst{mode} and a \kst{measured} boolean.
+The report is self-contained: inline CSS and JavaScript, no external assets,
+and an embedded JSON payload under a stable script identifier, so a checker can
+extract and validate it without network access.
+
+\subsection{Capture backends}
+\label{sec:capture-libs}
+
+\kst{libs/capture-core} owns the session model, the event log, the bundle
+writer and reader, the VA-faithful snapshot policy, and the patch table. It
+also builds the NVIDIA LD\_PRELOAD shim and a mock CUDA runtime used by the
+unit tests. \kst{libs/capture-hip} is the AMD shared object: it registers
+rocprofiler-sdk intercept tables, records dispatches and code objects, and
+writes the same bundle model. \kst{libs/cupti-sub} is the shared CUPTI
+subscription layer used by the NVIDIA capture path and the profiler; it
+enforces a single-tool scope contract because the 12.x CUPTI subscription is
+single-subscriber.
+
+\subsection{Dependency rules}
+\label{sec:deps}
+
+Nothing in \fpath{libs/} depends on a tool. The tools link libraries, not each
+other. The only cross-tool relationships are runtime file contracts: a bundle
+written by capture, a report written by a tool, a JSONL record written by the
+tuner. This is why the loop can be exercised by separate executables and why a
+tool can be replaced without rebuilding the stack.
+
+% ===========================================================================
+
+\input{sections/tools}
+\input{sections/operation}
+\input{sections/appendices}

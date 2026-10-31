@@ -4,7 +4,7 @@
 # (gpu_arch, kernel_family, shape_hash, config) with a best-by-median query,
 # a forward-compatible versioned schema and corrupt-line resilience (design
 # per Triton autotune disk cache + TVM MetaSchedule JSONDatabase,
-# docs/research/autotuner-research-brief.md §1-§2).
+# docs/report/kernscope-technical-report.pdf§2).
 #
 # Zero external dependencies by design: nlohmann/json is not in the devenv
 # profile and todo 8 must not modify devenv files, so the JSON value model is

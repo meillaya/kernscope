@@ -2,7 +2,7 @@
 //
 // kernscope shared-core library tree.
 //
-// Implements docs/capture-format.md: the v1 directory bundle (manifest.json,
+// Implements docs/report/kernscope-technical-report.pdf: the v1 directory bundle (manifest.json,
 // events.json with the arg marshalling table, blobs.json + blobs/ with
 // VA-faithful snapshots, mandatory sha256 provenance and embedded-pointer
 // patch tables) and the dual-format BundleReader (v1 directories + v0 text
@@ -463,7 +463,7 @@ std::vector<PatchEntry> scan_embedded_pointers(
     known[va] = true;
   }
   // Byte-granular scan: a T** indirection table lives at an arbitrary offset
-  // inside the blob (docs/capture-format.md §4.3).
+  // inside the blob (docs/report/kernscope-technical-report.pdf).
   for (std::size_t offset = 0; offset + sizeof(std::uint64_t) <= blob.size();
        ++offset) {
     std::uint64_t value = 0;

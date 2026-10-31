@@ -18,8 +18,7 @@
 //   --json       the full JSON evidence (best config, roofline.position /
 //                  bound, occupancy / occupancy.limiter, baseline + speedup,
 //                  variants sorted by median ascending, cache key).
-//   --text       the owner's example format (docs/research/
-//                  owner-examples.md), adapted to tune fields: Kernel /
+//   --text       the owner's example format (docs/report/kernscope-technical-report.pdf), adapted to tune fields: Kernel /
 //                  Time / Best config / Occupancy / Main limiter / Roofline
 //                  position+bound / Speedup vs naive baseline.
 //   --html       a self-contained single-file variant-comparison report:
@@ -170,7 +169,7 @@ std::string html_escape(const std::string &s) {
 }
 
 // ---------------------------------------------------------------------------
-// --text: the owner's example format (docs/research/owner-examples.md),
+// --text: the owner's example format (docs/report/kernscope-technical-report.pdf),
 // adapted to tune-specific fields.
 // ---------------------------------------------------------------------------
 

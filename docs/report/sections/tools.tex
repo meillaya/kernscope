@@ -1,0 +1,721 @@
+% ===========================================================================
+\clearpage
+\floraon
+\florathispage{layout=surround, seed=37, density=0.32, visitors=0.08}
+\part{The tools}
+\thispagestyle{empty}
+\clearpage
+\floraoff
+% ===========================================================================
+
+\section{C1: static analyzer}
+\label{sec:c1}
+
+\kst{kernscope-analyze} consumes PTX or AMDGPU assembly text and emits one
+kernel report plus a suggestion list. It is a static tool: it estimates
+occupancy and memory behavior from the instruction stream and the architecture
+database, and it labels every estimate as a metric rather than a measurement.
+
+\subsection{Inputs, CLI, and precedence}
+\label{sec:c1-cli}
+
+\begin{lstlisting}
+kernscope-analyze <file.ptx|file.s|file.isa> [options]
+  --arch <sm_XX|gfxXXXX>   required for AMDGPU; PTX defaults to .target
+  --block <N>              launch block size for occupancy
+  --json | --text | --html output format (default --text)
+  --source <file.cu|file.hip>  source stem for the kernel label
+  --version | --help
+\end{lstlisting}
+
+The analyzer recognizes \kst{sm_75}, \kst{sm_80}, \kst{sm_86}, \kst{sm_89},
+\kst{sm_90}, \kst{sm_100}, \kst{sm_120}, \kst{gfx90a}, \kst{gfx942}, and
+\kst{gfx1101}. A \kst{.ptx} file goes through the PTX parser; \kst{.s} and
+\kst{.isa} files go through the AMDGPU parser; other extensions are
+content-sniffed. A directory input may carry \kst{manifest.json} with
+\kst{arch}, \kst{block_size}, and a \kst{ptxas_v_report}; command-line flags
+override the manifest. Without \kst{--block}, occupancy emits the
+\kst{block_size_unknown} diagnostic rather than guessing.
+
+Register pressure prefers \kst{ptxas -v} when a report is supplied. Otherwise
+the analyzer uses the declared \kst{.reg} counts plus the \kst{.local} frame,
+an upper bound: ptxas can reuse registers, so the proxy can overestimate.
+The AMDGPU path uses \kst{scratch_load} and \kst{scratch_store} for spills and
+does not have a \kst{next_free_vgpr} value in plain assembly, so it does not
+invent one.
+
+\subsection{The ten analyses}
+\label{sec:c1-checks}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X l@{}}
+\toprule
+Analysis & What it computes & Finding \\
+\midrule
+Register pressure & Per-thread registers, warp allocation, local frame. & \kst{spill}, \kst{cannot_estimate_registers} \\
+Occupancy + limiter & Blocks per SM from thread, warp, smem, register, and hard limits. & \kst{occupancy}, \kst{limiter} \\
+Global coalescing & 128\,B sectors, used versus transferred bytes per warp. & \kst{coalescing}, \kst{coalescing_unknown} \\
+Shared banks & Bank index, distinct banks, conflict way. & \kst{bank_conflict}, \kst{bank_conflict_unknown} \\
+Warp divergence & Branch target and post-dominator analysis over thread-dependent predicates. & \kst{possibly_divergent_branch}, \kst{divergent_inner_loop} \\
+Barriers & \kst{bar.sync}, \kst{bar.warp}, cluster barriers, density per loop, reachability under divergence. & \kst{divergent_barrier} \\
+Instruction mix & FP32/FP16/INT/LSU/SMEM/tensor/control histogram. & \kst{mix_count_*}, \kst{mix_pct_*} \\
+Tensor cores & PTX \kst{mma}/\kst{wmma}/\kst{wgmma}/\kst{tcgen05}; AMD \kst{v_mfma_*}/\kst{v_wmma_*}. & \kst{no_tensor_core_usage}, \kst{tensor_ops} \\
+Spills & \kst{ld.local}/\kst{st.local}, local frame bytes, AMD scratch ops. & \kst{spill}, \kst{spill_bytes} \\
+Latency & Static critical-path estimate from microbenchmark-derived op latencies. & \kst{latency_bottleneck}, \kst{latency_unknown_arch} \\
+\bottomrule
+\end{tabularx}
+\caption{The analyzer's ten analyses. The occupancy model is the min-wins
+formula from the occupancy library; the latency estimate is explicitly
+approximate.}
+\label{tab:c1checks}
+\end{table}
+
+The occupancy estimate is:
+\[
+  \text{blocks} = \min\left(
+  \left\lfloor \frac{\text{threads}_{\max}}{\text{threads per block}}\right\rfloor,
+  \left\lfloor \frac{\text{warps}_{\max}}{\text{warps per block}}\right\rfloor,
+  \left\lfloor \frac{\text{smem}_{\max}}{\text{smem per block}}\right\rfloor,
+  \text{blocks}_{\text{regs}},
+  \text{blocks}_{\text{hard}}
+  \right),
+\]
+and the binding term is reported as the limiter. The bank-conflict metric
+uses $32$ banks of $4$ bytes: the bank index is
+$(\text{word} \div 4) \bmod 32$, and the conflict way is lanes divided by
+distinct banks. Coalescing uses the 128-byte-sector model and reports a
+byte-efficiency ratio; it does not claim a hardware counter.
+
+\subsection{Suggestion rules}
+\label{sec:c1-suggest}
+
+The suggestion engine owns \kst{report.suggestions}. It clears the list and
+emits at most one suggestion per triggering finding, in a fixed priority
+order, with an evidence text and a \kst{triggered_by} link.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X l@{}}
+\toprule
+Rule & Trigger and recommendation & Evidence \\
+\midrule
+\kst{tile_k_32} & Bank conflict of way $\ge 2$; set the shared tile to 32 words. & Current stride, banks, shared bytes \\
+\kst{split_accumulator} & Register limiter and at least 16 FP32 FMAs; split the accumulator. & Registers, FMA count, fragment size \\
+\kst{hoist_predicate} & Divergent branch inside an inner loop; hoist the predicate. & Branch site, predicate dependence \\
+\kst{vectorize_coalescing} & Coalescing efficiency below 1.0 and no bank conflict; target 128\,B per warp. & Efficiency, sectors, vector width \\
+\bottomrule
+\end{tabularx}
+\caption{Suggestion rules. The priority order is the table order. The engine
+drops instruction-mix informational findings so a suggestion is tied to an
+actionable warning.}
+\label{tab:c1suggest}
+\end{table}
+
+\subsection{Report and golden result}
+\label{sec:c1-evidence}
+
+The report is a JSON object with \kst{kernel}, \kst{metrics}, \kst{limiter},
+\kst{warnings}, and \kst{suggestions}; the schema is summarized in
+Appendix~\ref{app:report-schema}. The committed golden fixture is a
+fused-attention-style CUDA kernel whose PTX targets sm\_86:
+occupancy $9 \text{ blocks} \times 2 \text{ warps} / 48 = 0.375$, limiter
+\kst{registers}, 102 registers per thread, coalescing efficiency $0.5$,
+a $68$-word shared stride that maps to banks $\{0,4,\dots,28\}$ with way $4$,
+two \kst{bar.sync} instructions, 1024 FP32 FMAs, zero spills, and three
+warnings plus three suggestions. The sm\_86 fixture is a parser corpus
+artifact; it is independent of the local \kst{nvcc} capability pin.
+
+% ===========================================================================
+\section{C2: correctness-gated autotuner}
+\label{sec:c2}
+
+\kst{kernscope-tune} searches a kernel family's configuration grid for the
+fastest variant that passes a bf16 golden gate. It reports the winner with
+roofline and occupancy evidence, the full variant list, and a reproducibility
+bundle. It is not a blind search: infeasible configurations are rejected
+before compilation, and wrong kernels are never benchmarked.
+
+\subsection{Families and search spaces}
+\label{sec:c2-space}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\toprule
+Family & Auto grid \\
+\midrule
+\kst{matmul} & $(BM,BN) \in \{(64,64),(128,128)\} \times BK \in \{16,32\} \times
+warps \in \{1,2,4\} \times stages \in \{1,2\}$: 24 configs. The full grid
+expands to 4608 combinations over $BK$ 8--64, stages 1--4, vector width 1--4,
+XOR swizzle, and unroll 1--4. \\
+\kst{bias_gelu}, \kst{softmax}, \kst{layernorm}, \kst{reduction} &
+block $\in \{128,256,512,1024\}$ $\times$ vector width $\in \{1,2,4,8\}$;
+softmax and layernorm add a one-pass/two-pass mode, reduction adds
+strided/tree. \\
+\kst{flash_attention} & $Br \times Bc \in \{32,64\}^2$ $\times$ stages
+$\{1,2\}$ $\times$ vector width $\{1,2,4\}$ $\times$ shared-memory layout
+(padding/XOR) $\times$ causal on/off. \\
+\bottomrule
+\end{tabularx}
+\caption{Tuner families and their search spaces.}
+\label{tab:c2space}
+\end{table}
+
+Each family owns a template generator that validates membership in the search
+space and checks the \fpath{libs/arch} budgets (registers, shared memory,
+warp/block divisibility, vector tiling) before compilation. A rejection is a
+reason string, not a compiler error.
+
+\subsection{The pipeline}
+\label{sec:c2-pipeline}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/tuner.tikz}}
+\caption{The tuner pipeline. The template path searches source variants;
+the capture path searches launch configurations over a captured binary. Both
+use the same benchmark and selection rules.}
+\label{fig:tuner}
+\end{figure}
+
+A candidate moves through five stages:
+\begin{enumerate}
+  \item \textbf{Cache hit.} A config already in the tunecache is replayed
+        without compiling.
+  \item \textbf{GPU-free pre-screen.} The generator validates the config, then
+        \kst{libs/occupancy} rejects zero-resident-block configs and configs
+        below \kst{--min-occupancy}.
+  \item \textbf{Compile.} The family generator emits a single-source
+        \kst{.hip} file; \kst{hipcc --genco} compiles it for gfxXXXX, or
+        \kst{nvcc -c} for sm\_XX.
+  \item \textbf{Golden gate.} The kernel runs on the live HIP device through
+        the template runner and the bf16 reference. The gate passes only when
+        cosine $\ge 0.999$, maximum relative error $\le 10^{-2}$, and PCC
+        $\ge 0.99$. A failure discards the variant; it is never timed.
+  \item \textbf{Benchmark and select.} \fpath{libs/bench} warms up, flushes
+        L2, adapts the trial count, and reports median and p20/p80. The best
+        config wins by median, with p20, p80, and enumeration order as
+        tie-breakers.
+\end{enumerate}
+
+The gate shape is the family's golden shape (64$^3$ for matmul), deliberately
+decoupled from the benchmark shape. The cache is keyed
+\kst{gpu_arch:family:shape_hash} and stamped with the minimum-occupancy floor
+that produced it, so a floor-1.0 entry never replays for a floor-0.0 run.
+\kst{--no-cache} skips the read but still writes the new entries.
+
+\subsection{Outputs and reproducibility}
+\label{sec:c2-output}
+
+\kst{--json} emits the best config and timings, the baseline (the first
+enumerated measured config), the speedup over that baseline, every measured
+variant sorted by median, the pipeline counts, the roofline position and bound,
+and the winning occupancy and limiter. \kst{--text} is the owner-facing
+one-screen form. \kst{--html} is a self-contained variant comparison with the
+model embedded under \kst{report-data} and the evidence under
+\kst{tune-evidence}.
+
+\kst{--emit-repro} writes a standalone directory with \kst{run.sh},
+\kst{README.md}, and the winning config. The script regenerates the source,
+repeats the exact compile command, and re-runs the golden gate at the winning
+geometry. The nixpkgs revision from \kst{devenv.lock} is embedded and checked
+against \kst{KERNSCOPE_EXPECT_NIXPKGS_REV} as a warning. The repro path needs
+a live HIP device and exists for matmul plus the four elementwise families;
+\kst{flash_attention} has no generator CLI and is rejected with a clear
+message.
+
+\subsection{Capture-tune mode}
+\label{sec:c2-capture}
+
+A capture bundle contains a binary, arguments, and buffers, but no source.
+Template tuning cannot consume it; the launch configuration is the only
+searchable degree of freedom. \kst{kernscope-tune --from-capture} restores the
+captured launch, enumerates block sizes at the captured grid, pre-screens the
+limits (threads per block $\le 1024$, grid x $\le 2^{31}-1$, grid y/z
+$\le 65535$, shared memory within the architecture budget), replays each
+survivor bitwise, and times only the survivors. The captured baseline is
+candidate 1, so \kst{best.speedup} is always at least 1.0. The record key is
+\kst{(arch, sha256(kernel name), sha256(bundle identity))}; the binary and
+buffers stay byte-identical to the capture.
+
+\subsection{Measured evidence}
+\label{sec:c2-evidence}
+
+In the demo, capture-tune explored four candidates over the captured
+layernorm bundle. All four validated bitwise; the best block was 256 with a
+median of $0.01206$\,ms against a $0.01208$\,ms baseline, a speedup of
+$1.0017\times$. The verifier-gated template run on bias\_gelu at
+$4096 \times 4096$ enumerated 13 variants, compiled 12, and gated one before
+compilation. The best config (block 256, vector width 4) ran at
+$0.17184$\,ms against a $0.20332$\,ms baseline, a $1.1832\times$ speedup,
+occupancy 1 (limiter registers), arithmetic intensity 2.333, and roofline
+position 0.0845 in the memory-bound class.
+
+The dashboard records a separate measured matmul search with 15 variants, a
+best median of $415.324\,\mu$s, and a worst median of $3.106$\,ms. The
+per-run JSONL for that search is not committed, so the report quotes the
+dashboard value and labels it as such rather than reconstructing a raw record.
+
+% ===========================================================================
+\section{C3: static verifier}
+\label{sec:c3}
+
+\kst{kernscope-verify} compiles CUDA or HIP source to LLVM IR at \kst{-O1}
+and applies eight may-analyses. It does not prove a kernel correct; it proves
+specific bounds and ordering facts when it can, and it refuses approval when
+it cannot.
+
+\subsection{Ingestion and launch tiers}
+\label{sec:c3-ingest}
+
+By default the host and device halves are compiled separately and linked into
+one module, so the launch site is visible. The host pass supplies the launch
+configuration through the \kst{__cudaPushCallConfiguration} or
+\kst{cudaLaunchKernel} call. HIP uses clang 21 with \kst{--hip-path}.
+\kst{--device-only} is a degraded mode: launch dimensions are lost unless the
+kernel carries \kst{__launch_bounds__}.
+
+Launch dimensions resolve into three tiers:
+\begin{enumerate}
+  \item \textbf{Exact}: constant dimensions at the launch site, giving exact
+        ranges for \kst{threadIdx} and \kst{blockIdx}.
+  \item \textbf{UpperBound}: \kst{__launch_bounds__} or \kst{nvvm.maxntid}
+        provides a sound upper bound on \kst{blockDim}.
+  \item \textbf{Symbolic}: runtime dimensions produce a \kst{SYMBOLIC_DIMS}
+        verdict and a runtime-check suggestion, never a claim of safety.
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/verify.tikz}}
+\caption{The verifier pipeline. The launch tiers feed the diagnostic engine;
+the check registry produces per-class verdicts; approved IR is written only
+when no error-class verdict remains.}
+\label{fig:verify}
+\end{figure}
+
+\subsection{The eight check classes}
+\label{sec:c3-checks}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}c l l X@{}}
+\toprule
+ID & Class & Plugin & Verdict vocabulary \\
+\midrule
+1 & Global out-of-bounds & \kst{checks/oob} & \kst{SAFE}, \kst{MAY_OOB}, \kst{SYMBOLIC_DIMS} \\
+2 & Shared-memory bounds & \kst{checks/oob} & \kst{SAFE}, \kst{MAY_OOB}, \kst{SYMBOLIC_DIMS} \\
+3 & Barrier correctness & \kst{checks/barrier} & \kst{SAFE}, \kst{BARRIER_MISMATCH} \\
+4 & Race-prone shared writes & \kst{checks/race} & \kst{SAFE}, \kst{MAY_RACE}, \kst{UNKNOWN_RACE} \\
+5 & Illegal pointer arithmetic & \kst{checks/ptr} & \kst{SAFE}, \kst{PTR_OOB} \\
+6 & Divergent barriers & \kst{checks/barrier} & \kst{SAFE}, \kst{DIVERGENT_BARRIER} \\
+7 & Uninitialized reads & \kst{checks/ptr} & \kst{SAFE}, \kst{MAY_UNINIT_READ} \\
+8 & Invalid address-space casts & \kst{checks/ptr} & \kst{SAFE}, \kst{INVALID_ADDRSPACE_CAST} \\
+\bottomrule
+\end{tabularx}
+\caption{The eight check classes and their stable IDs. Engine-degraded verdicts
+use IDs at or above 100: symbolic dims (100), SCEV reconstruction failed (101),
+and budget exceeded (102).}
+\label{tab:c3checks}
+\end{table}
+
+The design follows the Linux eBPF verifier's user experience
+\citep{ebpfVerifier}: reject with a concrete line-level reason, track types and
+ranges, cap the explored states, and degrade to a non-proof verdict rather
+than hanging. Every non-\kst{SAFE} verdict carries diagnostics with a source
+location, the enclosing kernel, the offending instruction, and an evidence
+path where one exists. The per-function explored-state budget defaults to
+65536 and is settable with \kst{--budget}.
+
+\subsection{Verdict semantics and approved IR}
+\label{sec:c3-verdict}
+
+\kst{SAFE} is the only approval-class verdict. Every other verdict, including
+the engine-degraded ids, means no bound was proven. The CLI exits 1 and writes
+no approved IR. If the error-class count is zero, the verifier projects the
+verified module onto its device code: it keeps the kernels and reachable
+device helpers, drops host functions, and rewrites the global constructor and
+used lists. The result is \kst{<base>.verified.ll}. The projection matters for
+the handoff because the proofs apply to device code and the AMDGPU backend
+rejects host \kst{addrspace(0)} allocas.
+
+\subsection{Soundness scope}
+\label{sec:c3-soundness}
+
+All eight checks are may-analyses at \kst{-O1}. In scope: global and shared
+accesses whose indices are bounded by SCEV and the launch-dimension lattice;
+barrier counts and divergent conditional barriers; intra-kernel shared-memory
+access pairs partitioned by barrier phases; pointer arithmetic, uninitialized
+reads, and address-space casts. Out of scope: data-dependent indices (reported
+\kst{MAY_OOB} or \kst{UNKNOWN_RACE}, never \kst{SAFE}), runtime-parameter
+allocations (an index-bounded \kst{SAFE} carries an explicit note), atomics,
+and host-side allocation tracking.
+
+The known false positives include identical thread-indexed expressions that a
+value-numbering pass could merge, disjoint arithmetic that SCEV cannot prove
+disjoint, unbounded thread indices that overlap everything, loop-carried
+phases, and an unknown-range thread access paired with a uniform address. The
+known false negatives include data-dependent indices (named \kst{UNKNOWN_RACE},
+not proven safe), uniform-address value races, lone data-dependent stores,
+divergent barriers still treated as separators, and \kst{__syncwarp},
+\kst{__threadfence_block}, and atomics not modeled as synchronization.
+Inter-block races are out of scope. The future path is HGRD-style
+dominance-based barrier intervals, Faial-style behavioral types, and a
+GPUVerify-style two-thread reduction; none is implemented here.
+
+\subsection{Corpus and evidence}
+\label{sec:c3-evidence}
+
+The corpus has 19 source files and 34 consolidated manifest entries across
+the four check plugins. The lit gate runs the CLI \kst{--json} over every
+corpus kernel and diffs the verdicts against the manifest read from disk; the
+CLI never reads the manifest, so the test is not self-reporting. The
+dashboard summarizes the projection as 18 \kst{SAFE}, 4 \kst{MAY_OOB},
+4 \kst{PTR_OOB}, 2 \kst{MAY_RACE}, 2 \kst{MAY_UNINIT_READ},
+1 \kst{DIVERGENT_BARRIER}, 1 \kst{BARRIER_MISMATCH}, 1 \kst{UNKNOWN_RACE},
+and 1 \kst{INVALID_ADDRSPACE_CAST}. In the demo, the verifier gate removed one
+risky bias\_gelu variant before compilation while 12 others compiled and
+benchmarked.
+
+% ===========================================================================
+\section{C4: capture and replay}
+\label{sec:c4}
+
+\kst{kernscope-capture} records what a kernel launch observably did and lets
+a later process replay it. The recorded bundle is the input to the analyzer,
+the capture-tune search, and a standalone reproducer. The central constraint is
+VA fidelity: the replay must reconstruct the original pointer graph, not just
+the bytes.
+
+\subsection{Mechanisms}
+\label{sec:c4-mechanisms}
+
+\Cref{tab:capture-mechanisms} lists the three mechanisms. All three share the
+\fpath{libs/capture-core} session model and bundle writer, so the reader does
+not need to know which one produced a bundle. Vendor selection is
+\kst{--vendor}, then \kst{$KERNSCOPE_VENDOR}, then the first capture shared
+object next to the CLI (HIP preferred), then an error.
+
+\subsection{Bundle format v1}
+\label{sec:c4-format}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/capture.tikz}}
+\caption{Bundle v1. The manifest names the vendor and mechanism; the event log
+records API calls, allocations, launches, copies, memsets, streams, modules,
+and parameter metadata; the blob index carries a SHA-256 and a patch table for
+every snapshot.}
+\label{fig:capture}
+\end{figure}
+
+A v1 bundle is a directory:
+\begin{lstlisting}
+<name>.kcap/
+  manifest.json
+  events.json
+  blobs.json
+  blobs/b0001.bin
+\end{lstlisting}
+
+\kst{manifest.json} must have \kst{format_id="kernscope-capture"},
+\kst{schema_version="1.0"}, \kst{vendor} in \{nvidia, amd, mock\},
+\kst{capture_mechanism} in \{cupti, preload, hip-sdk\},
+\kst{snapshot_policy="va-faithful"}, and a \kst{size_governance} object with a
+default maximum snapshot of 1\,GiB. A total over the cap stops further blob
+writes, sets \kst{aborted=true}, records a reason, and leaves a loadable
+partial bundle.
+
+\kst{events.json} is an ordered log. The record types are API counts,
+allocation and free, unknown free, launch, copy, memset, stream, fatbin,
+cubin, and parameter info. A launch carries the kernel name, the launch
+mechanism, grid/block/shared memory, stream and graph handles, and a
+per-parameter argument table. Each argument is a pointer or scalar, with a
+size, a byte-exact host copy, and the original virtual address for pointer
+slots.
+
+\kst{blobs.json} indexes the snapshots. Each blob has an id, file, role, VA,
+size, SHA-256, and patch table. Roles are kernel binary, input, output,
+argument, and state. The reader recomputes every hash on read and rejects a
+mismatch. The patch table is the mechanism that makes replay portable: every
+8-byte little-endian value in a blob that equals a known allocation VA is
+recorded as a patch, and replay rewrites only the entries present in the
+allocation remap. A \kst{__device__} global that happens to contain another
+global's address is out of scope.
+
+\subsection{Replay, validation, and benchmark}
+\label{sec:c4-replay}
+
+The replay model resolves buffers from allocations, H2D inputs, D2H markers,
+and v1 snapshots, then restores the binary, the argument plan, and the launch
+geometry. HIP/HSA assigns virtual addresses, and the current runtime wrapper
+does not expose CUDA VMM placement, so replay remaps on both vendors. It
+allocates fresh buffers, computes old-to-new VA remapping, applies the patch
+tables before upload, rewrites pointer argument slots through the same table,
+and launches the captured grid, block, and shared memory.
+
+Validation is bitwise by default: byte compare plus SHA-256, with a hash diff
+on failure. Tolerance mode interprets outputs as bf16 chunks upcast to fp32
+and passes only when cosine $\ge 0.999$, maximum relative error
+$\le 10^{-2}$, and PCC $\ge 0.99$. References come from v1 output snapshots
+or from \kst{--ref} in output-buffer order; a missing reference is an error,
+not a pass.
+
+\kst{bench} performs one validation launch before timing and refuses to time
+an invalid replay unless \kst{--no-validate} is given. It uses ten repetitions
+by default, an L2 flush, event timing, and median plus p20/p80. Each run
+writes one \kst{libs/db} record keyed by architecture and kernel hash, with
+\kst{provenance.mode="measured"}.
+
+\subsection{Reproducer and size governance}
+\label{sec:c4-repro}
+
+\kst{emit-repro} writes a standalone plain-CMake C++ project with the kernel
+binary, inputs, a \kst{main.hip} or \kst{main.cu}, a \kst{CMakeLists.txt}
+pinned to the manifest vendor and architecture, and a README. It re-points
+pointer arguments at fresh buffers and launches the captured geometry.
+Size-unknown buffers become deterministic synthetic inputs, marked so a reader
+does not mistake them for bit-exact data. The NVIDIA reproducer is
+compile-only.
+
+\subsection{CUDA/HIP field mapping}
+\label{sec:c4-mapping}
+
+The mapping contract compares what the two vendors can both express, after
+normalization. Kernel names are compared after stripping the \kst{.kd} suffix
+and demangling. Grid, block, and shared memory compare directly. The default
+stream normalizes to 0; non-default streams get a 1-based id. Pointers compare
+as 1-based allocation ordinals, not raw VAs. Scalars compare by size and
+byte-identical value; input blobs compare by SHA-256 after H2D call order.
+Allocations compare as a sorted multiset of sizes; copies compare by kind
+(H2D, D2H, D2D). Binary blobs are compared per vendor only; a cubin is never
+compared with an hsaco. API counts, raw pointers before normalization, and
+timestamps are not compared.
+
+\subsection{Measured evidence}
+\label{sec:c4-evidence}
+
+The demo captured the hot layernorm kernel
+\kst{_Z15layernorm_fused}\allowbreak\kst{PKtS0_S0_Ptfi.kd} into a v0
+text bundle. The v1 layout is the current reader contract and the
+capture-tune path accepts it, but the record CLI in this tree still writes
+the v0 form; the gap is flagged in \Cref{sec:limitations-list}. The launch
+was at grid
+$1024 \times 1 \times 1$ and block $128 \times 1 \times 1$. The bundle has
+three blobs. Replay reproduced the output bitwise; the reference SHA-256 is
+\kst{a0027ed9a8ef2e3453aeb194aa64108c}\allowbreak\kst{1f300a87fbfa292cca5222a725449eec}.
+The capture-tune stage then explored four block sizes over the same bundle,
+validated all four bitwise, and selected block 256. This is the strongest
+cross-tool evidence in the report: the analyzer's stage-3 findings and the
+tuner's stage-4 candidates both refer to the same captured code object and
+launch.
+
+% ===========================================================================
+\section{C5: LLVM passes}
+\label{sec:c5}
+
+\kst{kernscope-pass} is an out-of-tree LLVM 21 pass plugin. It is loaded by
+both driver paths, \kst{opt -load-pass-plugin} and
+\kst{clang -fpass-plugin}, and it uses the New Pass Manager's
+\kst{PassPluginLibraryInfo} entry point. The \kst{kernscope-pass-report} CLI
+runs a fixed showcase pipeline and measures the before/after delta with the
+analyzer.
+
+\subsection{Plugin structure}
+\label{sec:c5-plugin}
+
+A pass module subclasses \kst{llvm::}\allowbreak\kst{PassInfoMixin} and
+registers a callback with \kst{REGISTER_PASS_}\allowbreak\kst{CALLBACK} at
+file scope. The callback receives the
+\kst{PassBuilder} of the loading process and wires the module into the
+pipeline. The registry is a process-global singleton; the plugin entry point
+does not need to know the module names in advance. The lit suite exercises
+both \kst{opt} and \kst{clang} loading so an ABI change fails at the loader
+rather than at the first transformed kernel.
+
+\subsection{The passes}
+\label{sec:c5-passes}
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l@{\hspace{1em}}X@{}}
+\toprule
+Pass & Transformation or analysis \\
+\midrule
+\kst{kernscope-promote} & Global-to-shared promotion for tiles reused in a loop. \\
+\kst{kernscope-tile} & Loop tiling over constant-trip, unit-stride \kst{\{s,+,1\}} windows. \\
+\kst{kernscope-vectorize} & Rewrites scalar load/store chains into vector operations when alignment and contiguity permit. \\
+\kst{kernscope-pad} & Shared-memory padding to break a known bank-conflict stride. \\
+\kst{kernscope-rle} & Redundant-load elimination and address simplification. \\
+\kst{kernscope-coalesce} & Analysis of per-access coalescing class; no rewrite. \\
+\bottomrule
+\end{tabularx}
+\caption{The pass modules. The coalescing analysis is shared with the
+analyzer's 128-byte-sector model so before/after numbers use the same
+definition.}
+\label{tab:c5passes}
+\end{table}
+
+The default showcase pipeline is
+\kst{kernscope-tile},\allowbreak
+\kst{kernscope-promote},\allowbreak
+\kst{kernscope-vectorize},\allowbreak
+\kst{kernscope-pad},\allowbreak
+\kst{kernscope-coalesce}.
+Not every pass fires on every kernel; a no-transform result is a valid
+outcome and is recorded as such. The tile pass, for example, declines a
+layernorm loop whose induction variable is not a canonical \kst{\{0,+,1\}}
+phi.
+
+\subsection{The delta report}
+\label{sec:c5-delta}
+
+\kst{kernscope-pass-report --report-pipeline <gemm|layernorm|softmax>} runs
+clang to before-IR, the plugin pipeline to after-IR, and \kst{llc} to
+before/after PTX. It then invokes \kst{kernscope-analyze} on both PTX files
+and emits a delta report with register estimate, shared-memory bytes,
+coalescing class, bank-conflict way, vector width, and vectorized global
+loads. Every metric is labeled improved, unchanged, or not applicable. The
+report's provenance is \kst{projected}: the IR and PTX are compile-only
+artifacts, and the note says the measured gfx1101 analog lives in the
+\kst{libs/db} records.
+
+On layernorm, vector width goes from 1 to 4, vectorized global loads from 0 to
+12, uncoalesced accesses from 64 to 16, and the register estimate stays at
+175. The pass report records 12 vector chains and 48 vectorized loads. gemm
+and softmax are correctly left no-transform, and all three kernels compile to
+PTX with exit 0 after the pipeline. The tile pass's refusal is recorded with
+its reason rather than hidden.
+
+% ===========================================================================
+\section{C6: profiler}
+\label{sec:c6}
+
+\kst{kernscope-profile} answers three questions from a running binary: which
+kernels ran, how long each took, and what the compiler-visible facts suggest
+about the bottleneck. It does not require hardware counters. It traces, it
+enriches, it ranks, and it diagnoses from the activity records and the
+architecture database.
+
+\subsection{Pipeline}
+\label{sec:c6-pipeline}
+
+\begin{enumerate}
+  \item \textbf{Trace.} The target runs under \kst{LD_PRELOAD} of the
+        rocprofiler-sdk tracer; each kernel dispatch and HIP API call becomes a
+        JSONL record. On NVIDIA the equivalent path is the CUPTI activity
+        tracer, which is compile- and unit-tested locally and rental-gated for
+        live use.
+  \item \textbf{Enrich.} Each kernel record receives occupancy and limiter
+        estimates from \fpath{libs/occupancy}, code-object VGPR/SGPR/LDS
+        facts where available, and explicit degradation markers where not.
+  \item \textbf{Rank.} Kernels are grouped by name and ranked by total time
+        (then median, then name); the top ten are kept.
+  \item \textbf{Diagnose.} The rule engine classifies memory, latency, and
+        compute behavior for known families, reports the occupancy limiter,
+        and degrades to \kst{insufficient_evidence} rather than inventing a
+        cause.
+  \item \textbf{Report.} \kst{--json} emits the model, \kst{--text} the
+        owner-facing table, and \kst{--html} a self-contained page with the
+        embedded JSON.
+\end{enumerate}
+
+\subsection{Diagnostics}
+\label{sec:c6-diagnostics}
+
+A \kst{memory_bound} hint is emitted when the workload's arithmetic intensity
+is below the measured ridge point. A \kst{latency_bound} or
+\kst{compute_bound} hint follows the same roofline position and the
+instruction mix. An occupancy limiter hint is emitted when occupancy is below
+1.0; the limiter is the binding resource. Sub-hints distinguish register
+bloat, shared-memory pressure, and a block too small to fill the machine.
+Every hint carries its evidence: arithmetic intensity, bytes moved, ridge
+point, occupancy, registers, or the analyzer finding id when the analyzer was
+merged into the pipeline.
+
+\subsection{Measured evidence}
+\label{sec:c6-evidence}
+
+Tracing the layernorm app produced three kernels and 19.6\,$\mu$s of wall
+time. The hot kernel ran for 9.2\,$\mu$s with 24 registers per thread,
+occupancy 1 (limiter registers), 1024 bytes of shared memory, grid
+$1024 \times 1 \times 1$, and block $128 \times 1 \times 1$. The profiler
+emitted a memory-bound hint with arithmetic intensity 1.375, a bytes-moved
+estimate of 1048576, and a ridge point of 27.614. The hint's
+\kst{analyzer_cross_refs} in the aggregated report point at the stage-3
+analyzer findings, including \kst{possibly_divergent_branch}.
+
+% ===========================================================================
+\section{Bench, dashboard, and the evidence layer}
+\label{sec:dashboard}
+
+\subsection{Benchmark methodology}
+\label{sec:bench-method}
+
+\kst{libs/bench} is the one timing method in the project. It warms up the
+kernel, flushes L2 between trials, and adapts the trial count to a time budget
+while keeping a minimum sample count. It reports the median and the p20/p80
+quantiles, not a mean, so a single slow launch does not move the result. The
+same harness times the peak microbenchmarks, the tuner variants, and the
+capture-replay benchmark. A correctness gate runs before timing in the
+tuner and in capture replay; the peak microbenchmarks are their own reference.
+
+\subsection{Measured machine peaks}
+\label{sec:peaks}
+
+The peaks in \Cref{tab:peaks} drive the roofline engine. The fp32 figure is
+the register-resident FFMA loop; the DRAM read figure uses a 512\,MiB array;
+the LDS figure is a read-plus-write loop. The device-to-device figure is
+reported as a range over the accepted runs. Clocks were recorded with
+\kst{rocm-smi} but not locked, and the machine was not isolated from
+development activity. The numbers are therefore a measured description of
+this machine on 2026-08-14, not a datasheet claim.
+
+\subsection{Dashboard sections}
+\label{sec:dashboard-sections}
+
+The dashboard aggregates six sections. Each section has a title, an
+availability flag, a status, a provenance object, a summary, and a list of
+evidence paths.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+Section & Mode & Summary at consolidation \\
+\midrule
+\kst{analyzer} & projected & Golden occupancy 0.375, 102 registers, limiter registers, 3 warnings, 3 suggestions. \\
+\kst{tune} & measured & 15 matmul variants; best 415.324\,$\mu$s, worst 3.106\,ms. \\
+\kst{verify} & projected & 34 entries, 19 files, 8 classes; 18 SAFE. \\
+\kst{capture} & measured & Grid $1024\times1\times1$, block $128\times1\times1$, 3 blobs, bitwise PASS. \\
+\kst{profile} & measured & 3 kernels, 19.6\,$\mu$s wall, hot 9.2\,$\mu$s, memory-bound hint. \\
+\kst{pass} & projected & Layernorm vector width 1$\rightarrow$4, uncoalesced 64$\rightarrow$16; gemm/softmax no-transform. \\
+\bottomrule
+\end{tabularx}
+\caption{Dashboard sections and their provenance modes. The mode is a
+convention recorded by the aggregator; the report schema does not require it.}
+\label{tab:dashboard}
+\end{table}
+
+\subsection{What the provenance does and does not enforce}
+\label{sec:provenance}
+
+The report schema (\Cref{app:report-schema}) requires \kst{kernel},
+\kst{metrics}, \kst{limiter}, \kst{warnings}, and \kst{suggestions}. It does
+not require \kst{schema_version} or \kst{provenance}; those are report-engine
+and dashboard conventions. The per-section provenance object has a
+\kst{mode} in \{measured, projected, no\_data\} and a boolean
+\kst{measured}. The dashboard validator asserts the six sections, the boolean,
+the evidence files, and the rendered module markers. The validator is not
+called by \kst{ci.sh}; it is a separate check. The report states this because
+a provenance convention that is described as enforced when it is only
+intended is exactly the kind of claim this project is trying to avoid.
+
+% ===========================================================================

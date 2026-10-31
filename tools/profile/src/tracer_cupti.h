@@ -18,7 +18,7 @@
 //   1. Subscription: cuptiActivityRegisterCallbacks (buffer request/completed)
 //      + cuptiActivityEnable for CONCURRENT_KERNEL (kind 10, low-overhead —
 //      NEVER the serializing KERNEL kind 3) + RUNTIME + DRIVER + OVERHEAD —
-//      the kineto enable-set (docs/research/profiler-research-brief.md §1.1,
+//      the kineto enable-set (docs/report/kernscope-technical-report.pdf,
 //      §1.3). No cuptiSubscribe: activity-only tracing needs no subscriber.
 //   2. Buffer completed -> iterate_activity_buffer (the versioned adapter's
 //      iterator, mirroring cuptiActivityGetNextRecord) and per record:

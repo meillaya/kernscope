@@ -20,7 +20,7 @@
 //      engine emitting libs/report Findings (every hint carries evidence).
 //   5. REPORT  (libs/report todo 7 reuse): --json = the profile report model
 //      (this file's ProfileReport), --text = the OWNER'S SECTION B SHAPE
-//      (docs/research/owner-examples.md: Kernel/Time/Registers/Shared/Limiter/
+//      (docs/report/kernscope-technical-report.pdf: Kernel/Time/Registers/Shared/Limiter/
 //      Hint) with locally-measured values, --html = kernscope::to_html() of
 //      the hottest kernel's KernelReport (embedded JSON payload guaranteed to
 //      parse).
@@ -114,7 +114,7 @@ ProfileReport build_report(const std::vector<EnrichedKernel> &kernels,
 /// carry their rule ids + evidence maps. no_kernels_traced is always present.
 std::string report_to_json(const ProfileReport &report);
 
-/// Text renderer: the owner's Section B SHAPE (docs/research/owner-examples.md:
+/// Text renderer: the owner's Section B SHAPE (docs/report/kernscope-technical-report.pdf:
 /// "Kernel: / Time: / Registers/thread: / Shared memory/block: / Likely
 /// limiter: / Compiler hint:") for every hot kernel, with LOCALLY-MEASURED
 /// values, plus the ranking. "no kernels traced" (exact phrase) when the

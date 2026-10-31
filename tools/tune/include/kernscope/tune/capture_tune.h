@@ -29,7 +29,7 @@
 //   2. RESTORE + LAUNCH: the binary is written to a temp file, loaded via
 //      the gpuruntime module API, the kernel resolved by its descriptor-less
 //      symbol, buffers allocated fresh, the remap table applied (pointer arg
-//      slots carry the NEW device VAs — docs/capture-mapping.md §4.4).
+//      slots carry the NEW device VAs — docs/report/kernscope-technical-report.pdf).
 //   3. CANDIDATES: the captured baseline config is ALWAYS candidate #1
 //      (explored first — this guarantees best.speedup >= 1.0), followed by
 //      the launch-config grid: block sizes from the arch-valid set at the

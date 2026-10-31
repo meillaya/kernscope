@@ -3,7 +3,7 @@
 // kernscope libs/bench harness suite (todo 22). Runs against the MockRuntime
 // and a test-local StubRuntime (controllable event timer) — NO device needed,
 // so the suite is labeled no-gpu. Coverage (validated methodology of
-// docs/research/autotuner-research-brief.md §6):
+// docs/report/kernscope-technical-report.pdf):
 //   * quantile helpers hand-computed + p20 <= median <= p80 ordering;
 //   * timing structure on the mock: median > 0, quantile ordering, adaptive
 //     convergence (nvbench measure_cold);

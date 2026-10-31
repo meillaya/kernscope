@@ -1,8 +1,7 @@
 // fused_attention.cu — golden fixture for the kernscope static analyzer.
 //
 // Deliberately engineered fused-attention kernel exhibiting every warning /
-// suggestion class from the owner's analyzer example (docs/research/
-// owner-examples.md, Section A):
+// suggestion class from the owner's analyzer example (docs/report/kernscope-technical-report.pdf, Section A):
 //
 //   (a) accumulator array   : per-thread float acc[64] drives the register
 //                             pressure into the 97-112 range (~112 regs/thread

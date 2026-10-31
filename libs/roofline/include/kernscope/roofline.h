@@ -4,7 +4,7 @@
 // Williams, Waterman & Patterson, *Roofline: An Insightful Visual Performance
 // Model for Floating-Point Programs and Multicore Architectures*, CACM 52(4),
 // Apr 2009, DOI 10.1145/1498765.1498785 (cited in
-// docs/research/autotuner-research-brief.md §7):
+// docs/report/kernscope-technical-report.pdf):
 //     attainable performance = min(peak FLOPS, arithmetic intensity × peak BW)
 //     ridge point = peak FLOPS / peak BW   (where the two roofs meet)
 //     compute-bound iff arithmetic intensity reaches the ridge point.
@@ -115,7 +115,7 @@ inline constexpr std::int64_t kReductionFlopsPerElement = 1;
 
 // --- Bound-classification threshold (documented; see header comment) --------
 // DRAM round-trip latency used by Little's-law latency bound. Cited:
-// docs/research/gpu-static-analyzer-research.md §8.1 (A100 global/DRAM =
+// docs/report/kernscope-technical-report.pdf (A100 global/DRAM =
 // 566 cycles ≈ 0.40 µs at ~1.4 GHz; H800 656 cycles).
 inline constexpr double kDramLatencyNs = 400.0;
 

@@ -14,7 +14,7 @@ fixture:
      contains "layernorm", duration_ns > 0, occupancy in (0,1], limiter in
      {registers,shared,threads,blocks}, >= 1 compiler hint with evidence,
      grid/workgroup == the fixture launch contract, RANGES never absolutes);
-  3. --text: the owner's Section B SHAPE (docs/research/owner-examples.md:
+  3. --text: the owner's Section B SHAPE (docs/report/kernscope-technical-report.pdf:
      Kernel:/Time:/Registers/thread:/Shared memory/block:/Likely limiter:/
      Compiler hint:) with LOCALLY-MEASURED values (no vendor claims);
   4. --html: libs/report's self-contained page — the embedded JSON payload

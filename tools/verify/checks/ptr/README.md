@@ -31,7 +31,7 @@
 # Class 8 — INVALID_ADDRSPACE_CAST (Error, citing the verified table)
 # -------------------------------------------------------------------
 # Legality follows the VERIFIED address-space tables of
-# docs/research/gpu-memory-pass-research.md §2.1 (NVPTX: generic(0) <->
+# docs/report/kernscope-technical-report.pdf (NVPTX: generic(0) <->
 # {global(1), shared(3), constant(4), local(5)} only) and §2.2 (AMDGPU:
 # generic(0) <-> {global(1), local(3), constant(4), private(5)},
 # flat-mediated). A DIRECT addrspacecast between two non-generic spaces

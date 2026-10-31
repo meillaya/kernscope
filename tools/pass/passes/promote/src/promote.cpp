@@ -7,7 +7,7 @@
 // blockDim.x — each element of the tile exactly once), a barrier makes the
 // loads visible, and the original reads are redirected to the tile. The
 // "scattered global loads -> cooperative block load -> shared tile ->
-// vectorized compute" story (docs/research/owner-examples.md); there is no
+// vectorized compute" story (docs/report/kernscope-technical-report.pdf); there is no
 // upstream LLVM-IR-level equivalent (IREE GPUPromoteMatmulOperands / MLIR
 // gpu MemoryPromotion are MLIR-only — research brief §4.7, §5.1).
 //

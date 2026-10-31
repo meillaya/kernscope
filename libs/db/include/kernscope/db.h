@@ -3,7 +3,7 @@
 // kernscope benchmark/config database: an append-only JSONL store of
 // per-(gpu_arch, kernel_family, shape_hash, config) tuning records with a
 // best-by-median query. Design follows the Triton autotune disk cache
-// (docs/research/autotuner-research-brief.md §1: key = hash over config +
+// (docs/report/kernscope-technical-report.pdf: key = hash over config +
 // tuning key, configs_timings pairs re-picked by min timing without
 // re-benchmarking) and the TVM MetaSchedule JSONDatabase (§2: newline-
 // delimited JSON records keyed by workload hash, warm-start seeding,

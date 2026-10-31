@@ -50,7 +50,7 @@ A pass module is a subdirectory of `tools/pass/passes/<name>/` that:
            return false;
          });
      // EP callbacks — what makes `clang -fpass-plugin` auto-run the pass.
-     // Full EP list: docs/research/gpu-memory-pass-research.md §1.3.
+     // Full EP list: docs/report/kernscope-technical-report.pdf
      PB.registerPipelineStartEPCallback(
          [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel) {
            MPM.addPass(llvm::createModuleToFunctionPassAdaptor(MyPass()));

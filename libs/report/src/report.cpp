@@ -2,7 +2,7 @@
 //
 // Implementation of the kernscope report engine (libs/report, wave-1 todo 7):
 // one model (KernelReport/Finding), three renderers (text in the owner's
-// Section A format, JSON validated against docs/schema/report.schema.json,
+// Section A format, JSON validated against docs/report/kernscope-technical-report.pdf,
 // and a self-contained HTML with an embedded JSON payload). Every renderer
 // validates the model first and throws SchemaViolation instead of silently
 // emitting an invalid report.

@@ -221,7 +221,7 @@ TEST(ProfileCli, OwnerSectionBTextShape) {
   const ProfileReport report = build_report(kernels, MakeOptions());
   const std::string text = kernscope::profile::cli::report_to_text(report);
 
-  // The owner's example SHAPE (docs/research/owner-examples.md Section B)
+  // The owner's example SHAPE (docs/report/kernscope-technical-report.pdf Section B)
   // with locally-measured values — all six fields present.
   EXPECT_NE(text.find("Kernel: "), std::string::npos);
   EXPECT_NE(text.find("Time: "), std::string::npos);

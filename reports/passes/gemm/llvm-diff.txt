@@ -1,5 +1,0 @@
-in function gemm_kernel:
-  in block %3 / %3:
-    >   %4 = addrspacecast ptr %1 to ptr addrspace(1)
-    >   %5 = addrspacecast ptr %0 to ptr addrspace(1)
-    >   %6 = addrspacecast ptr %2 to ptr addrspace(1)

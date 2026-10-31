@@ -3,7 +3,7 @@
 // Wave-4 todo 22: measures the gfx1101 roofline peaks on this machine (RX
 // 7800 XT) with the validated kernscope::bench methodology (time-based
 // warmup/rep, L2 flush, event timing, adaptive trials —
-// docs/research/autotuner-research-brief.md §6) and writes libs/db JSONL
+// docs/report/kernscope-technical-report.pdf) and writes libs/db JSONL
 // records WITH PROVENANCE: device name, gcnArchName, rocm-smi clocks as
 // measured at run time, tool version, measured=true. Clocks are NEVER locked
 // (no root) — they are recorded as-measured (plan todo 22 MUST NOT).

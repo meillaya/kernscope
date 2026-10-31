@@ -293,7 +293,7 @@ void UsageReplay(FILE *out) {
                "\n"
                "Restores the captured launch on the local device (fresh\n"
                "allocations + remap/patch table; original VAs where the\n"
-               "platform allows — see docs/capture.md) and VALIDATES the\n"
+               "platform allows — see docs/report/kernscope-technical-report.pdf) and VALIDATES the\n"
                "captured outputs: BITWISE by default (sha256 + byte\n"
                "compare), tolerance mode (cosine/max_rel_err/pcc, golden\n"
                "contract) with --mode tolerance. Exit 0 = validation PASS;\n"
@@ -349,7 +349,7 @@ int RunReplay(const ReplayOptions &args) {
   std::printf("validation: %s\n", result.validation_pass ? "PASS" : "FAIL");
   if (!result.launches.empty()) {
     std::printf("launch records: %zu (profiling hook contract, "
-                "docs/capture.md §profiling-hooks)\n",
+                "docs/report/kernscope-technical-report.pdf)\n",
                 result.launches.size());
   }
   return result.validation_pass ? 0 : 1;

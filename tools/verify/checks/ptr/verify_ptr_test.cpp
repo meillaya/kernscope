@@ -519,7 +519,7 @@ TEST(VerifyPtr, BadCastErrorCitesTable) {
   EXPECT_EQ(f.getString("src"), "shared");
   EXPECT_EQ(f.getString("dst"), "global");
   // The diagnostic message must cite the verified table
-  // (docs/research/gpu-memory-pass-research.md §2.1).
+  // (docs/report/kernscope-technical-report.pdf).
   bool cited = false;
   for (const Diagnostic& d : a.state->diagnostics()) {
     if (d.class_id == CheckClass::kAddrSpaceCast &&

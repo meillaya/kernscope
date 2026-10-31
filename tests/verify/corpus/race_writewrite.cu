@@ -7,7 +7,7 @@
 //   check class 4 (race-prone shared-memory writes) must emit MAY_RACE with
 //   BOTH source sites in the diagnostic JSON (the acceptance contract).
 //
-// Runtime semantics note (soundness scope, docs/verify-soundness.md): the
+// Runtime semantics note (soundness scope, docs/report/kernscope-technical-report.pdf): the
 // two stores are per-thread sequential writes to the thread's OWN element,
 // but the range-based may-alias analysis cannot prove that distinct threads
 // obtain distinct addresses (no thread-variable modeling), so the pair is

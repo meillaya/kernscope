@@ -5,7 +5,7 @@
 // into a cooperative block load into a fresh addrspace(3) (shared) tile,
 // followed by a barrier, with the original reads redirected to the tile.
 // This is the "scattered global loads -> cooperative block load -> shared
-// tile -> vectorized compute" story of docs/research/owner-examples.md.
+// tile -> vectorized compute" story of docs/report/kernscope-technical-report.pdf.
 // There is no upstream LLVM-IR-level equivalent (the IREE
 // GPUPromoteMatmulOperands / MLIR gpu MemoryPromotion precedents are
 // MLIR-only — research brief §4.7, §5.1).

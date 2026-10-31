@@ -8,7 +8,7 @@
 // the synthetic CUPTI-callback harness (tests/synthetic_cupti.h) - the
 // "CUDA-shim-on-mock" side. The HIP side runs the SAME program live on
 // gfx1101 under libkernscope_capture_hip.so (todo 45); capture_equiv_check.py
-// compares the two bundles field-for-field per docs/capture-mapping.md.
+// compares the two bundles field-for-field per docs/report/kernscope-technical-report.pdf.
 //
 // The replayed program mirrors tools/hip_template_runner.cpp exactly:
 //   hipMalloc a (2048) -> H2D a -> hipMalloc b (2048) -> H2D b ->
@@ -25,7 +25,7 @@
 //
 // Device addresses are SYNTHETIC (0x1000/0x2000/0x3000): the comparison
 // VA-normalizes them to allocation ordinals, so the values themselves never
-// cross the equivalence boundary (docs/capture-mapping.md §4.3).
+// cross the equivalence boundary (docs/report/kernscope-technical-report.pdf).
 //
 //===----------------------------------------------------------------------===//
 

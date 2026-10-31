@@ -1,0 +1,57 @@
+% The kernscope closed loop. Six stages, two rows, with the delta feedback.
+% Requires tikz, positioning, arrows.meta and the colours defined in the preamble.
+\begin{tikzpicture}[
+    font=\small,
+    card/.style={draw, rounded corners=3pt, align=center, text width=3.35cm,
+                 minimum height=2.25cm, inner sep=4pt, line width=0.7pt},
+    title/.style={font=\small\bfseries},
+    cli/.style={font=\ttfamily\scriptsize},
+    body/.style={font=\scriptsize, text=ink!80},
+    flow/.style={-{Stealth[length=2.1mm]}, line width=0.8pt, draw=ink!65},
+    feed/.style={-{Stealth[length=2.1mm]}, line width=0.8pt, dashed, draw=kviolet},
+    lbl/.style={font=\scriptsize\itshape, text=ink!65, fill=paper, inner sep=1.5pt},
+  ]
+
+  % Top row: profile -> capture -> analyze.
+  \node[card, fill=kredfill, draw=kred] (prof) at (0,0)
+    {{\color{kred}C6}\quad\textbf{profile}\\[1pt]
+     \texttt{\scriptsize kernscope-profile}\\[3pt]
+     {\scriptsize ranks hot kernels and\\explains why they stall}};
+  \node[card, fill=korangefill, draw=korange] (cap) at (4.65,0)
+    {{\color{korange}C4}\quad\textbf{capture}\\[1pt]
+     \texttt{\scriptsize kernscope-capture}\\[3pt]
+     {\scriptsize records a launch into a\\bitwise-replayable bundle}};
+  \node[card, fill=kgoldfill, draw=kgold] (ana) at (9.3,0)
+    {{\color{kgold}C1}\quad\textbf{analyze}\\[1pt]
+     \texttt{\scriptsize kernscope-analyze}\\[3pt]
+     {\scriptsize runs 10 checks on the\\captured ISA}};
+
+  % Bottom row, right to left: transform -> verify -> benchmark.
+  \node[card, fill=kgreenfill, draw=kgreen] (trans) at (9.3,-5.1)
+    {{\color{kgreen}C2+C5}\quad\textbf{transform}\\[1pt]
+     \texttt{\scriptsize kernscope-tune}\\
+     \texttt{\scriptsize kernscope-pass-report}\\[3pt]
+     {\scriptsize builds template variants\\and rewrites LLVM IR}};
+  \node[card, fill=kbluefill, draw=kblue] (ver) at (4.65,-5.1)
+    {{\color{kblue}C3}\quad\textbf{verify}\\[1pt]
+     \texttt{\scriptsize kernscope-verify}\\[3pt]
+     {\scriptsize checks 8 safety classes\\before anything compiles}};
+  \node[card, fill=kvioletfill, draw=kviolet] (bench) at (0,-5.1)
+    {{\color{kviolet}bench}\quad\textbf{benchmark}\\[1pt]
+     \texttt{\scriptsize libs/bench}\\[3pt]
+     {\scriptsize times correct variants\\with p20/p80 quantiles}};
+
+  % Forward path.
+  \draw[flow] (prof.east) -- node[lbl, above] {hot kernel} (cap.west);
+  \draw[flow] (cap.east) -- node[lbl, above] {bundle} (ana.west);
+  \draw[flow] (ana.south) -- node[lbl, right, pos=0.45] {findings} (trans.north);
+  \draw[flow] (trans.west) -- node[lbl, above] {variants} (ver.east);
+  \draw[flow] (ver.west) -- node[lbl, above] {gated} (bench.east);
+
+  % Delta feedback around the outside.
+  \draw[feed] (bench.south) -- ++(0,-0.85) -| ($(prof.west)+(-0.75,0)$)
+    -- (prof.west);
+  \node[font=\scriptsize\itshape, text=kviolet, anchor=west] at (-0.1,-7.25)
+    {delta reports start the next pass};
+
+\end{tikzpicture}

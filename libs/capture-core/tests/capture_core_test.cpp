@@ -8,7 +8,7 @@
 //     cuLaunchKernel capture on the driver path;
 // (b) fatbin registration records the cubin bytes HASH (the bundle's cubin
 //     field source for runtime-API apps; GPGPU-Sim g_mallocPtr_Size pattern,
-//     docs/research/capture-replay-research-brief.md §2/§5);
+//     docs/report/kernscope-technical-report.pdf/§5);
 // (c) cuFuncGetParamInfo arg introspection sizes the driver-API arg capture;
 // (d) negative QA: an unknown cudaFree is logged "unknown-free" and forwarded
 //     without a crash (cudaFree on a pointer cudaMalloc did not return is

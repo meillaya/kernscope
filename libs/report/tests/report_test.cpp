@@ -1,8 +1,8 @@
 //===- report_test.cpp - gtest suite for libs/report -------*- C++ -*-===//
 //
 // (a) a fixed finding set renders to an EXACT text golden — byte-identical
-//     to the owner's example (docs/research/owner-examples.md Section A);
-// (b) JSON output validates against docs/schema/report.schema.json
+//     to the owner's example (docs/report/kernscope-technical-report.pdf Section A);
+// (b) JSON output validates against docs/report/kernscope-technical-report.pdf
 //     (draft 2020-12) via the committed minimal validator
 //     tests/report/validate_json.py under python3 (no pip packages needed);
 // (c) the HTML output embeds the JSON payload, extracted it equals the
@@ -126,7 +126,7 @@ bool ExtractPayload(const std::string &html, std::string *payload) {
 TEST(ReportText, OwnerExampleGolden) {
   const kernscope::KernelReport report = OwnerExampleReport();
 
-  // Byte-identical to docs/research/owner-examples.md Section A (the
+  // Byte-identical to docs/report/kernscope-technical-report.pdf Section A (the
   // trailing newline is part of the format).
   const std::string kGolden = R"(Kernel: fused_attention.ptx
 Occupancy: 37.5%
