@@ -74,9 +74,9 @@ regenerate `devenv.lock`, committing BOTH, and re-running
   analysis / IR+PTX compile-only artifacts). `tests/report/check_dashboard.py`
   asserts the honesty flags; projected numbers are never presented as
   measured.
-- `reports/rentals/` does not exist. Rental numbers appear there ONLY when
-  the owner produces them (see the runbook below); the README and dashboard
-  must not claim them meanwhile.
+- `reports/rentals/` holds no numbers yet. Rental numbers appear there ONLY
+  when the owner produces them (see the runbook below); the README and
+  dashboard must not claim them meanwhile.
 
 ## Rental runbook (OWNER-executed, never auto-triggered)
 

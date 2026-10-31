@@ -4,7 +4,7 @@ The unified GPU-kernel tooling suite: how the six tools fit together, the
 hardware strategy, and the CUDA-13 migration surface.
 
 - [The loop](#the-loop)
-- [Library dependency graph](#library-dependency-graph)
+- [Library stack](#library-stack)
 - [Dual-path hardware strategy](#dual-path-hardware-strategy)
 - [CUDA-13 migration surface (Metis H-2)](#cuda-13-migration-surface-metis-h-2)
 - [Capture mechanism comparison](#capture-mechanism-comparison)
@@ -12,38 +12,10 @@ hardware strategy, and the CUDA-13 migration surface.
 
 ## The loop
 
-The six tools form one closed loop — a kernel enters as source or a running
+The six tools form one closed loop. A kernel enters as source or a running
 binary and comes out with verified, tuned, profiled evidence:
 
-```
-                ┌──────────────────────────────────────────────────────────┐
-                │                                                          │
-                ▼                                                          │
-        [ profile ]─────────►[ capture ]─────────►[ analyze ]              │
-        kernscope-profile    kernscope-capture    kernscope-analyze        │
-        hot kernel +         record hot kernel,   static findings on       │
-        compiler-aware       VA-faithful bundle,  the CAPTURED kernel's     │
-        diagnostics          bitwise replay       ISA (PTX / AMDGPU)        │
-                │                                   │                       │
-                │                                   ▼                       │
-                │                           [ transform / generate ]       │
-                │                           kernscope-tune (template),     │
-                │                           kernscope-pass (LLVM passes)   │
-                │                                   │                       │
-                │                                   ▼                       │
-                │                           [ verify ]                     │
-                │                           kernscope-verify (8 check      │
-                │                           classes, IR-level) gates       │
-                │                           candidates                     │
-                │                                   │                       │
-                │                                   ▼                       │
-                │                           [ benchmark ]                  │
-                │                           libs/bench (L2 flush,          │
-                │                           median + p20/p80,              │
-                │                           correctness-gated)             │
-                │                                   │                       │
-                └────────────(delta reports feed back)─────────────────────┘
-```
+![Six stages form one closed loop: profile, capture, analyze, transform, verify, and benchmark, with delta reports feeding the next pass](diagrams/loop.png)
 
 Concretely, `scripts/demo.sh` runs the loop end-to-end in one command
 (todo 55) and emits one aggregated cross-tool report
@@ -52,34 +24,25 @@ Concretely, `scripts/demo.sh` runs the loop end-to-end in one command
 *captured* kernel's disassembled ISA — the tools validate each other, they do
 not self-report.
 
-## Library dependency graph
+## Library stack
 
-All six tools link shared infrastructure in `libs/`; nothing depends
-downward on a tool.
+Tools use the infrastructure they need from `libs/` and LLVM 21; nothing
+depends downward on a tool.
 
-```
-libs/arch (GPU architecture DB, gfx1101 measured peaks, sm_80/sm_90 CUDA caps)
-   ├── libs/ptxparse      (PTX parser)   ──┐
-   ├── libs/amdparse      (AMDGPU parser)─┼──► tools/analyze (C1)
-   │                                        │
-   ├── libs/occupancy     (occupancy + limiter engine, NO cuda_occupancy.h)
-   ├── libs/roofline      (roofline position, ridge points, bound class)
-   ├── libs/golden        (correctness gate: bf16 golden comparisons)
-   ├── libs/bench         (timing harness: warmup/rep, L2 flush, quantiles)
-   ├── libs/db            (JSON records keyed by (arch, family, shape-hash))
-   ├── libs/report        (report engine: schema_version 1.0, provenance)
-   ├── libs/cupti-sub     (shared CUPTI subscription; MEMORY-kind allocation map)
-   └── libs/runtime       (thin cudart/hiprt wrapper; compile-only + mock backends)
-          │
-          ├──► tools/tune (C2)     — pre-screen via libs/occupancy+roofline,
-          │                         gate via libs/golden, time via libs/bench
-          ├──► tools/verify (C3)   — clang -> LLVM IR, checks on the IR
-          ├──► tools/capture (C4)  — libs/runtime + libs/cupti-sub + rocprofiler-sdk
-          ├──► tools/pass (C5)     — out-of-tree LLVM-21 plugin; analyzer-measured
-          │                         before/after deltas (shares libs coalescing logic)
-          └──► tools/profile (C6)  — libs/occupancy enrichment, libs/cupti-sub
-                                      (NVIDIA), rocprofiler-sdk live (AMD)
-```
+![Six tools above grouped shared libraries: parsers, the hardware model, measurement and reporting, and capture backends, over LLVM, CUDA, and ROCm](diagrams/stack.png)
+
+The diagram groups the libraries by role. The exact link set:
+
+| Tool | Libraries |
+|---|---|
+| `analyze` | `ptxparse`, `amdparse`, `arch`, `occupancy`, `report`, `db` |
+| `tune` | `arch`, `occupancy`, `roofline`, `bench`, `db`, `gpuruntime`, `capture-core`, `report`; plus the matmul, elementwise, and flash-attention generators |
+| `verify` | LLVM |
+| `capture` | `capture-core`, `bench`, `gpuruntime`, `arch`, `db`; plus the `capture-hip` or `cupti-sub` backend |
+| `pass` | LLVM |
+| `profile` | `occupancy`, `roofline`, `report`, `db`; plus the CUPTI or rocprofiler-sdk tracer |
+| `kernscope-bench` | `bench`, `db`, `gpuruntime`, `arch` |
+| `kernscope-ptxdump` | `ptxparse`, `db` |
 
 Cross-tool edges that make the loop closed (see
 `scripts/demo.sh` stage comments):
@@ -104,6 +67,8 @@ Every NVIDIA-runtime capability has two implementations with different
 venues, so the suite is fully testable on this machine (AMD RX 7800 XT /
 gfx1101) with zero rentals:
 
+![Three venues: the local AMD RX 7800 XT runs live, NVIDIA CUDA compiles for sm_80 and sm_90, and NVIDIA runtime runs only on an owner-gated rental](diagrams/hardware.png)
+
 | Capability | CUDA (NVIDIA) | HIP (AMD, local) |
 |---|---|---|
 | Compile | `nvcc` sm_80/sm_90 **compile-only** (vendored headers from nix store; NO vendored NVIDIA headers committed) | `hipcc` gfx1101 compile + **live run** |
@@ -123,8 +88,8 @@ the ci.sh guards):
 - **No vendored NVIDIA headers** are committed (ci.sh filename + content
   guards); the nix store resolves `#include <cuda_occupancy.h>`-style names
   at build time.
-- **No rental claims in the README**: `reports/rentals/` does not exist yet;
-  numbers there appear only when the owner produces them.
+- **No rental claims in the README**: `reports/rentals/` holds no numbers yet;
+  they appear only when the owner produces them.
 
 ## CUDA-13 migration surface (Metis H-2)
 
